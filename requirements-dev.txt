@@ -1,0 +1,4 @@
+# Extra tools for development only (not needed to run the tool)
+# Install with:  pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8           # Automated tests:  python -m pytest

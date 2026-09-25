@@ -16,7 +16,7 @@ Draws the deep-navy sidebar on the left of the window:
     |  Monthly inputs        |      be shown next to a title
     |  History               |
     |                        |
-    |  Version 0.1.0         |   <- version footer
+    |  Version 0.2.0         |   <- version footer
     +------------------------+
 
 Only one navigation button can be active at a time (QButtonGroup, exclusive).
@@ -117,7 +117,7 @@ class Sidebar(QFrame):
         lay.addStretch(1)
 
         # --- Footer ------------------------------------------------------
-        footer = QLabel(f"Version {__version__}  ·  UI preview")
+        footer = QLabel(f"Version {__version__}")
         footer.setObjectName("SidebarFooter")
         footer.setContentsMargins(22, 0, 0, 0)
         lay.addWidget(footer)

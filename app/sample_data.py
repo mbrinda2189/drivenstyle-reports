@@ -1,29 +1,30 @@
 """
-sample_data.py - Placeholder data for the UI preview (v0.1.x)
-=============================================================
+sample_data.py - Placeholder data for screens not yet connected
+===============================================================
 
 WHAT THIS MODULE DOES
 ---------------------
-Holds the sample rows that the screens display while the real pieces are
-still being built. Nothing here is used for calculations.
+Holds the sample rows shown by the parts of the tool that are still being
+built. Nothing here is used for calculations.
 
-    COST_SHEET        - rows for Masters > Cost Sheet
-    LABOUR_CHARGES    - rows for Masters > Labour Charges (labour is per item,
-                        linked to the item's SKU, as confirmed by the client)
-    PACKAGES          - rows for Masters > Packages
-    EXECUTIVES        - rows for Masters > Executives & Incentive
-    INDIRECT_COSTS    - default indirect cost heads for Monthly Inputs
-    SCAN_ISSUES       - issues shown on the Scan Review screen
-    HISTORY           - months shown on the History screen
     REPORTS           - the 12 reports offered on the Generate screen
+                        (this list is permanent, not sample data)
+    PACKAGES          - rows for Masters > Packages (package definitions are
+                        not in the client's master sheets yet)
+    INDIRECT_COSTS    - default indirect cost heads for Monthly inputs
+    SCAN_ISSUES       - issues shown on the Scan review screen (until the
+                        invoice reader arrives in v0.3)
+    HISTORY           - months shown on the History screen
+
+Since v0.2.0 the Product, Sales executive and Car masters come from the
+database (app/data), not from here. To try the Masters screen with sample
+sheets, run:  python scripts/make_sample_masters.py
 
 IMPORTANT
 ---------
 Item names and SKUs are taken from a real Drive N Style invoice (DNS26-0777)
-so the screens look realistic, but ALL cost, labour, package and incentive
-figures are invented placeholders. They will be replaced by the client's
-cost sheet and labour charges sheet once received, and this module will then
-be removed in favour of the SQLite masters database.
+so the screens look realistic, but ALL package and cost figures are
+invented placeholders.
 """
 
 # The 12 reports, in the order the client listed them.
@@ -42,44 +43,10 @@ REPORTS = [
     "Profit & loss",
 ]
 
-# (SKU, Item name, Category, Cost in Rs., Effective from)
-COST_SHEET = [
-    ("SNC-FSK", "Sunfilm - Nano Ceramic - Front (SK)", "Service", 2400.00, "01-07-2026"),
-    ("SNC-SRSK", "Sunfilm - Nano Ceramic - Side and Rear (SK)", "Service", 3100.00, "01-07-2026"),
-    ("", "Noodles Mat Role - PVC", "Product", 850.00, "01-04-2026"),
-    ("SC-STD", "Seat Cover - Standard", "Product", 1850.00, "01-07-2026"),
-    ("SC-PRM", "Seat Cover - Premium Leatherette", "Product", 4200.00, "01-07-2026"),
-    ("PPF-FB", "PPF - Full Body", "Service", 38000.00, "01-04-2026"),
-    ("CC-9H", "Ceramic Coating - 9H", "Service", 6500.00, "01-04-2026"),
-    ("DC-4K", "Dash Camera - 4K", "Product", 5200.00, "01-06-2026"),
-    ("AMB-LT", "Ambient Lighting Kit", "Product", 1450.00, "01-06-2026"),
-    ("MAT-7D", "7D Floor Mat", "Product", 2100.00, "01-04-2026"),
-]
-
-# (SKU, Item name, Labour charge in Rs., Effective from)
-LABOUR_CHARGES = [
-    ("SNC-FSK", "Sunfilm - Nano Ceramic - Front (SK)", 300.00, "01-07-2026"),
-    ("SNC-SRSK", "Sunfilm - Nano Ceramic - Side and Rear (SK)", 500.00, "01-07-2026"),
-    ("", "Noodles Mat Role - PVC", 100.00, "01-04-2026"),
-    ("SC-STD", "Seat Cover - Standard", 350.00, "01-07-2026"),
-    ("SC-PRM", "Seat Cover - Premium Leatherette", 450.00, "01-07-2026"),
-    ("PPF-FB", "PPF - Full Body", 6000.00, "01-04-2026"),
-    ("CC-9H", "Ceramic Coating - 9H", 1500.00, "01-04-2026"),
-    ("DC-4K", "Dash Camera - 4K", 400.00, "01-06-2026"),
-]
-
 # (Package name, Items included, Package price in Rs.)
 PACKAGES = [
     ("Basic Package", "Sunfilm Front, Sunfilm Side & Rear, Noodles Mat", 14000.00),
     ("Premium Package", "Basic Package + Seat Cover Premium + 7D Mat", 24500.00),
-]
-
-# (Executive, Incentive type, Rate, Effective from)
-EXECUTIVES = [
-    ("Arun", "% of sale value", 1.0, "01-04-2026"),
-    ("Karthik", "% of sale value", 1.0, "01-04-2026"),
-    ("Priya", "Flat per package", 250.0, "01-04-2026"),
-    ("Selvam", "Flat per package", 250.0, "01-04-2026"),
 ]
 
 # (Head of expense, Amount in Rs.)

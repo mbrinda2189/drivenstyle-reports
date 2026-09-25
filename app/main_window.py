@@ -23,6 +23,12 @@ Connections between pages:
     * Generate: "Review issues"     -> switch to Scan review
     * Scan review: issue fixed      -> sidebar badge count updates
     * Scan review: "Continue..."    -> switch back to Generate reports
+    * Masters: saved or imported    -> Generate page's "Masters in use"
+                                       counts refresh
+
+The masters database (MastersRepo) is created in main.py and passed in, so
+the window itself never opens files. Closing the window with unsaved edits
+on the Masters screen asks before discarding them.
 
 `toast(text)` shows a fading message; every page calls it through
 ScrollPage.toast().
@@ -30,9 +36,10 @@ ScrollPage.toast().
 
 from __future__ import annotations
 
-from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QWidget
 
 from app import __app_name__, __version__
+from app.data.masters_repo import MastersRepo
 from app.pages.generate_page import GeneratePage
 from app.pages.history_page import HistoryPage
 from app.pages.inputs_page import InputsPage
@@ -48,8 +55,9 @@ PAGE_GENERATE, PAGE_REVIEW, PAGE_MASTERS, PAGE_INPUTS, PAGE_HISTORY = range(5)
 class MainWindow(QMainWindow):
     """Top-level window: sidebar + animated pages + toast."""
 
-    def __init__(self):
+    def __init__(self, repo: MastersRepo):
         super().__init__()
+        self.repo = repo
         self.setWindowTitle(f"{__app_name__}  –  v{__version__}")
         self.resize(1320, 840)
         self.setMinimumSize(1120, 700)
@@ -70,7 +78,7 @@ class MainWindow(QMainWindow):
         self.stack = AnimatedStack()
         self.generate_page = GeneratePage()
         self.review_page = ReviewPage()
-        self.masters_page = MastersPage()
+        self.masters_page = MastersPage(repo)
         self.inputs_page = InputsPage()
         self.history_page = HistoryPage()
         for page in (self.generate_page, self.review_page, self.masters_page,
@@ -88,6 +96,24 @@ class MainWindow(QMainWindow):
         self.review_page.openIssuesChanged.connect(
             lambda n: self.sidebar.set_badge(PAGE_REVIEW, str(n) if n else ""))
         self.review_page.backRequested.connect(lambda: self.go_to(PAGE_GENERATE))
+        self.masters_page.mastersChanged.connect(self._refresh_master_counts)
+        self._refresh_master_counts()
+
+    def _refresh_master_counts(self) -> None:
+        """Update the Generate page's 'Masters in use' panel."""
+        self.generate_page.set_master_counts(self.repo.counts())
+
+    def closeEvent(self, event) -> None:
+        """Ask before closing if the Masters screen has unsaved edits."""
+        if self.masters_page.has_unsaved_changes():
+            answer = QMessageBox.question(
+                self, "Unsaved changes",
+                "Some master changes are not saved. Close without saving?",
+                QMessageBox.Discard | QMessageBox.Cancel, QMessageBox.Cancel)
+            if answer != QMessageBox.Discard:
+                event.ignore()
+                return
+        event.accept()
 
     def go_to(self, index: int) -> None:
         """Show page `index` with the slide animation and sync the sidebar."""

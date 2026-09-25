@@ -9,8 +9,10 @@ build/
 dist/
 *.spec
 
-# Local data - never commit client invoices, masters or generated reports
-data/
+# Local data - never commit client invoices, masters or generated reports.
+# The leading "/" limits this to the project's top-level data folder, so the
+# app/data/ code package is still committed.
+/data/
 output/
 *.xlsx
 *.pdf
@@ -20,3 +22,6 @@ output/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Test runner cache
+.pytest_cache/

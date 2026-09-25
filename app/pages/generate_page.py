@@ -18,10 +18,11 @@ sequence, so the steps are numbered:
 
 Below the steps, the user ticks which of the 12 reports to include.
 
-On the right, a "Run" panel shows which master sheets are in use, the
+On the right, a "Run" panel shows how many products, sales executives and
+cars are loaded in the masters (amber if a master is still empty), the
 "Scan invoices" and "Generate Excel" buttons, a progress bar and a log.
 
-CURRENT BEHAVIOUR (v0.1.0 - UI preview)
+CURRENT BEHAVIOUR (v0.2.0)
 ---------------------------------------
 * Folder and file choosers are real. After choosing the invoice folder, the
   page counts the actual PDF files in it.
@@ -30,6 +31,7 @@ CURRENT BEHAVIOUR (v0.1.0 - UI preview)
   `scanFinished` so the Scan review page can show the sample issues.
 * "Generate Excel" is SIMULATED: it animates through the selected reports and
   then shows a message. No file is written yet.
+* "Masters in use" shows real counts from the masters database (v0.2.0).
 
 SIGNALS
 -------
@@ -45,7 +47,7 @@ from PySide6.QtCore import (
     QDate, QEasingCurve, QPropertyAnimation, QTimer, Qt, Signal,
 )
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QListWidget,
+    QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QProgressBar, QVBoxLayout, QWidget,
 )
 from PySide6.QtGui import QColor
@@ -227,7 +229,9 @@ class GeneratePage(ScrollPage):
         card.body.setSpacing(14)
         card.body.addWidget(label("Run", "SectionTitle"))
 
-        # Masters in use (placeholder versions until real masters arrive).
+        # Masters in use: how many active rows each master holds. Filled by
+        # set_master_counts(), called by the main window at start-up and
+        # whenever a master is saved or imported.
         masters = QFrame()
         masters.setStyleSheet(
             f"background: {Colors.BLUE_TINT}; border-radius: 8px;")
@@ -235,8 +239,13 @@ class GeneratePage(ScrollPage):
         m_lay.setContentsMargins(14, 10, 14, 10)
         m_lay.setSpacing(2)
         m_lay.addWidget(label("Masters in use", "Muted"))
-        m_lay.addWidget(label("Cost sheet – sample data"))
-        m_lay.addWidget(label("Labour charges – sample data"))
+        self.master_labels: dict[str, QLabel] = {}
+        for key in ("products", "executives", "cars"):
+            self.master_labels[key] = label("")
+            m_lay.addWidget(self.master_labels[key])
+        self.masters_hint = label("Load them on the Masters screen.", "Muted")
+        self.masters_hint.hide()
+        m_lay.addWidget(self.masters_hint)
         card.body.addWidget(masters)
 
         # Buttons
@@ -281,6 +290,31 @@ class GeneratePage(ScrollPage):
         self.log.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         card.body.addWidget(self.log)
         return card
+
+    # ------------------------------------------------------------------
+    # Masters in use
+    # ------------------------------------------------------------------
+    def set_master_counts(self, counts: dict[str, int]) -> None:
+        """
+        Show how many active products / executives / cars are loaded.
+        An empty master is shown in amber with a pointer to the Masters
+        screen, since the reports cannot be calculated without it.
+        """
+        names = {"products": ("product", "Products"),
+                 "executives": ("sales executive", "Sales executives"),
+                 "cars": ("car", "Cars")}
+        any_empty = False
+        for key, lbl in self.master_labels.items():
+            singular, title = names[key]
+            n = counts.get(key, 0)
+            if n:
+                lbl.setText(f"{n} {singular}{'s' if n != 1 else ''}")
+                lbl.setStyleSheet("")
+            else:
+                lbl.setText(f"{title} – not loaded yet")
+                lbl.setStyleSheet(f"color: {Colors.AMBER};")
+                any_empty = True
+        self.masters_hint.setVisible(any_empty)
 
     # ------------------------------------------------------------------
     # Reacting to user choices
@@ -422,7 +456,7 @@ class GeneratePage(ScrollPage):
                           "will be written once the reports are built.", Colors.BLUE)
             self._refresh_buttons()
             self.toast("Preview only – the Excel file will be created once "
-                       "the master sheets and report logic are added.")
+                       "the invoice reader and report logic are added.")
             return
         name = self._gen_reports[self._gen_index]
         self._gen_index += 1

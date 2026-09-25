@@ -13,15 +13,24 @@ What happens at start-up:
        version).
     3. The Segoe UI font and the professional-blue stylesheet from
        app/theme.py are applied to the whole application.
-    4. The main window is created and shown.
+    4. The masters database is opened (created on first run, upgraded if
+       an older version made it). If it cannot be opened - e.g. the disk is
+       full or the file belongs to a newer version - a message explains why
+       and the tool closes instead of starting with no data.
+    5. The main window is created and shown.
+
+Where the database lives: see app/data/paths.py.
 """
 
 import sys
 
 from PySide6.QtGui import QFont
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app import __app_name__, __version__
+from app.data.database import connect
+from app.data.masters_repo import MastersRepo
+from app.data.paths import database_path
 from app.main_window import MainWindow
 from app.theme import Fonts, build_stylesheet
 
@@ -35,7 +44,16 @@ def main() -> int:
     app.setFont(QFont(Fonts.FAMILY, Fonts.BASE))
     app.setStyleSheet(build_stylesheet())
 
-    window = MainWindow()
+    try:
+        repo = MastersRepo(connect())
+    except Exception as exc:
+        QMessageBox.critical(
+            None, __app_name__,
+            f"The tool's data file could not be opened:\n{database_path()}"
+            f"\n\n{exc}")
+        return 1
+
+    window = MainWindow(repo)
     window.show()
     return app.exec()
 
