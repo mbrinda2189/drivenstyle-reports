@@ -1,0 +1,99 @@
+"""
+main_window.py - The application window
+=======================================
+
+WHAT THIS MODULE DOES
+---------------------
+Builds the main window and wires the pages together:
+
+    +-----------+------------------------------------------+
+    |  Sidebar  |  AnimatedStack (one page visible)        |
+    |  (navy)   |                                          |
+    |           |                              [ toast ]   |
+    +-----------+------------------------------------------+
+
+Page order (same order as the sidebar buttons):
+    0 Generate reports   1 Scan review   2 Masters
+    3 Monthly inputs     4 History
+
+Connections between pages:
+    * Sidebar click                 -> animated switch to that page
+    * Generate: scan finished       -> Scan review loads the issues and the
+                                       sidebar shows the open-issue count
+    * Generate: "Review issues"     -> switch to Scan review
+    * Scan review: issue fixed      -> sidebar badge count updates
+    * Scan review: "Continue..."    -> switch back to Generate reports
+
+`toast(text)` shows a fading message; every page calls it through
+ScrollPage.toast().
+"""
+
+from __future__ import annotations
+
+from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QWidget
+
+from app import __app_name__, __version__
+from app.pages.generate_page import GeneratePage
+from app.pages.history_page import HistoryPage
+from app.pages.inputs_page import InputsPage
+from app.pages.masters_page import MastersPage
+from app.pages.review_page import ReviewPage
+from app.widgets.animated_stack import AnimatedStack
+from app.widgets.common import Toast
+from app.widgets.sidebar import Sidebar
+
+PAGE_GENERATE, PAGE_REVIEW, PAGE_MASTERS, PAGE_INPUTS, PAGE_HISTORY = range(5)
+
+
+class MainWindow(QMainWindow):
+    """Top-level window: sidebar + animated pages + toast."""
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(f"{__app_name__}  –  v{__version__}")
+        self.resize(1320, 840)
+        self.setMinimumSize(1120, 700)
+
+        central = QWidget()
+        central.setObjectName("ContentArea")
+        self.setCentralWidget(central)
+        lay = QHBoxLayout(central)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        # --- Sidebar -----------------------------------------------------
+        self.sidebar = Sidebar(["Generate reports", "Scan review", "Masters",
+                                "Monthly inputs", "History"])
+        lay.addWidget(self.sidebar)
+
+        # --- Pages ---------------------------------------------------------
+        self.stack = AnimatedStack()
+        self.generate_page = GeneratePage()
+        self.review_page = ReviewPage()
+        self.masters_page = MastersPage()
+        self.inputs_page = InputsPage()
+        self.history_page = HistoryPage()
+        for page in (self.generate_page, self.review_page, self.masters_page,
+                     self.inputs_page, self.history_page):
+            self.stack.addWidget(page)
+        lay.addWidget(self.stack, 1)
+
+        # --- Toast (floats above everything, bottom-right) ----------------
+        self._toast = Toast(central)
+
+        # --- Wiring --------------------------------------------------------
+        self.sidebar.pageRequested.connect(self.go_to)
+        self.generate_page.scanFinished.connect(self.review_page.load_issues)
+        self.generate_page.reviewRequested.connect(lambda: self.go_to(PAGE_REVIEW))
+        self.review_page.openIssuesChanged.connect(
+            lambda n: self.sidebar.set_badge(PAGE_REVIEW, str(n) if n else ""))
+        self.review_page.backRequested.connect(lambda: self.go_to(PAGE_GENERATE))
+
+    def go_to(self, index: int) -> None:
+        """Show page `index` with the slide animation and sync the sidebar."""
+        self.sidebar.set_active(index)
+        self.stack.slide_to(index)
+
+    def toast(self, text: str) -> None:
+        """Show a short fading confirmation message."""
+        self._toast.show_message(text)

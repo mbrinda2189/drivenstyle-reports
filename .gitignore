@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Packaging output (PyInstaller)
+build/
+dist/
+*.spec
+
+# Local data - never commit client invoices, masters or generated reports
+data/
+output/
+*.xlsx
+*.pdf
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
