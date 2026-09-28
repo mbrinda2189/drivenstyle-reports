@@ -19,15 +19,30 @@ ISSUES TAB (one row per issue; open issues first)
                                       invoice printing that item name. An
                                       item on several invoices is listed
                                       once, with its invoice count.
-    Salesperson not found / matches   choose the executive -> Save. Tick
-    several executives / not printed  "All invoices" to apply it to every
-                                      invoice printing the same name
-                                      (off when the name is ambiguous).
+    Salesperson not found             choose the executive -> Save. Listed
+                                      ONCE per printed name with all its
+                                      invoices ("Mano Vikram", 29 invoices);
+                                      the choice applies to all of them and
+                                      is remembered for later months.
+    Salesperson matches several       one row per invoice (must be decided
+    executives / not printed          invoice by invoice); "All invoices"
+                                      can still be ticked.
     Vehicle not found / not printed   choose the car, same as above
     Labour line without a labour item Accept (or fix the Product master:
                                       tick Labour involved)
     Totals do not add up              Open file to check, then Accept
     File skipped / could not be read  shown for information; Open file
+
+KEEPING IT FAST (v0.6.1)
+------------------------
+The Fix controls (a searchable list of every product / executive / car,
+Save, Accept ...) are built only for the row that is clicked; every other
+row is plain text. Before v0.6.1 each of ~95 rows carried its own copy of
+the full list, which made scrolling and every refresh slow. The table
+scrolls on its own (about 10 rows visible).
+When a master is saved elsewhere the page is only marked "out of date"
+(mark_stale) and rebuilt the next time it is shown, instead of being
+rebuilt in the background after every save.
 
 Each fix is saved straight away, logged in the audit log (Masters > Audit
 log, "Scan review"), and kept when the month is scanned again. A fix can
@@ -77,21 +92,23 @@ PILLS = {
 KIND_ORDER = {"product": 0, "salesperson": 1, "car": 2, "labour": 3,
               "totals": 4, "file": 5}
 ROW_HEIGHT = 50
+VISIBLE_ROWS = 10          # issues table height; more rows scroll inside it
 
 
-def pill(kind: str) -> QWidget:
-    """A small rounded status label for a table cell."""
+def status_item(kind: str) -> QTableWidgetItem:
+    """
+    Status as plain coloured text (Open / Fixed / Skipped). v0.6.1: a text
+    item instead of a small widget per row, so long lists scroll smoothly.
+    """
     text, fg, bg = PILLS[kind]
-    holder = QWidget()
-    lay = QHBoxLayout(holder)
-    lay.setContentsMargins(6, 0, 6, 0)
-    lbl = QLabel(text)
-    lbl.setAlignment(Qt.AlignCenter)
-    lbl.setStyleSheet(f"background: {bg}; color: {fg}; border-radius: 10px;"
-                      "padding: 2px 10px; font-weight: 600; font-size: 8.5pt;")
-    lay.addWidget(lbl)
-    lay.addStretch(1)
-    return holder
+    item = QTableWidgetItem(text)
+    item.setForeground(QBrush(QColor(fg)))
+    item.setBackground(QBrush(QColor(bg)))
+    font = item.font()
+    font.setBold(True)
+    item.setFont(font)
+    item.setTextAlignment(Qt.AlignCenter)
+    return item
 
 
 def cell(*widgets: QWidget) -> QWidget:
@@ -157,6 +174,8 @@ class ReviewPage(ScrollPage):
         self.masters = masters
         self.year = self.month = None
         self._rows: list[tuple[Issue, str]] = []     # (issue, status) per table row
+        self._stale = False        # masters changed while this page was hidden
+        self._fix_row = -1         # the row currently showing Fix controls
 
         self.states = QStackedWidget()
         self.states.addWidget(self._build_empty_state())
@@ -232,10 +251,13 @@ class ReviewPage(ScrollPage):
         t = self.issues_table
         t.verticalHeader().hide()
         t.setAlternatingRowColors(True)
-        t.setSelectionMode(QAbstractItemView.NoSelection)
+        t.setSelectionBehavior(QAbstractItemView.SelectRows)
+        t.setSelectionMode(QAbstractItemView.SingleSelection)
         t.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        t.setFocusPolicy(Qt.NoFocus)
         t.setWordWrap(True)
+        t.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        # Fix controls only on the clicked row (see KEEPING IT FAST).
+        t.currentCellChanged.connect(self._on_row_changed)
         hdr = t.horizontalHeader()
         hdr.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         hdr.setSectionResizeMode(self.COL_INVOICE, QHeaderView.Fixed)
@@ -246,6 +268,8 @@ class ReviewPage(ScrollPage):
         t.setColumnWidth(self.COL_FIX, 470)
         t.setColumnWidth(self.COL_STATUS, 96)
         t.verticalHeader().setDefaultSectionSize(ROW_HEIGHT)
+        t.setFixedHeight(t.horizontalHeader().sizeHint().height()
+                         + ROW_HEIGHT * VISIBLE_ROWS + 4)
         lay.addWidget(t)
         return page
 
@@ -282,8 +306,31 @@ class ReviewPage(ScrollPage):
         self.year, self.month = year, month
         self.refresh()
 
+    def mark_stale(self) -> None:
+        """
+        A master was saved: rebuild when this page is next shown, not now
+        (rebuilding on every save made the Masters screen lag). Only the
+        open-issue count is worked out now, for the sidebar badge and the
+        Generate page summary - that takes a tenth of a second.
+        """
+        if self.isVisible():
+            self.refresh()
+            return
+        self._stale = True
+        if self.year is not None and self.invoices.scan_run(self.year, self.month):
+            self.openIssuesChanged.emit(sum(
+                1 for i in self.invoices.issues(self.year, self.month)
+                if i.status == "open"))
+
+    def showEvent(self, event) -> None:
+        """Bring the page up to date if masters changed while it was hidden."""
+        super().showEvent(event)
+        if self._stale:
+            self.refresh()
+
     def refresh(self) -> None:
         """Rebuild both tabs from the database (e.g. after masters change)."""
+        self._stale = False
         if self.year is None or self.invoices.scan_run(self.year, self.month) is None:
             self.states.setCurrentIndex(0)
             self.openIssuesChanged.emit(0)
@@ -299,6 +346,9 @@ class ReviewPage(ScrollPage):
 
     def _fill_issues(self) -> None:
         t = self.issues_table
+        self._fix_row = -1
+        t.blockSignals(True)               # no Fix controls while filling
+        t.clearSelection()
         t.setRowCount(0)
         for row, (issue, status) in enumerate(self._rows):
             t.insertRow(row)
@@ -311,10 +361,41 @@ class ReviewPage(ScrollPage):
             msg = QTableWidgetItem(issue.message)
             msg.setToolTip(issue.message)
             t.setItem(row, self.COL_ISSUE, msg)
-            t.setCellWidget(row, self.COL_FIX, self._fix_control(row, issue))
-            t.setCellWidget(row, self.COL_STATUS, pill(status))
-        t.setFixedHeight(t.horizontalHeader().height()
-                         + ROW_HEIGHT * max(1, t.rowCount()) + 4)
+            t.setItem(row, self.COL_FIX, self._fix_hint(issue, status))
+            t.setItem(row, self.COL_STATUS, status_item(status))
+        t.blockSignals(False)
+
+    @staticmethod
+    def _fix_hint(issue: Issue, status: str) -> QTableWidgetItem:
+        """Plain text shown in the Fix column of rows that are not clicked."""
+        if status == "fixed":
+            text = "Fixed"
+        elif issue.kind == "file":
+            text = "Click to open the file"
+        elif issue.kind in ("labour", "totals"):
+            text = "Click to check or accept"
+        else:
+            what = {"product": "product", "salesperson": "executive",
+                    "car": "car"}[issue.kind]
+            text = f"Click to choose the {what}"
+            if issue.grouped:
+                text += f" (all {len(issue.invoices)} invoices)" \
+                    if len(issue.invoices) > 1 else ""
+        item = QTableWidgetItem(text)
+        item.setForeground(QBrush(QColor(Colors.SLATE)))
+        return item
+
+    def _on_row_changed(self, row: int, _col: int, prev: int, _prev_col: int) -> None:
+        """Move the Fix controls to the clicked row."""
+        t = self.issues_table
+        if prev >= 0 and prev == self._fix_row:
+            t.removeCellWidget(prev, self.COL_FIX)
+            self._fix_row = -1
+        if 0 <= row < len(self._rows) and row != self._fix_row:
+            issue, status = self._rows[row]
+            if status != "fixed":
+                t.setCellWidget(row, self.COL_FIX, self._fix_control(row, issue))
+                self._fix_row = row
 
     def _fill_invoices(self) -> None:
         rows = self.invoices.invoices(self.year, self.month)
@@ -374,7 +455,14 @@ class ReviewPage(ScrollPage):
                 placeholder = "Type to find the car…"
             combo = search_combo(placeholder, items, issue.options)
             every = QCheckBox("All invoices")
-            if issue.printed:
+            if issue.grouped:
+                # One row for every invoice showing this name: the choice
+                # always applies to all of them (agreed for v0.6.1).
+                every.setChecked(True)
+                every.setVisible(False)
+                combo.setToolTip(f"Applies to all {len(issue.invoices)} invoice(s) showing "
+                                 f"“{issue.printed}”, now and in later months.")
+            elif issue.printed:
                 every.setToolTip(f"Use this for every invoice showing “{issue.printed}”, "
                                  "now and in later months.")
                 # An ambiguous name must be decided invoice by invoice.
@@ -414,7 +502,7 @@ class ReviewPage(ScrollPage):
             self.toast(f"Choose a {'sales executive' if issue.kind == 'salesperson' else 'car'} "
                        "from the list.")
             return
-        all_invoices = every.isVisible() and every.isChecked()
+        all_invoices = issue.grouped or (every.isVisible() and every.isChecked())
         if issue.kind == "salesperson":
             self.invoices.set_salesperson(issue.key, issue.printed, target, all_invoices)
         else:
@@ -435,10 +523,12 @@ class ReviewPage(ScrollPage):
         for row, (issue, status) in enumerate(self._rows):
             if status == "open" and (issue.kind, issue.key) not in still_open:
                 self._rows[row] = (issue, "fixed")
-                self.issues_table.setCellWidget(row, self.COL_STATUS, pill("fixed"))
-                fix = self.issues_table.cellWidget(row, self.COL_FIX)
-                if fix is not None:
-                    fix.setEnabled(False)
+                self.issues_table.setItem(row, self.COL_STATUS, status_item("fixed"))
+                if row == self._fix_row:
+                    self.issues_table.removeCellWidget(row, self.COL_FIX)
+                    self._fix_row = -1
+                self.issues_table.setItem(row, self.COL_FIX,
+                                          self._fix_hint(issue, "fixed"))
         self._fill_invoices()
         self._update_counts()
         self.toast(message)

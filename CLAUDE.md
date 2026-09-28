@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.6.0** (tags v0.1.0 … v0.6.0 on GitHub
+Current version: **v0.6.1** (tags v0.1.0 … v0.6.1 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -93,6 +93,11 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
 - Colours only from `app/theme.py` (`Colors`). Arial in Excel output;
   Segoe UI in the app. Amounts shown with Indian grouping on screen
   (`app/utils.format_inr`), `#,##0.00` in Excel. Dates dd-mm-yyyy.
+- Performance (v0.6.1): never put a widget in every row of a long table
+  (Scan review had ~95 rows × drop-down of 170 products – scrolling and
+  refresh lagged). Use plain items and build controls only for the clicked
+  row. Pages hidden behind others are marked stale and rebuilt on show,
+  not rebuilt on every master save.
 - Qt combo boxes: store item data as strings/ints, never Python tuples
   (`findData` cannot match tuples – this caused a bug in v0.5.0).
 - On Windows `glob("*.pdf")` is case-insensitive; never add a second
@@ -168,6 +173,14 @@ Zoho's Item Type changed 12 categories from the HSN guess, e.g. Teflon /
 Underbody / Silencer / Glass Coating and Interior Foam Wash → Product
 (Zoho marks them goods) and the Blaupunkt sunfilm roll → Service. Brinda
 should confirm these with the client or correct them on the Masters screen.
+
+## Done: v0.6.1 – faster Scan review / Masters (2026-09-28)
+Unknown salesperson / vehicle grouped by printed name (fix applies to all
+its invoices – Brinda's choice); Fix controls only on the clicked row;
+Scan review rebuilt on show instead of after every master save; close-app
+error fixed. Brinda reported lag in Scan review scrolling, Masters editing
+/ saving and Masters scrolling – ask her whether Masters scrolling is still
+slow (no separate cause found; the Masters table itself is plain items).
 
 ## Next – ideas, NOT confirmed (ask before coding)
 - "Incentive Details" sheet in the pricelist lists incentives actually

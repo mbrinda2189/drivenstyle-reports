@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.6.0 – Zoho invoice export.** The tool reads the
+> **Current status: v0.6.1 – Zoho invoice export, faster Scan review.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -169,9 +169,12 @@ layout), then import them - incentives first.
    - *Item not in the Product master* - choose the product; the tool
      remembers that name for every invoice. Or add the product on the Masters
      screen; the issue clears immediately.
-   - *Salesperson / vehicle not found, ambiguous or not printed* - choose the
-     executive / car. "All invoices" applies it to every invoice printing the
-     same name (off for ambiguous names, which are decided per invoice).
+   - *Salesperson / vehicle not found* - listed once per printed name with
+     all its invoices; choose the executive / car and it applies to all of
+     them (and later months). *Ambiguous or not printed* - one row per
+     invoice; "All invoices" can be ticked.
+   Click a row to show its Fix controls (only one row has them at a time,
+   which keeps the list fast).
    - *Labour line without a labour item* / *totals do not add up* - open the
      export to check, then Accept (or correct the master).
    Every fix is recorded in the audit log (master "Scan review").

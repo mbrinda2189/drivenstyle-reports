@@ -24,9 +24,11 @@ Connections between pages:
     * Scan review: issue fixed      -> sidebar badge count updates
     * Scan review: "Continue..."    -> switch back to Generate reports
     * Masters: saved or imported    -> Generate page's "Masters in use"
-                                       counts refresh, and Scan review
-                                       re-checks (a product added to the
-                                       master clears its issue at once)
+                                       counts refresh, the Scan review
+                                       badge is re-counted, and Scan review
+                                       itself is rebuilt when next shown
+                                       (a product added to the master
+                                       clears its issue)
     * Scan review: issue fixed      -> Generate page summary updates
     * Generate: workbook written    -> History lists it
     * Generate: "Enter them first"  -> Monthly inputs opens on that month
@@ -111,7 +113,9 @@ class MainWindow(QMainWindow):
         self.generate_page.generated.connect(self.history_page.refresh)
         self.generate_page.inputsRequested.connect(self._go_to_inputs)
         self.masters_page.mastersChanged.connect(self._refresh_master_counts)
-        self.masters_page.mastersChanged.connect(self.review_page.refresh)
+        # Rebuild Scan review only when it is next shown (v0.6.1: rebuilding
+        # it after every master save made the Masters screen lag).
+        self.masters_page.mastersChanged.connect(self.review_page.mark_stale)
         self._refresh_master_counts()
         # Start on the month selected on the Generate page (last month), so a
         # month already scanned shows its issues and badge straight away.
@@ -127,8 +131,9 @@ class MainWindow(QMainWindow):
         self.generate_page.set_master_counts(self.repo.counts())
 
     def closeEvent(self, event) -> None:
-        """Ask before closing if the Masters screen has unsaved edits, and
-        stop a running scan cleanly."""
+        """Ask before closing if the Masters screen or Monthly inputs have
+        unsaved edits. (Until v0.6.0 a running PDF scan was also stopped
+        here; reading the export has no background thread.)"""
         if self.masters_page.has_unsaved_changes() or self.inputs_page.has_unsaved_changes():
             answer = QMessageBox.question(
                 self, "Unsaved changes",
@@ -137,11 +142,6 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.Discard:
                 event.ignore()
                 return
-        worker, thread = self.generate_page._worker, self.generate_page._thread
-        if worker is not None and thread is not None:
-            worker.cancel()
-            thread.quit()
-            thread.wait(5000)
         event.accept()
 
     def go_to(self, index: int) -> None:

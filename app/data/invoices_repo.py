@@ -32,6 +32,9 @@ from v0.6.0) - or, in earlier versions, from the invoice PDFs
            invoices against the CURRENT masters every time it is asked.
            Adding a product to the master, or fixing an issue, therefore
            takes effect at once, with no re-scan.
+           An unknown item, salesperson or vehicle is listed ONCE with all
+           the invoices showing it (salesperson / vehicle grouping from
+           v0.6.1); ambiguous or missing names stay one row per invoice.
 
     4. Fixes from the Scan review screen (all logged in the audit log):
            map_product      an item name  -> a product    (remembered for
@@ -313,7 +316,9 @@ class Issue:
 
     kind      product / salesperson / car / labour / totals / file
     key       identifies the issue for fixes and acknowledgements
-    invoices  invoice numbers affected (product issues can cover several)
+              (grouped salesperson / car issues: "name:<printed name>")
+    invoices  invoice numbers affected (product issues and grouped
+              salesperson / car issues can cover several)
     status    open / skipped (files not used)
     options   for salesperson / car: suggested ids (may be empty)
     """
@@ -325,6 +330,8 @@ class Issue:
     status: str = "open"
     printed: str = ""                       # the text as printed
     options: list[int] = field(default_factory=list)
+    grouped: bool = False                   # one row for every invoice showing
+                                            # this name (fix applies to all)
 
 
 # ---------------------------------------------------------------------------
@@ -546,6 +553,7 @@ class InvoicesRepo:
             "SELECT invoice_no, kind FROM issue_acks")}
         out: list[Issue] = []
         unmatched: dict[str, Issue] = {}         # item name key -> issue
+        grouped: dict[tuple[str, str], Issue] = {}   # (kind, printed key) -> issue
 
         for inv in self.conn.execute(
                 "SELECT * FROM invoices WHERE month = ? ORDER BY invoice_no",
@@ -584,8 +592,8 @@ class InvoicesRepo:
                         "branch": f"“{printed}”: no executive with that name at that branch.",
                         "not_found": f"Salesperson “{printed}” is not in the Sales "
                                      "executive master."}[why]
-                out.append(Issue("salesperson", no, text, [no], inv["file_name"],
-                                 printed=printed, options=cands))
+                self._add_person_issue(out, grouped, "salesperson", why, no, inv,
+                                       printed, name_key(printed), text, cands)
 
             # --- car ----------------------------------------------------------
             cid, (why, cands) = self._match_car(inv, m)
@@ -594,8 +602,8 @@ class InvoicesRepo:
                 text = {"missing": "No vehicle printed on the invoice.",
                         "several": f"Vehicle “{printed}” matches more than one car.",
                         "not_found": f"Vehicle “{printed}” is not in the Car master."}[why]
-                out.append(Issue("car", no, text, [no], inv["file_name"],
-                                 printed=printed, options=cands))
+                self._add_person_issue(out, grouped, "car", why, no, inv, printed,
+                                       vehicle_key(printed), text, cands)
 
             # --- labour markers without a labour item -----------------------
             markers = [l for l in lines if l["is_labour_marker"]]
@@ -617,6 +625,10 @@ class InvoicesRepo:
             n = len(issue.invoices)
             issue.message = (f"Item “{issue.printed}” is not in the Product master"
                              + (f" (on {n} invoices)." if n > 1 else "."))
+        for issue in grouped.values():
+            n = len(issue.invoices)
+            if n > 1:
+                issue.message = issue.message.rstrip(".") + f" (on {n} invoices)."
 
         for f in self.scan_files(year, month):
             if f["status"] != "read":
@@ -624,6 +636,30 @@ class InvoicesRepo:
                                  [f["invoice_no"]] if f["invoice_no"] else [],
                                  f["file_name"], status="skipped"))
         return out
+
+    @staticmethod
+    def _add_person_issue(out: list, grouped: dict, kind: str, why: str, no: str,
+                          inv: dict, printed: str, raw_key: str, text: str,
+                          cands: list[int]) -> None:
+        """
+        A salesperson / car issue. Names that are simply not found (or at
+        another branch) are listed ONCE per printed name, with every invoice
+        showing it (v0.6.1) - one choice then fixes them all. An ambiguous
+        name ("several") or a missing one must be decided invoice by invoice,
+        so those stay one row per invoice. Grouped issues have the key
+        "name:<printed key>" and `grouped=True`.
+        """
+        if why in ("several", "missing") or not raw_key:
+            out.append(Issue(kind, no, text, [no], inv["file_name"],
+                             printed=printed, options=cands))
+            return
+        issue = grouped.get((kind, raw_key))
+        if issue is None:
+            issue = Issue(kind, f"name:{raw_key}", text, [], inv["file_name"],
+                          printed=printed, options=cands, grouped=True)
+            grouped[(kind, raw_key)] = issue
+            out.append(issue)
+        issue.invoices.append(no)
 
     # ==================================================================
     # Fixes (each one logged in the audit log)

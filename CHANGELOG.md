@@ -6,6 +6,27 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] – 2026-09-28 – Faster Scan review and Masters
+
+### Changed
+- **Scan review lists an unknown salesperson (or vehicle) once**, with all
+  the invoices showing that name ("Mano Vikram – 29 invoices"), like unknown
+  items. One choice fixes all of them and is remembered for later months.
+  Ambiguous or missing names stay one row per invoice. On the September
+  data: 95 rows → 43.
+- **Fix controls appear only on the clicked row**; other rows are plain
+  text ("Click to choose the executive"). Status is coloured text instead
+  of a small widget. The issues table scrolls on its own (10 rows visible).
+- **Saving a master no longer rebuilds Scan review in the background**; it
+  is rebuilt when next opened (the sidebar badge is still updated).
+
+### Fixed
+- Lag when scrolling Scan review and when editing / saving masters after
+  the invoices were read (September data: Scan review build 1.5 s → 0.1 s;
+  side effect of each master save 1.2 s → 0.03 s).
+- Closing the app referred to the PDF background reader removed in
+  v0.6.0 and could raise an error.
+
 ## [0.6.0] – 2026-09-28 – Zoho invoice export
 
 ### Added

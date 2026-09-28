@@ -245,3 +245,30 @@ def test_skipped_files_are_listed(irepo):
     irepo.store_scan(2026, 9, "f", [FileResult("x.pdf", "error", "Could not be read: no item table found.")])
     [f] = irepo.issues(2026, 9)
     assert f.kind == "file" and f.status == "skipped"
+
+
+def test_unknown_salesperson_is_one_row_for_all_its_invoices(repo, irepo):
+    """v0.6.1: one row per printed name, fixed for every invoice at once."""
+    second = inv_226()
+    second.invoice_no, second.file_name = "DNS-227-2627", "Invoice_DNS-227-2627.pdf"
+    irepo.store_scan(2026, 9, "folder", [FileResult(i.file_name, "read", "", i)
+                                         for i in (inv_226(), second)])
+    [issue] = [i for i in irepo.issues(2026, 9) if i.kind == "salesperson"]
+    assert issue.grouped and issue.invoices == ["DNS-226-2627", "DNS-227-2627"]
+    assert issue.key == "name:nandha kumar" and "(on 2 invoices)" in issue.message
+    add_exec(repo, "Nandhakumar", "9876543210", "HO")
+    eid = repo.list_rows("executives")[0]["id"]
+    irepo.set_salesperson(issue.key, issue.printed, eid, all_invoices=True)
+    assert not [i for i in irepo.issues(2026, 9) if i.kind == "salesperson"]
+
+
+def test_ambiguous_salesperson_stays_one_row_per_invoice(repo, irepo):
+    second = inv_226()
+    second.invoice_no, second.file_name = "DNS-227-2627", "Invoice_DNS-227-2627.pdf"
+    add_exec(repo, "Nandha Kumar", "9876543210", "HO")
+    add_exec(repo, "Nandha Kumar", "9876543211", "Ooty")
+    irepo.store_scan(2026, 9, "folder", [FileResult(i.file_name, "read", "", i)
+                                         for i in (inv_226(), second)])
+    rows = [i for i in irepo.issues(2026, 9) if i.kind == "salesperson"]
+    assert [i.key for i in rows] == ["DNS-226-2627", "DNS-227-2627"]
+    assert not any(i.grouped for i in rows)
