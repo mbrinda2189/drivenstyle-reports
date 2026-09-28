@@ -16,7 +16,7 @@ Draws the deep-navy sidebar on the left of the window:
     |  Monthly inputs        |      be shown next to a title
     |  History               |
     |                        |
-    |  Version 0.2.0         |   <- version footer
+    |  Version 0.3.0         |   <- version footer
     +------------------------+
 
 Only one navigation button can be active at a time (QButtonGroup, exclusive).

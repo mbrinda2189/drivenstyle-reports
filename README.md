@@ -4,11 +4,14 @@ A Windows desktop tool for **Drive N Style** that reads a month's Zoho invoice
 PDFs and produces one Excel workbook with 12 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.2.0 – Masters.** The Product, Sales executive and Car
-> masters are stored in the tool's own database and can be imported from the
-> client's Excel sheets, edited, and exported. Invoice reading, calculations
-> and the Excel output are not connected yet; the Generate, Scan review,
-> Monthly inputs and History screens still use sample data.
+> **Current status: v0.3.0 – Incentive master, bulk actions and audit log.**
+> The Product, Sales executive, Car and Incentive masters are stored in the
+> tool's own database; they can be imported from the client's Excel sheets,
+> filtered, edited (in the table or in a form), selected in bulk, deleted and
+> exported, and every change is recorded in a read-only audit log. Invoice
+> reading, calculations and the Excel output are not connected yet; the
+> Generate, Scan review, Monthly inputs and History screens still use sample
+> data.
 
 ## The 12 reports
 
@@ -31,7 +34,7 @@ prepared each month before the 7th, for the month just ended.
 |---|---|
 | **Generate reports** | Choose the month, the invoice folder, the optional Zoho payments export and the save folder; tick reports; scan the invoices, then generate the workbook. |
 | **Scan review** | Lists invoices that need attention (item not in the cost sheet, missing car model/salesperson/payment mode, other-firm or unreadable PDFs) with a control to fix each one. |
-| **Masters** | Products, Sales executives and Cars, stored in the database. Import from Excel with column matching, edit, export, rate history. Changing a price or labour charge asks for an "effective from" date so earlier months keep the old rate. Packages (sample) and Incentive (awaiting rules) tabs. |
+| **Masters** | Products, Sales executives, Cars and Incentives, stored in the database. Search, filter, Edit form, import from Excel with column matching, export, rate history, Select all with Mark active / inactive / Delete / Delete all. Changing an amount asks for an "effective from" date so earlier months keep the old amount. Packages (sample) and Audit log tabs. |
 | **Monthly inputs** | Indirect costs for the month (for the P&L and cost % report) and the high-profit threshold. |
 | **History** | Months already processed, with Open and Regenerate. Feeds the month-on-month trend report. |
 
@@ -54,42 +57,72 @@ prepared each month before the 7th, for the month just ended.
   "Payments Received" export.
 - **Labour depends on the item** and is kept on the Product master
   (Labour involved + Labour charge).
-- **Incentive rules are awaited.** The Incentive master and the spot
-  incentive module (incentive reduced in proportion to the discount given)
-  will be built once the client confirms the rules.
+- **Incentive groups.** The client's incentive sheet lists groups ("PPF",
+  "Dashcam", "Basic Package") with an incentive amount and a bill value.
+  Each product is linked to its group through the Product master's
+  *Incentive group* column (chosen from the Incentive master).
+- **Spot incentive rules are awaited.** The calculation (incentive reduced
+  when a discount is given) will be built once the client confirms the rule.
+- **Sales executives are unique by contact number**, not name: two people
+  may share a name.
 
 ## Masters
 
 The client provides the masters as Excel sheets. They are loaded once and
 kept in the tool; the Masters screen is used for occasional changes.
 
-| Master | Fields |
-|---|---|
-| Product | SKU, Product name, HSN/SAC, Category (Product / Service), Selling price, Cost price, Labour involved, Labour charge, Effective from, Active |
-| Sales executive | Name, Phone, City, Active |
-| Car | Make, Model, Segment (Hatchback, Sedan, Compact SUV, SUV, MUV…; other values can be typed), Active |
+| Master | Fields | Unique by |
+|---|---|---|
+| Product | SKU, Product name, HSN/SAC, Category (Product / Service), Incentive group, Selling price, Cost price, Labour involved, Labour charge, Effective from, Active | Product name, and SKU when given |
+| Sales executive | Name, Contact no, Branch, Active | Contact no (`+91 98765 43210` = `9876543210`) |
+| Car | Make, Model, Segment (Hatchback, Sedan, Compact SUV, SUV, MUV…; other values can be typed), Active | Make + model |
+| Incentive | Product / Service, Incentive amount, Bill value, Effective from, Active | Product / Service |
+
+Duplicates are refused when saving (the message names the existing row) and
+when importing (the row is left out and listed). Names are compared ignoring
+capitals, extra spaces and dash style.
 
 **Importing.** Masters → choose tab → *Import Excel* → pick an `.xlsx` or
 `.csv` file (old `.xls` files must first be saved as `.xlsx`). The tool
 finds the heading row even below a title, suggests which column is which
-field (e.g. "Rate" → Selling price, "Mobile No" → Phone), shows a preview of
-the first rows exactly as they will be saved, and lists any row it cannot
-read. Column matches are remembered for the next import. Importing again
-updates existing rows (matched by SKU, then name) and adds new ones.
+field (e.g. "Rate" → Selling price, "CONTACT NO" → Contact no; an "S.No"
+column is ignored), shows a preview of the first rows exactly as they will
+be saved, and lists any row it cannot read. Column matches are remembered
+for the next import. Importing again updates existing rows and adds new
+ones. **Import the Incentive sheet before the Product sheet**, so product
+incentive groups can be linked.
 
-**Rates and dates.** Selling price, cost price and labour charge keep a
-history. Each change is stored with the date it applies from; a report for
-a month uses the rate that applied then. *Rate history* shows every change
-of a product. For a month before a product's first recorded rate, that
-first rate is used.
+**Finding rows.** Each tab has a search box, a filter (Products: category,
+Sales executives: branch, Cars: segment) and a status filter (active /
+inactive).
 
-**Nothing is deleted.** *Remove* marks a row inactive (greyed, listed last)
-so re-running earlier months still finds it. Tick *Active* to restore it;
-it is also restored automatically if it appears in a later import.
+**Editing.** Double-click a cell, or select a row and click *Edit* to change
+it in a form. Edits are held (rows tinted blue) until *Save changes*.
+
+**Amounts and dates.** Product selling price, cost price and labour charge,
+and incentive amount and bill value, keep a history. Each change is stored
+with the date it applies from; a report for a month uses the amount that
+applied then. *Rate history* shows every change. For a month before the
+first recorded amount, that first amount is used.
+
+**Selecting and bulk actions.** Tick rows in the first column, or *Select
+all* (ticks every row the search and filters show). Then *Mark active*,
+*Mark inactive* or *Delete*. *Delete all* removes every row of that master
+and asks you to type DELETE. Deleting cannot be undone, but the audit log
+keeps a record of what each deleted row held. Staff who leave are better
+marked inactive than deleted, so earlier months still show their sales.
+
+**Audit log.** Every change to any master - added, edited (old → new),
+activated, deactivated, deleted, imported - is recorded with the date and
+time, Windows user name and source (screen or file name). The *Audit log*
+tab filters by master, action, date range and text, and exports to Excel.
+The log cannot be edited or deleted from the tool; the database itself
+refuses it.
 
 **Trying it without the client's sheets.** Run
-`python scripts/make_sample_masters.py` to create three sample sheets in
-`data/samples/`, then import them.
+`python scripts/make_sample_masters.py` to create four sample sheets in
+`data/samples/` (sales executive and incentive sheets in the client's own
+layout), then import them - incentives first.
 
 ## Where the data is kept
 
@@ -99,7 +132,9 @@ The masters are stored in one SQLite file, created on first run:
   (e.g. `C:\Users\<name>\AppData\Local\Drive N Style Reports\`)
 
 It is outside the program folder, so installing a newer version keeps the
-data. **Back up this file** to back up the tool's masters. Set the
+data. **Back up this file** to back up the tool's masters and audit log.
+When a new version upgrades the file, it first saves a copy next to it
+(e.g. `drivenstyle.schema1.bak.db`). Set the
 environment variable `DNS_REPORTS_DATA_DIR` to use a different folder (the
 automated tests do this).
 
@@ -151,14 +186,16 @@ drivenstyle-reports/
     │   ├── paths.py         Where the database file lives
     │   ├── master_defs.py   Fields of each master (drives screen, import and export)
     │   ├── database.py      SQLite tables and schema upgrades
-    │   ├── masters_repo.py  Reading/saving masters, rate history, import rules
+    │   ├── masters_repo.py  Reading/saving masters, rate history, duplicates, audit log
     │   └── excel_io.py      Reading client sheets, column matching, export
     ├── widgets/
     │   ├── common.py        Card, AnimatedButton, PathPicker, StatTile, Toast, headers
     │   ├── animated_stack.py  Fade-and-slide page transitions
     │   ├── sidebar.py       Navy navigation sidebar with count badges
-    │   ├── master_table.py  Editable master tab: validation, rate dates, save
-    │   └── import_dialog.py Column matching, preview and import summary
+    │   ├── master_table.py  Editable master tab: filters, selection, bulk actions, save
+    │   ├── edit_dialog.py   Edit form for one master row
+    │   ├── import_dialog.py Column matching, preview and import summary
+    │   └── audit_view.py    Audit log tab: filters and export
     └── pages/
         ├── base.py          Scrollable page frame shared by all screens
         ├── generate_page.py
@@ -195,11 +232,12 @@ pyinstaller --noconsole --onefile --add-data "app/assets;app/assets" main.py
 ## Roadmap
 
 - ~~v0.2 – Masters database (SQLite) and import of the client's master sheets~~ ✔
-- v0.3 – Invoice reader for Drive N Style Zoho PDFs, matching invoice lines to
+- ~~v0.3 – Incentive master, filters, edit form, bulk actions, audit log~~ ✔
+- v0.4 – Invoice reader for Drive N Style Zoho PDFs, matching invoice lines to
   the masters, real Scan review
-- Incentive master and spot incentive module – once the client confirms the rules
-- v0.4 – Report calculations and Excel workbook output
-- v0.5 – History, trend analysis, payments export, packaging as .exe
+- Spot incentive calculation – once the client confirms the rule
+- v0.5 – Report calculations and Excel workbook output
+- v0.6 – History, trend analysis, payments export, packaging as .exe
 
 ## Version control
 

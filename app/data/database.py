@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 1)
+TABLES (schema version 2)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -25,9 +25,25 @@ TABLES (schema version 1)
         One row per change. The rate for a given day is the row with the
         latest effective_from on or before that day (see masters_repo.py).
 
-    executives        sales executives: id, name, name_key, phone, city, active
+        incentive_id links the product to its Incentive group (may be
+        empty; set to empty automatically if that incentive row is deleted)
+
+    executives        sales executives: id, name, phone, phone_key, branch,
+                      active. phone_key is the contact number as digits only
+                      (last 10 digits), unique when filled in.
     cars              cars: id, make, model, car_key, segment, active
                       car_key = make + model in standard form, unique
+
+    incentives        incentive groups: id, name, name_key (unique), active
+    incentive_rates   dated history of each group's incentive amount and
+                      bill value (same rules as product_rates)
+
+    audit_log         one row per change made to any master: when, which
+                      Windows user, master, record, action (Added / Edited /
+                      Activated / Deactivated / Deleted), field, old value,
+                      new value, and source (screen or imported file name).
+                      Database triggers refuse any change to or deletion of
+                      an audit row, so the log cannot be altered.
 
     import_mappings   remembers which sheet column the user matched to each
                       field last time, so the next import is pre-filled
@@ -40,6 +56,14 @@ UPGRADING
 `SCHEMA_VERSION` is stored in the meta table. When a later version of the
 tool needs new tables or columns, it adds a step to `_MIGRATIONS`; opening
 an older database then upgrades it in place without losing data.
+
+    step 1 (v0.2.0)  masters: products, product_rates, executives, cars
+    step 2 (v0.3.0)  executives: "city" becomes "branch", unique by contact
+                     number instead of name; incentives + incentive_rates;
+                     products.incentive_id; audit_log (read-only)
+
+A step is either a block of SQL or a Python function taking the connection
+(used when values must be worked out in Python, e.g. contact-number keys).
 """
 
 from __future__ import annotations
@@ -47,12 +71,102 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from typing import Callable, Union
+
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+
+def _step_2(conn: sqlite3.Connection) -> None:
+    """
+    v0.2.0 -> v0.3.0
+
+    1. Sales executives: rebuild the table (SQLite cannot drop a UNIQUE
+       rule in place) so that "city" becomes "branch" and the contact
+       number, not the name, must be unique. Existing rows are copied.
+       If two existing executives share a contact number, only the first
+       keeps it as its key; the other must be corrected on screen (saving
+       it will ask for a unique contact number).
+    2. Incentive master tables and the product -> incentive link.
+    3. Audit log, protected by triggers against UPDATE and DELETE.
+    4. Remembered import column matches: executives "city" -> "branch".
+    """
+    # Imported here: masters_repo imports this module.
+    from app.data.masters_repo import phone_key
+
+    conn.executescript("""
+        CREATE TABLE executives_v2 (
+            id         INTEGER PRIMARY KEY,
+            name       TEXT    NOT NULL,
+            phone      TEXT    NOT NULL DEFAULT '',
+            phone_key  TEXT    NOT NULL DEFAULT '',
+            branch     TEXT    NOT NULL DEFAULT '',
+            active     INTEGER NOT NULL DEFAULT 1
+        );
+        INSERT INTO executives_v2(id, name, phone, branch, active)
+            SELECT id, name, phone, city, active FROM executives;
+        DROP TABLE executives;
+        ALTER TABLE executives_v2 RENAME TO executives;
+    """)
+    used: set[str] = set()
+    for row in conn.execute("SELECT id, phone FROM executives ORDER BY id").fetchall():
+        key = phone_key(row["phone"])
+        if key and key not in used:
+            used.add(key)
+            conn.execute("UPDATE executives SET phone_key = ? WHERE id = ?",
+                         (key, row["id"]))
+    conn.executescript("""
+        CREATE UNIQUE INDEX ux_executives_phone
+            ON executives(phone_key) WHERE phone_key <> '';
+
+        CREATE TABLE IF NOT EXISTS incentives (
+            id        INTEGER PRIMARY KEY,
+            name      TEXT    NOT NULL,
+            name_key  TEXT    NOT NULL UNIQUE,
+            active    INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS incentive_rates (
+            id                INTEGER PRIMARY KEY,
+            incentive_id      INTEGER NOT NULL
+                              REFERENCES incentives(id) ON DELETE CASCADE,
+            effective_from    TEXT    NOT NULL,          -- YYYY-MM-DD
+            incentive_amount  REAL    NOT NULL DEFAULT 0,
+            bill_value        REAL    NOT NULL DEFAULT 0,
+            UNIQUE (incentive_id, effective_from)
+        );
+
+        ALTER TABLE products ADD COLUMN incentive_id INTEGER
+            REFERENCES incentives(id) ON DELETE SET NULL;
+
+        CREATE TABLE IF NOT EXISTS audit_log (
+            id         INTEGER PRIMARY KEY,
+            at         TEXT NOT NULL,        -- YYYY-MM-DDTHH:MM:SS, local time
+            user       TEXT NOT NULL DEFAULT '',
+            master     TEXT NOT NULL,        -- products / executives / ...
+            record_id  INTEGER,
+            record     TEXT NOT NULL DEFAULT '',
+            action     TEXT NOT NULL,        -- Added / Edited / Deleted / ...
+            field      TEXT NOT NULL DEFAULT '',
+            old_value  TEXT NOT NULL DEFAULT '',
+            new_value  TEXT NOT NULL DEFAULT '',
+            source     TEXT NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS ix_audit_at ON audit_log(at);
+        CREATE TRIGGER IF NOT EXISTS audit_log_no_update
+            BEFORE UPDATE ON audit_log
+            BEGIN SELECT RAISE(ABORT, 'The audit log cannot be changed.'); END;
+        CREATE TRIGGER IF NOT EXISTS audit_log_no_delete
+            BEFORE DELETE ON audit_log
+            BEGIN SELECT RAISE(ABORT, 'The audit log cannot be changed.'); END;
+
+        UPDATE import_mappings SET field = 'branch'
+            WHERE master = 'executives' AND field = 'city';
+    """)
+
 
 # Each entry upgrades the database from version (index) to (index + 1).
-_MIGRATIONS: list[str] = [
+_MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
     # --- 0 -> 1 : masters -------------------------------------------------
     """
     CREATE TABLE IF NOT EXISTS meta (
@@ -85,6 +199,7 @@ _MIGRATIONS: list[str] = [
         UNIQUE (product_id, effective_from)
     );
 
+    -- (replaced in step 2: see _step_2)
     CREATE TABLE IF NOT EXISTS executives (
         id        INTEGER PRIMARY KEY,
         name      TEXT    NOT NULL,
@@ -110,6 +225,8 @@ _MIGRATIONS: list[str] = [
         PRIMARY KEY (master, field)
     );
     """,
+    # --- 1 -> 2 : branch, unique contact no, incentives, audit log --------
+    _step_2,
 ]
 
 
@@ -148,11 +265,34 @@ def _upgrade(conn: sqlite3.Connection) -> None:
         raise RuntimeError(
             f"The data file was created by a newer version of the tool "
             f"(schema {current}). Please install the latest version.")
+    if current < SCHEMA_VERSION and current > 0:
+        _backup(conn, current)
     for step in range(current, SCHEMA_VERSION):
-        # Every statement uses IF NOT EXISTS, so a step that was interrupted
-        # part-way (e.g. power cut) simply runs again next time.
         with conn:
-            conn.executescript(_MIGRATIONS[step])
+            migration = _MIGRATIONS[step]
+            if callable(migration):
+                migration(conn)
+            else:
+                conn.executescript(migration)
             conn.execute(
                 "INSERT OR REPLACE INTO meta(key, value) "
                 "VALUES('schema_version', ?)", (str(step + 1),))
+
+
+def _backup(conn: sqlite3.Connection, version: int) -> None:
+    """
+    Before upgrading an existing database, save a copy next to it
+    (e.g. drivenstyle.schema1.bak.db), so the data can be recovered if an
+    upgrade ever goes wrong. Skipped for in-memory databases.
+    """
+    row = conn.execute("PRAGMA database_list").fetchone()
+    path = row["file"] if row else ""
+    if not path:
+        return
+    target = Path(path).with_suffix(f".schema{version}.bak.db")
+    if target.exists():
+        return
+    backup = sqlite3.connect(str(target))
+    with backup:
+        conn.backup(backup)
+    backup.close()

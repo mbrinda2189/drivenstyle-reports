@@ -4,18 +4,22 @@ master_defs.py - The shape of each master
 
 WHAT THIS MODULE DOES
 ---------------------
-Describes, in one place, the fields of the three masters the client
+Describes, in one place, the fields of the four masters the client
 provides:
 
-    Product          SKU | Product name | HSN/SAC | Category | Selling price |
-                     Cost price | Labour involved | Labour charge |
-                     Effective from | Active
-    Sales executive  Name | Phone | City | Active
+    Product          SKU | Product name | HSN/SAC | Category | Incentive group |
+                     Selling price | Cost price | Labour involved |
+                     Labour charge | Effective from | Active
+    Sales executive  Name | Contact no | Branch | Active
     Car              Make | Model | Segment | Active
+    Incentive        Product / Service | Incentive amount | Bill value |
+                     Effective from | Active
 
-The same definitions drive three things, so they can never drift apart:
+The same definitions drive four things, so they can never drift apart:
 
-    * the Masters screen      - which columns to show and how to edit them
+    * the Masters screen      - which columns to show, how to edit them, and
+                                which column the filter drop-down uses
+    * the Edit form           - one input per field
     * the Excel import        - which fields to match to the sheet's columns,
                                 and the column headings recognised
                                 automatically (`synonyms`)
@@ -23,22 +27,42 @@ The same definitions drive three things, so they can never drift apart:
 
 FIELD KINDS
 -----------
-    "text"   free text (SKU, names, HSN/SAC, phone, city)
+    "text"   free text (SKU, names, HSN/SAC, contact no, branch)
     "money"  a rupee amount, shown with Indian grouping (12,34,567.00)
     "bool"   yes / no, shown as a tick box
-    "choice" one value from a list (`choices`). If `open_choice` is True the
-             user may also type a new value (used for car segment).
-    "date"   the effective-from date of a product's current rates; set by
-             the tool, never typed or imported
+    "choice" one value from a fixed list (`choices`). If `open_choice` is
+             True the user may also type a new value (car segment).
+    "lookup" one row of ANOTHER master, chosen by name (`lookup` = that
+             master's key). Used for a product's Incentive group, which must
+             be one of the rows of the Incentive master. May be left blank.
+    "date"   the effective-from date of the current rates; set by the tool,
+             never typed or imported
 
 DATED FIELDS (RATE HISTORY)
 ---------------------------
-Fields with `dated=True` (selling price, cost price, labour charge) keep a
-history: each change is stored with the date it applies from, so re-running
-an earlier month uses the rates that applied then. See masters_repo.py.
+Fields with `dated=True` keep a history: each change is stored with the
+date it applies from, so re-running an earlier month uses the values that
+applied then. Dated fields:
+    Product    selling price, cost price, labour charge
+    Incentive  incentive amount, bill value
 
-The Incentive master is not defined yet - its rules are still awaited from
-the client.
+WHAT MAKES A ROW UNIQUE (no duplicates)
+---------------------------------------
+    Product          product name, and SKU when given
+    Sales executive  contact no (two people may share a name)
+    Car              make + model
+    Incentive        product / service name
+Names and numbers are compared in a standard form (see masters_repo.py), so
+"Seat Cover" / "seat  cover" and "+91 98765 43210" / "9876543210" count as
+the same.
+
+THE INCENTIVE MASTER AND SPOT INCENTIVE
+---------------------------------------
+The client's incentive sheet lists incentive groups ("PPF", "Dashcam",
+"Basic Package") with an incentive amount and a bill value. Each product
+is linked to its group through the Product master's Incentive group. The
+spot incentive calculation (incentive reduced when a discount is given) is
+NOT built yet - its rules are awaited from the client.
 """
 
 from __future__ import annotations
@@ -60,13 +84,14 @@ def header_key(text: str) -> str:
 class FieldDef:
     """One field (column) of a master."""
 
-    key: str                        # internal name, also the database column
+    key: str                        # internal name (also the database column)
     label: str                      # heading shown on screen and in exports
-    kind: str = "text"              # text / money / bool / choice / date
+    kind: str = "text"              # text/money/bool/choice/lookup/date
     required: bool = False          # must be filled in (import and save)
     choices: tuple[str, ...] = ()   # allowed values for kind "choice"
     open_choice: bool = False       # "choice" that also accepts new values
-    dated: bool = False             # rate with effective-from history
+    lookup: str = ""                # kind "lookup": key of the other master
+    dated: bool = False             # value with effective-from history
     importable: bool = True         # can be matched to a column on import
     default: object = ""            # value used when the sheet lacks the field
     width: int = 0                  # screen column width in px (0 = stretch)
@@ -83,11 +108,11 @@ class FieldDef:
 class MasterDef:
     """A whole master: its fields plus a few descriptive names."""
 
-    key: str                        # "products" / "executives" / "cars"
+    key: str                        # "products" / "executives" / ...
     title: str                      # tab title, e.g. "Products"
     singular: str                   # e.g. "product" (used in messages)
     fields: tuple[FieldDef, ...] = field(default_factory=tuple)
-    has_rates: bool = False         # True if some fields are dated rates
+    filter_field: str = ""          # field offered in the filter drop-down
 
     def get_field(self, key: str) -> FieldDef:
         """Return the field with internal name `key`."""
@@ -104,6 +129,10 @@ class MasterDef:
     def dated_fields(self) -> list[FieldDef]:
         return [f for f in self.fields if f.dated]
 
+    @property
+    def has_rates(self) -> bool:
+        return bool(self.dated_fields)
+
 
 # ---------------------------------------------------------------------------
 # Product master
@@ -111,7 +140,8 @@ class MasterDef:
 PRODUCT_CATEGORIES = ("Product", "Service")
 
 PRODUCTS = MasterDef(
-    key="products", title="Products", singular="product", has_rates=True,
+    key="products", title="Products", singular="product",
+    filter_field="category",
     fields=(
         FieldDef("sku", "SKU", width=100,
                  synonyms=("item code", "product code", "code", "item sku",
@@ -129,6 +159,13 @@ PRODUCTS = MasterDef(
                  choices=PRODUCT_CATEGORIES, default="Product", width=100,
                  synonyms=("type", "product type", "item type",
                            "product/service", "goods/service")),
+        # Links the product to a row of the Incentive master. Blank = the
+        # product earns no incentive.
+        FieldDef("incentive_group", "Incentive group", kind="lookup",
+                 lookup="incentives", width=190,
+                 synonyms=("incentive item", "incentive category",
+                           "incentive head", "incentive product",
+                           "incentive name")),
         FieldDef("selling_price", "Selling price (₹)", kind="money",
                  dated=True, default=0.0, width=130,
                  synonyms=("selling price", "sp", "sale price", "sales price",
@@ -161,18 +198,22 @@ PRODUCTS = MasterDef(
 # ---------------------------------------------------------------------------
 EXECUTIVES = MasterDef(
     key="executives", title="Sales executives", singular="sales executive",
+    filter_field="branch",
     fields=(
         FieldDef("name", "Name", required=True,
                  synonyms=("executive", "executive name", "sales executive",
                            "salesperson", "sales person", "employee name",
                            "staff name", "employee")),
-        FieldDef("phone", "Phone", width=160,
-                 synonyms=("phone number", "phone no", "mobile",
-                           "mobile number", "mobile no", "contact",
-                           "contact number", "contact no")),
-        FieldDef("city", "City", width=180,
-                 synonyms=("location", "town", "place", "branch")),
-        # Staff who leave are marked inactive rather than deleted, so their
+        # Contact no is what makes an executive unique: two people may share
+        # a name, but not a phone number.
+        FieldDef("phone", "Contact no", required=True, width=170,
+                 synonyms=("contact number", "contact", "phone",
+                           "phone number", "phone no", "mobile",
+                           "mobile number", "mobile no", "cell")),
+        FieldDef("branch", "Branch", width=200,
+                 synonyms=("city", "location", "town", "place", "outlet",
+                           "showroom")),
+        # Staff who leave can be marked inactive rather than deleted, so their
         # past sales still appear correctly when earlier months are re-run.
         FieldDef("active", "Active", kind="bool", default=True, width=70,
                  synonyms=("status", "is active", "active (yes/no)")),
@@ -186,7 +227,7 @@ CAR_SEGMENTS = ("Hatchback", "Sedan", "Compact SUV", "SUV", "MUV",
                 "Pickup", "Luxury")
 
 CARS = MasterDef(
-    key="cars", title="Cars", singular="car",
+    key="cars", title="Cars", singular="car", filter_field="segment",
     fields=(
         FieldDef("make", "Make", width=180,
                  synonyms=("brand", "manufacturer", "company", "car make",
@@ -205,4 +246,34 @@ CARS = MasterDef(
     ),
 )
 
-ALL_MASTERS = (PRODUCTS, EXECUTIVES, CARS)
+# ---------------------------------------------------------------------------
+# Incentive master
+# ---------------------------------------------------------------------------
+INCENTIVES = MasterDef(
+    key="incentives", title="Incentives", singular="incentive item",
+    fields=(
+        FieldDef("name", "Product / Service", required=True,
+                 synonyms=("products / service", "products/service",
+                           "product/service", "products", "product",
+                           "service", "item", "incentive item",
+                           "incentive group", "description", "particulars")),
+        FieldDef("incentive_amount", "Incentive amount (₹)", kind="money",
+                 dated=True, default=0.0, width=160,
+                 synonyms=("incentive amount", "incentive", "incentive rs",
+                           "incentive value", "amount")),
+        # The bill value the incentive amount is based on. How a lower bill
+        # (discount) reduces the incentive is awaited from the client.
+        FieldDef("bill_value", "Bill value (₹)", kind="money",
+                 dated=True, default=0.0, width=140,
+                 synonyms=("bill value", "bill amount", "base value",
+                           "invoice value", "standard bill value",
+                           "bill")),
+        FieldDef("effective_from", "Effective from", kind="date",
+                 importable=False, width=115),
+        FieldDef("active", "Active", kind="bool", importable=False,
+                 default=True, width=70),
+    ),
+)
+
+ALL_MASTERS = (PRODUCTS, EXECUTIVES, CARS, INCENTIVES)
+MASTERS_BY_KEY = {m.key: m for m in ALL_MASTERS}

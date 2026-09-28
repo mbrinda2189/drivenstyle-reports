@@ -33,6 +33,12 @@ export_rows(master, rows, path) writes a master to .xlsx with the same
 headings the import recognises, so an exported file can be edited in Excel
 and imported back.
 
+export_audit(entries, path) writes audit-log entries (as returned by
+MastersRepo.audit_entries) to .xlsx, for filing or review outside the tool.
+
+A "Serial no" column (S.No) in the client's sheets is simply not matched to
+any field, so it is ignored.
+
 Old-style .xls files are not read: open them in Excel and "Save As" .xlsx.
 """
 
@@ -309,6 +315,8 @@ def convert_value(f: FieldDef, value):
         raise ValueError(
             f"“{value}” should be one of {', '.join(f.choices)}")
 
+    # "text" and "lookup" (e.g. Incentive group) are kept as clean text; a
+    # lookup name is checked against the other master when it is saved.
     return _as_text(value)
 
 
@@ -367,5 +375,43 @@ def export_rows(master: MasterDef, rows: list[dict], path: str | Path) -> None:
         ws.column_dimensions[letter].width = max(
             12, min(45, max((len(str(c.value or "")) for c in ws[letter]),
                             default=12) + 2))
+    ws.freeze_panes = "A2"
+    wb.save(path)
+
+
+AUDIT_COLUMNS = (("at", "Date & time", 20), ("user", "User", 14),
+                 ("master", "Master", 16), ("record", "Record", 32),
+                 ("action", "Action", 12), ("field", "Field", 20),
+                 ("old_value", "Old value", 40), ("new_value", "New value", 40),
+                 ("source", "Source", 30))
+
+
+def export_audit(entries: list[dict], path: str | Path,
+                 master_titles: dict[str, str] | None = None) -> None:
+    """
+    Write audit-log entries to an .xlsx file: one row per entry, newest
+    first, date & time as dd-mm-yyyy hh:mm:ss, master shown by its title
+    (e.g. "Sales executives").
+    """
+    titles = master_titles or {}
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Audit log"
+    ws.append([label for _, label, _ in AUDIT_COLUMNS])
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = HEADER_FILL
+    for e in entries:
+        row = []
+        for key, _, _ in AUDIT_COLUMNS:
+            value = e.get(key, "")
+            if key == "at" and value:
+                value = datetime.fromisoformat(value).strftime("%d-%m-%Y %H:%M:%S")
+            elif key == "master":
+                value = titles.get(value, value)
+            row.append(value)
+        ws.append(row)
+    for col, (_, _, width) in enumerate(AUDIT_COLUMNS):
+        ws.column_dimensions[_letter(col)].width = width
     ws.freeze_panes = "A2"
     wb.save(path)

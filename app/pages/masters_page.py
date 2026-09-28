@@ -11,23 +11,34 @@ changes are made.
 
 Tabs:
     Products          SKU | Product name | HSN/SAC | Category |
-                      Selling price | Cost price | Labour involved |
-                      Labour charge | Effective from | Active
-    Sales executives  Name | Phone | City | Active
+                      Incentive group | Selling price | Cost price |
+                      Labour involved | Labour charge | Effective from | Active
+    Sales executives  Name | Contact no | Branch | Active
     Cars              Make | Model | Segment | Active
+    Incentives        Product / Service | Incentive amount | Bill value |
+                      Effective from | Active
     Packages          sample package definitions (read-only; the client's
-                      four master sheets do not define packages yet)
-    Incentive         placeholder: the incentive rules and the spot
-                      incentive calculation are awaited from the client
+                      master sheets do not define packages yet)
+    Audit log         every change made to the masters (read-only)
 
-The first three tabs are `MasterTable` widgets (app/widgets/master_table.py)
-backed by the SQLite database: search, Import Excel (with column matching),
-Export, Add row, Remove (marks inactive), rate history, and Save changes.
+The first four tabs are `MasterTable` widgets (app/widgets/master_table.py)
+backed by the SQLite database: search, filter, status, Edit form, Import
+Excel (with column matching), Export, Add row, tick-box selection with
+Select all, Mark active / inactive, Delete, Delete all, rate history, and
+Save changes. Every change is written to the audit log.
+
+KEEPING TABS IN STEP
+--------------------
+When one master changes, the other tabs are reloaded (unless they have
+unsaved edits, which are never thrown away) - e.g. renaming an incentive
+group shows the new name in the Products tab's Incentive group column -
+and the audit log is refreshed.
 
 SIGNALS
 -------
-    mastersChanged()   a master was saved or imported; the main window uses
-                       it to refresh "Masters in use" on the Generate page.
+    mastersChanged()   a master was saved, imported or changed by a bulk
+                       action; the main window uses it to refresh
+                       "Masters in use" on the Generate page.
 """
 
 from __future__ import annotations
@@ -38,12 +49,13 @@ from PySide6.QtWidgets import (
     QTabWidget, QVBoxLayout, QWidget,
 )
 
-from app.data.master_defs import CARS, EXECUTIVES, PRODUCTS
+from app.data.master_defs import CARS, EXECUTIVES, INCENTIVES, PRODUCTS
 from app.data.masters_repo import MastersRepo
 from app.pages.base import ScrollPage
 from app.sample_data import PACKAGES
 from app.theme import Colors
 from app.utils import format_inr
+from app.widgets.audit_view import AuditLogView
 from app.widgets.common import Card, label
 from app.widgets.master_table import MasterTable
 
@@ -59,14 +71,15 @@ def _notice(text: str, amber: bool = False) -> QWidget:
 
 
 class MastersPage(ScrollPage):
-    """Tabs holding the master tables."""
+    """Tabs holding the master tables and the audit log."""
 
     mastersChanged = Signal()
 
     def __init__(self, repo: MastersRepo, parent: QWidget | None = None):
         super().__init__(
             "Masters",
-            "Products, sales executives and cars used to calculate the reports.",
+            "Products, sales executives, cars and incentives used to "
+            "calculate the reports.",
             parent,
         )
         self.repo = repo
@@ -78,19 +91,47 @@ class MastersPage(ScrollPage):
 
         # --- Database-backed masters ---------------------------------------
         self.tables: dict[str, MasterTable] = {}
-        for mdef in (PRODUCTS, EXECUTIVES, CARS):
+        for mdef in (PRODUCTS, EXECUTIVES, CARS, INCENTIVES):
             table = MasterTable(mdef, repo, self.toast)
-            table.saved.connect(self.mastersChanged.emit)
+            table.saved.connect(lambda key=mdef.key: self._on_master_saved(key))
             self.tables[mdef.key] = table
-            self.tabs.addTab(table, mdef.title)
+            if mdef is INCENTIVES:
+                self.tabs.addTab(self._with_notice(table, (
+                    "Each product is linked to one of these groups through "
+                    "the Incentive group column on the Products tab. The spot "
+                    "incentive calculation (incentive reduced when a discount "
+                    "is given) will be added once the client confirms the "
+                    "rules.")), mdef.title)
+            else:
+                self.tabs.addTab(table, mdef.title)
 
         # --- Packages (sample, read-only) ------------------------------------
         self.tabs.addTab(self._build_packages_tab(), "Packages")
 
-        # --- Incentive (awaiting rules) --------------------------------------
-        self.tabs.addTab(self._build_incentive_tab(), "Incentive")
+        # --- Audit log ----------------------------------------------------------
+        self.audit_view = AuditLogView(repo, self.toast)
+        self.tabs.addTab(self.audit_view, "Audit log")
 
     # ------------------------------------------------------------------
+    def _on_master_saved(self, key: str) -> None:
+        """Reload the other master tabs (if they have no unsaved edits),
+        refresh the audit log, and tell the main window."""
+        for other_key, table in self.tables.items():
+            if other_key != key and not table.has_unsaved_changes():
+                table.reload()
+        self.audit_view.show_latest()
+        self.mastersChanged.emit()
+
+    @staticmethod
+    def _with_notice(widget: QWidget, text: str) -> QWidget:
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 14, 0, 0)
+        lay.setSpacing(0)
+        lay.addWidget(_notice(text))
+        lay.addWidget(widget)
+        return page
+
     def _build_packages_tab(self) -> QWidget:
         page = QWidget()
         lay = QVBoxLayout(page)
@@ -122,20 +163,6 @@ class MastersPage(ScrollPage):
             table.setItem(r, 2, p)
         table.setFixedHeight(hdr.sizeHint().height() + 40 * len(PACKAGES) + 6)
         lay.addWidget(table)
-        lay.addStretch(1)
-        return page
-
-    def _build_incentive_tab(self) -> QWidget:
-        page = QWidget()
-        lay = QVBoxLayout(page)
-        lay.setContentsMargins(0, 14, 0, 0)
-        lay.setSpacing(12)
-        lay.addWidget(label("Awaiting incentive rules", "SectionTitle"))
-        lay.addWidget(label(
-            "The incentive for each product, and how a discount reduces the "
-            "spot incentive, will be set up here once the client confirms the "
-            "rules. Until then the spot incentive report cannot be "
-            "calculated.", "Muted", wrap=True))
         lay.addStretch(1)
         return page
 

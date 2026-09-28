@@ -8,13 +8,14 @@ invoice reader and report builder.
 
     paths.py         - Where the tool keeps its files (the SQLite database).
     master_defs.py   - The field list of each master (Product, Sales
-                       executive, Car): names, types, whether required, and
-                       the column headings recognised on import.
+                       executive, Car, Incentive): names, types, whether
+                       required, and the column headings recognised on import.
     database.py      - Opens the SQLite database and creates / upgrades its
                        tables.
-    masters_repo.py  - Reading and saving the masters, including the dated
-                       rate history of products.
+    masters_repo.py  - Reading and saving the masters: dated rate history,
+                       duplicate checks, bulk delete / activate, and the
+                       audit log of every change.
     excel_io.py      - Reading the client's Excel / CSV master sheets,
                        suggesting column matches, converting rows, and
-                       exporting a master back to Excel.
+                       exporting a master or the audit log to Excel.
 """

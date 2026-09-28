@@ -6,6 +6,58 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] – 2026-09-28 – Incentive master, bulk actions and audit log
+
+### Added
+- **Incentive master** (Product / Service, Incentive amount, Bill value,
+  Active) in the client's sheet layout. Incentive amount and bill value keep
+  a dated history like product rates.
+- **Incentive group** on the Product master, chosen from the Incentive
+  master (drop-down in the table and the Edit form; matched by name on
+  import, unknown names are left blank and listed).
+- **Audit log** of every master change: added, edited (field, old → new;
+  amounts with their effective date), activated, deactivated, deleted
+  (with everything the row held) and imported (source = file name), with
+  date and time and Windows user name. Written in the same transaction as
+  the change; database triggers refuse any edit or deletion of the log.
+  New **Audit log** tab with filters (master, action, date range, text) and
+  export to Excel.
+- **Filters** on every master tab: a column filter (Products: category,
+  Sales executives: branch, Cars: segment) and a status filter (active /
+  inactive), working together with the search box.
+- **Edit form** (Edit button) for the selected row of any master.
+- **Selection column** with *Select all* (visible rows) and bulk actions:
+  *Mark active*, *Mark inactive*, *Delete*, *Delete all* (type DELETE to
+  confirm). Deleting an incentive group warns how many products use it and
+  clears their incentive group.
+- Duplicate check within a single save (two new rows with the same key).
+- Safety copy of the database before a schema upgrade
+  (`drivenstyle.schema1.bak.db`).
+- Generate reports: "Masters in use" also shows incentive groups.
+- Sample sheets: executive and incentive sheets in the client's layout;
+  product sheet with an Incentive Group column.
+- Tests for incentives, contact-number uniqueness, bulk actions, audit log
+  and the upgrade from a v0.2.0 database (57 tests).
+
+### Changed
+- **Sales executive master** now follows the client's sheet: Name,
+  **Contact no** (required), **Branch** (was City), Active. Executives are
+  unique by contact number instead of name, so two people may share a name.
+  Numbers are compared as digits (last 10), so `+91 98765 43210` and
+  `9876543210` are the same.
+- Database schema 2: existing executives are copied into the new layout
+  (city → branch); remembered import matches are updated.
+- *Remove* (mark inactive) replaced by the bulk actions above. Rows can now
+  be deleted permanently; the audit log keeps what they held.
+- Rate-change dialog and history now say "amount" (they cover incentives
+  too).
+- Ghost and Danger buttons have a visible disabled style.
+- Masters repository rewritten as one engine for all four masters.
+
+### Pending
+- Spot incentive calculation: awaiting the client's rule.
+- Packages tab still shows sample data.
+
 ## [0.2.0] – 2026-09-25 – Masters
 
 ### Added

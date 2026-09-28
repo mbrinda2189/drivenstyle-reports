@@ -18,7 +18,7 @@ check, before anything is saved, how the sheet will be read:
     |    Category           [— Not in sheet — v]  From HSN/SAC…      |
     |    ...                                                         |
     |  Preview (first 5 rows)   <- values as they will be saved      |
-    |  Rates apply from [01-10-2026]            (products only)      |
+    |  Amounts apply from [01-10-2026]  (products and incentives)    |
     |  ⚠ 2 rows will be left out: Row 7: Selling price “abc”…        |
     |                                     [Cancel] [Import 40 rows]  |
     +----------------------------------------------------------------+
@@ -27,13 +27,15 @@ check, before anything is saved, how the sheet will be read:
   then known headings - see excel_io.suggest_mapping) and can be changed.
 * Fields marked * must be matched before Import is enabled.
 * The preview and the "left out" warning update as soon as a match changes.
-* Import stores the rows (masters_repo.import_records), remembers the
-  column matches for next time, and closes. The caller then calls
-  `show_summary()` to report what was added, updated and left out.
+* A "S.No" column is simply left unmatched; it is not needed.
+* Import stores the rows (masters_repo.import_records), writes an audit log
+  entry for every row added or changed (source "Import: <file name>"),
+  remembers the column matches for next time, and closes. The caller then
+  calls `show_summary()` to report what was added, updated and left out.
 
-"Rates apply from" defaults to 1st April of the current financial year when
-the product master is still empty (first load), otherwise to the 1st of
-next month, matching the rate-change dialog.
+"Amounts apply from" (products and incentives) defaults to 1st April of the
+current financial year when the master is still empty (first load),
+otherwise to the 1st of next month, matching the amount-change dialog.
 """
 
 from __future__ import annotations
@@ -64,6 +66,7 @@ FALLBACK_HINTS = {
     "category": "Not in sheet? Worked out from the HSN/SAC code.",
     "has_labour": "Not in sheet? Yes when the labour charge is above zero.",
     "active": "Not in sheet? Every imported row is active.",
+    "incentive_group": "Must match a name in the Incentive master.",
 }
 
 
@@ -144,15 +147,16 @@ class ImportDialog(QDialog):
         self.date_edit = None
         if mdef.has_rates:
             row = QHBoxLayout()
-            row.addWidget(label("Rates apply from"))
+            row.addWidget(label("Amounts apply from"))
             empty = not self.repo.list_rows(mdef.key)
             default = financial_year_start() if empty else first_of_next_month()
             self.date_edit = QDateEdit(QDate(default.year, default.month, default.day))
             self.date_edit.setCalendarPopup(True)
             self.date_edit.setDisplayFormat("dd-MM-yyyy")
             row.addWidget(self.date_edit)
-            row.addWidget(label("Products already in the tool keep their old "
-                                "rates for earlier months.", "Muted", wrap=True), 1)
+            row.addWidget(label(f"{mdef.title} already in the tool keep their "
+                                "old amounts for earlier months.", "Muted",
+                                wrap=True), 1)
             lay.addLayout(row)
 
         # --- problems + buttons ----------------------------------------------
@@ -274,7 +278,9 @@ class ImportDialog(QDialog):
             q = self.date_edit.date()
             day = date(q.year(), q.month(), q.day())
         try:
-            result = self.repo.import_records(self.mdef.key, self.records, day)
+            result = self.repo.import_records(
+                self.mdef.key, self.records, day,
+                source=f"Import: {Path(self.path).name}")
         except Exception as exc:                      # unexpected: nothing saved
             QMessageBox.critical(self, "Import failed",
                                  f"Nothing was imported.\n\n{exc}")
@@ -290,8 +296,9 @@ class ImportDialog(QDialog):
         lines = [f"{r.added} added, {r.updated} updated, {r.unchanged} unchanged."]
         if self.mdef.has_rates and r.rates_changed:
             day = self.date_edit.date().toString("dd-MM-yyyy")
-            lines.append(f"{r.rates_changed} product{'s' if r.rates_changed != 1 else ''}"
-                         f" got new rates from {day}.")
+            lines.append(f"{r.rates_changed} {self.mdef.singular}"
+                         f"{'s' if r.rates_changed != 1 else ''} got new amounts "
+                         f"from {day}.")
         if r.skipped:
             lines.append(f"{len(r.skipped)} row{'s' if len(r.skipped) != 1 else ''}"
                          " left out (see details).")

@@ -248,6 +248,10 @@ def build_stylesheet() -> str:
     QPushButton#GhostButton:hover {{
         background: {c.BLUE_TINT};
     }}
+    QPushButton#GhostButton:disabled {{
+        color: {c.FAINT};
+        background: transparent;
+    }}
     QPushButton#DangerButton {{
         background: transparent;
         color: {c.RED};
@@ -257,6 +261,11 @@ def build_stylesheet() -> str:
     }}
     QPushButton#DangerButton:hover {{
         background: {c.RED_TINT};
+    }}
+    QPushButton#DangerButton:disabled {{
+        color: {c.FAINT};
+        border-color: {c.LINE};
+        background: transparent;
     }}
 
     /* ---------- Inputs ------------------------------------------------- */

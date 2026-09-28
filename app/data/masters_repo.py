@@ -1,72 +1,86 @@
 """
-masters_repo.py - Reading and saving the masters
-================================================
+masters_repo.py - Reading and saving the masters (with audit log)
+=================================================================
 
 WHAT THIS MODULE DOES
 ---------------------
-All reading and writing of the Product, Sales executive and Car masters
-goes through `MastersRepo`. The screens never write SQL themselves.
+All reading and writing of the Product, Sales executive, Car and Incentive
+masters goes through `MastersRepo`. The screens never write SQL themselves.
 
-    list_rows(master)            rows for the Masters screen
-    save(master, changes)        store edits made on screen
-    import_records(master, ...)  store rows read from the client's sheet
-    rate_on(product_id, day)     the rates that applied on a given day
-    rate_history(product_id)     every rate change of one product
-    counts()                     number of active rows per master
-    get_mapping / set_mapping    remember the column matches of an import
+    list_rows(master)              rows for the Masters screen
+    get(master, id)                one row
+    save(master, changes)          store rows added / edited on screen
+    import_records(master, ...)    store rows read from the client's sheet
+    delete(master, ids)            delete rows (bulk "Delete selected / all")
+    set_active(master, ids, flag)  bulk "Mark active / inactive"
+    rate_on(master, id, day)       dated values that applied on a given day
+    rate_history(master, id)       every dated change of one row
+    lookup_names(master)           names offered in a lookup drop-down
+    counts()                       number of active rows per master
+    audit_entries(...)             read the audit log, with filters
+    get_mapping / set_mapping      remember the column matches of an import
 
-HOW RATES AND DATES WORK
-------------------------
-A product's selling price, cost price and labour charge are stored in
-`product_rates`, one row per change, each with an `effective_from` date.
+AUDIT LOG
+---------
+Every change is written to `audit_log` in the SAME transaction as the
+change itself, so a change can never be saved without its log entry (or
+the other way round). One entry per changed field:
 
-    * The rate on a given day is the row with the latest effective_from on
-      or before that day.
-    * If the day is before the product's first rate (e.g. the masters were
-      first imported in October but September is being re-run), the first
-      known rate is used. Without this, every month before the first import
-      would have no rates at all.
-    * The Masters screen shows the most recent row, together with its date.
+    Added        new row; "New value" lists all its values
+    Edited       one field changed: old value -> new value. For dated
+                 values the new value shows the date it applies from,
+                 e.g. "9,500.00 from 01-10-2026".
+    Activated / Deactivated
+    Deleted      "Old value" lists everything the row held
 
-IDENTIFYING THE SAME ITEM TWICE
--------------------------------
+Each entry also records the time, the Windows user name and the source
+("Masters screen", "Import: product_master.xlsx").
+The database refuses any change to or deletion of audit rows.
+
+HOW DATED VALUES WORK
+---------------------
+Product selling price / cost price / labour charge and incentive amount /
+bill value are stored in a rate table, one row per change, each with an
+`effective_from` date.
+    * The value on a given day is the row with the latest effective_from
+      on or before that day.
+    * For a day before the first row, the first row is used (so months
+      before the masters were first loaded still have values).
+    * The Masters screen shows the most recent row, with its date.
+
+NO DUPLICATES
+-------------
+    Product          product name, and SKU when given
+    Sales executive  contact no (digits only, last 10: "+91 98765 43210"
+                     and "9876543210" are the same number)
+    Car              make + model
+    Incentive        product / service name
 Names are compared in a standard form (`name_key`): lower case, single
-spaces, all dash characters as "-". So "Seat Cover – Premium" and
-"seat cover - premium" are the same product.
-
-    Product          matched by SKU when the row has one, otherwise by name
-    Sales executive  matched by name
-    Car              matched by make + model
-
-NOTHING IS DELETED
-------------------
-Rows are never deleted, only marked inactive (Active = No). Past invoices
-still refer to old products, staff and cars, and re-running an earlier month
-must still find them. An inactive row that appears again in an imported
-sheet is made active again automatically.
+spaces, all dash characters as "-". Duplicates are refused on save (with a
+message naming the existing row) and on import (the row is left out and
+listed; repeated rows inside one sheet: the later row is used and noted).
 
 ERRORS
 ------
-Problems the user must fix (missing name, duplicate name, negative amount)
-raise `MasterError` with a plain-language list of messages. Nothing is
-saved when that happens: each save or import runs in one transaction.
+Problems the user must fix raise `MasterError` with plain-language
+messages. Nothing is saved when that happens: each save runs in one
+transaction.
 """
 
 from __future__ import annotations
 
+import getpass
 import re
 import sqlite3
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
-from app.data.master_defs import CARS, EXECUTIVES, PRODUCTS, MasterDef
-
-RATE_FIELDS = ("selling_price", "cost_price", "labour_charge")
-_MASTERS = {m.key: m for m in (PRODUCTS, EXECUTIVES, CARS)}
+from app.data.master_defs import MASTERS_BY_KEY, FieldDef, MasterDef
+from app.utils import format_inr
 
 
 # ---------------------------------------------------------------------------
-# Small helpers
+# Standard forms used to spot duplicates
 # ---------------------------------------------------------------------------
 def name_key(text: str) -> str:
     """Standard form of a name, used to spot the same item written twice."""
@@ -80,13 +94,20 @@ def car_key(make: str, model: str) -> str:
     return f"{name_key(make)}|{name_key(model)}"
 
 
+def phone_key(text: str) -> str:
+    """
+    Contact number as digits only; numbers longer than 10 digits (with
+    +91 or a leading 0) are cut to the last 10. Empty if no digits.
+    """
+    digits = re.sub(r"\D", "", str(text or ""))
+    return digits[-10:] if len(digits) > 10 else digits
+
+
 def infer_category(hsn_sac: str) -> str:
     """
     Guess Product / Service from an HSN/SAC code when the sheet has no
     category column. In India, service codes (SAC) are 6 digits starting
     with 99; goods codes (HSN) never start with 99.
-    Blank codes are treated as products; the user can correct any row on
-    the Masters screen.
     """
     digits = re.sub(r"\D", "", str(hsn_sac or ""))
     return "Service" if digits.startswith("99") else "Product"
@@ -98,6 +119,35 @@ def _iso(day: date) -> str:
 
 def _from_iso(text: str) -> date:
     return date.fromisoformat(text)
+
+
+# ---------------------------------------------------------------------------
+# How each master is stored
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class Store:
+    """Database layout of one master."""
+    table: str
+    key_column: str                  # unique matching key column
+    columns: tuple[str, ...]         # fields stored directly in the table
+    order_by: str                    # list order (after active rows first)
+    rate_table: str = ""             # table of dated values, if any
+    rate_fk: str = ""                # its column pointing at the row
+
+
+STORES = {
+    "products": Store("products", "name_key",
+                      ("sku", "name", "hsn_sac", "category", "has_labour", "active"),
+                      "t.name COLLATE NOCASE", "product_rates", "product_id"),
+    "executives": Store("executives", "phone_key",
+                        ("name", "phone", "branch", "active"),
+                        "t.name COLLATE NOCASE, t.phone"),
+    "cars": Store("cars", "car_key", ("make", "model", "segment", "active"),
+                  "t.make COLLATE NOCASE, t.model COLLATE NOCASE"),
+    "incentives": Store("incentives", "name_key", ("name", "active"),
+                        "t.name COLLATE NOCASE", "incentive_rates",
+                        "incentive_id"),
+}
 
 
 class MasterError(Exception):
@@ -115,8 +165,7 @@ class RowChange:
 
     id         database id, or None for a new row
     values     field key -> value, for every field of the master
-    rate_date  for products: the date the (changed) rates apply from.
-               None when no rate was changed.
+    rate_date  the date changed dated values apply from (None = today)
     """
     id: int | None
     values: dict
@@ -134,48 +183,60 @@ class ImportResult:
     warnings: list[str] = field(default_factory=list)  # imported, but note this
 
 
+def _windows_user() -> str:
+    try:
+        return getpass.getuser()
+    except Exception:                                  # no user name available
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # The repository
 # ---------------------------------------------------------------------------
 class MastersRepo:
     """Read and write the masters in an open SQLite connection."""
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: sqlite3.Connection, user: str | None = None):
         self.conn = conn
+        self.user = _windows_user() if user is None else user
 
     @staticmethod
     def definition(master: str) -> MasterDef:
-        return _MASTERS[master]
+        return MASTERS_BY_KEY[master]
 
     # ==================================================================
     # Reading
     # ==================================================================
+    def _select(self, master: str, where: str = "", params: tuple = ()):
+        """Rows of `master` with their latest dated values (and, for
+        products, the incentive group's name)."""
+        st = STORES[master]
+        mdef = self.definition(master)
+        cols, joins = ["t.*"], []
+        if st.rate_table:
+            cols.append("r.effective_from")
+            cols += [f"r.{f.key}" for f in mdef.dated_fields]
+            joins.append(
+                f"LEFT JOIN {st.rate_table} r ON r.id = (SELECT id FROM "
+                f"{st.rate_table} WHERE {st.rate_fk} = t.id "
+                "ORDER BY effective_from DESC LIMIT 1)")
+        if master == "products":
+            cols.append("i.name AS incentive_group")
+            joins.append("LEFT JOIN incentives i ON i.id = t.incentive_id")
+        sql = (f"SELECT {', '.join(cols)} FROM {st.table} t {' '.join(joins)} "
+               f"{where} ORDER BY t.active DESC, {st.order_by}")
+        return self.conn.execute(sql, params).fetchall()
+
     def list_rows(self, master: str) -> list[dict]:
         """
         All rows of a master as dicts (field key -> value, plus "id"),
-        active rows first, then by name. Products include their most recent
-        rates and the date those apply from ("effective_from", a date).
+        active rows first, then by name.
         """
-        if master == "products":
-            rows = self.conn.execute("""
-                SELECT p.*, r.effective_from, r.selling_price, r.cost_price,
-                       r.labour_charge
-                FROM products p
-                LEFT JOIN product_rates r ON r.id = (
-                    SELECT id FROM product_rates
-                    WHERE product_id = p.id
-                    ORDER BY effective_from DESC LIMIT 1)
-                ORDER BY p.active DESC, p.name COLLATE NOCASE
-            """).fetchall()
-        elif master == "executives":
-            rows = self.conn.execute(
-                "SELECT * FROM executives "
-                "ORDER BY active DESC, name COLLATE NOCASE").fetchall()
-        else:
-            rows = self.conn.execute(
-                "SELECT * FROM cars ORDER BY active DESC, "
-                "make COLLATE NOCASE, model COLLATE NOCASE").fetchall()
-        return [self._row_to_dict(master, r) for r in rows]
+        return [self._row_to_dict(master, r) for r in self._select(master)]
+
+    def get(self, master: str, row_id: int) -> dict | None:
+        rows = self._select(master, "WHERE t.id = ?", (row_id,))
+        return self._row_to_dict(master, rows[0]) if rows else None
 
     def _row_to_dict(self, master: str, row: sqlite3.Row) -> dict:
         """Convert a database row into field values of the right types."""
@@ -193,40 +254,48 @@ class MastersRepo:
             out[f.key] = value
         return out
 
-    def rate_history(self, product_id: int) -> list[dict]:
-        """Every rate row of a product, newest first."""
-        rows = self.conn.execute(
-            "SELECT effective_from, selling_price, cost_price, labour_charge "
-            "FROM product_rates WHERE product_id = ? "
-            "ORDER BY effective_from DESC", (product_id,)).fetchall()
-        return [{"effective_from": _from_iso(r["effective_from"]),
-                 **{k: float(r[k]) for k in RATE_FIELDS}} for r in rows]
+    def lookup_names(self, master: str, active_only: bool = True) -> list[str]:
+        """Names of a master's rows, for a lookup drop-down (A-Z)."""
+        where = "WHERE active = 1" if active_only else ""
+        return [r["name"] for r in self.conn.execute(
+            f"SELECT name FROM {STORES[master].table} {where} "
+            "ORDER BY name COLLATE NOCASE")]
 
-    def rate_on(self, product_id: int, day: date) -> dict | None:
+    def rate_history(self, master: str, row_id: int) -> list[dict]:
+        """Every dated row of a product / incentive, newest first."""
+        st, mdef = STORES[master], self.definition(master)
+        rows = self.conn.execute(
+            f"SELECT * FROM {st.rate_table} WHERE {st.rate_fk} = ? "
+            "ORDER BY effective_from DESC", (row_id,)).fetchall()
+        return [self._rate_dict(mdef, r) for r in rows]
+
+    def rate_on(self, master: str, row_id: int, day: date) -> dict | None:
         """
-        The rates that applied on `day`: the latest change on or before
-        that day, or the product's first rate if `day` is earlier than all
-        of them. None if the product has no rates at all.
+        The dated values that applied on `day`: the latest change on or
+        before that day, or the first one if `day` is earlier than all.
+        None if the row has no dated values at all.
         """
+        st, mdef = STORES[master], self.definition(master)
         row = self.conn.execute(
-            "SELECT * FROM product_rates WHERE product_id = ? "
+            f"SELECT * FROM {st.rate_table} WHERE {st.rate_fk} = ? "
             "AND effective_from <= ? ORDER BY effective_from DESC LIMIT 1",
-            (product_id, _iso(day))).fetchone()
+            (row_id, _iso(day))).fetchone()
         if row is None:
             row = self.conn.execute(
-                "SELECT * FROM product_rates WHERE product_id = ? "
-                "ORDER BY effective_from ASC LIMIT 1",
-                (product_id,)).fetchone()
-        if row is None:
-            return None
+                f"SELECT * FROM {st.rate_table} WHERE {st.rate_fk} = ? "
+                "ORDER BY effective_from ASC LIMIT 1", (row_id,)).fetchone()
+        return self._rate_dict(mdef, row) if row else None
+
+    @staticmethod
+    def _rate_dict(mdef: MasterDef, row: sqlite3.Row) -> dict:
         return {"effective_from": _from_iso(row["effective_from"]),
-                **{k: float(row[k]) for k in RATE_FIELDS}}
+                **{f.key: float(row[f.key]) for f in mdef.dated_fields}}
 
     def counts(self) -> dict[str, int]:
         """Number of ACTIVE rows in each master (for the Generate screen)."""
         return {m: self.conn.execute(
-                    f"SELECT COUNT(*) FROM {m} WHERE active = 1").fetchone()[0]
-                for m in _MASTERS}
+                    f"SELECT COUNT(*) FROM {st.table} WHERE active = 1"
+                ).fetchone()[0] for m, st in STORES.items()}
 
     # ==================================================================
     # Remembered column matches
@@ -249,322 +318,438 @@ class MastersRepo:
                 [(master, f, h) for f, h in mapping.items() if h])
 
     # ==================================================================
-    # Saving edits from the Masters screen
+    # Checks shared by save and import
     # ==================================================================
-    def save(self, master: str, changes: list[RowChange]) -> None:
-        """
-        Store added and edited rows in one transaction. Raises MasterError
-        (and saves nothing) if any row has a problem.
-        """
-        problems = self._validate(master, changes)
-        if problems:
-            raise MasterError(problems)
-        try:
-            with self.conn:
-                for ch in changes:
-                    if master == "products":
-                        self._save_product(ch)
-                    else:
-                        self._save_simple(master, ch)
-        except sqlite3.IntegrityError as exc:       # safety net
-            raise MasterError([f"Could not save: {exc}"]) from exc
-
-    def _validate(self, master: str, changes: list[RowChange]) -> list[str]:
-        """Check required fields, amounts and duplicates before saving."""
-        mdef = self.definition(master)
-        problems: list[str] = []
-        seen: dict[str, str] = {}          # key -> display name, within batch
-        seen_sku: dict[str, str] = {}
-        for ch in changes:
-            v = ch.values
-            label = self._display_name(master, v) or f"New {mdef.singular}"
-            for f in mdef.fields:
-                if f.required and not str(v.get(f.key, "")).strip():
-                    problems.append(f"{label}: {f.label} is required.")
-                if f.kind == "money" and float(v.get(f.key) or 0) < 0:
-                    problems.append(f"{label}: {f.label} cannot be negative.")
-                if (f.kind == "choice" and not f.open_choice
-                        and v.get(f.key) not in f.choices):
-                    problems.append(
-                        f"{label}: {f.label} must be one of "
-                        f"{', '.join(f.choices)}.")
-
-            key = self._key(master, v)
-            if not key.strip("|"):
-                continue
-            if key in seen:
-                problems.append(f"“{label}” is entered twice.")
-            seen[key] = label
-            clash = self._find_id(master, key)
-            if clash is not None and clash != ch.id:
-                problems.append(
-                    f"A {mdef.singular} called “{label}” already exists. "
-                    "If it is marked inactive, tick Active on that row instead.")
-
-            if master == "products":
-                sku = str(v.get("sku", "")).strip()
-                if sku:
-                    if sku.lower() in seen_sku:
-                        problems.append(f"SKU {sku} is used twice.")
-                    seen_sku[sku.lower()] = label
-                    other = self.conn.execute(
-                        "SELECT id, name FROM products WHERE sku = ? "
-                        "COLLATE NOCASE", (sku,)).fetchone()
-                    if other is not None and other["id"] != ch.id:
-                        problems.append(
-                            f"SKU {sku} already belongs to “{other['name']}”.")
-        return problems
-
-    def _save_product(self, ch: RowChange) -> None:
-        v = ch.values
-        cols = dict(sku=str(v.get("sku", "")).strip(),
-                    name=str(v["name"]).strip(),
-                    name_key=name_key(v["name"]),
-                    hsn_sac=str(v.get("hsn_sac", "")).strip(),
-                    category=v.get("category") or "Product",
-                    has_labour=int(bool(v.get("has_labour"))),
-                    active=int(bool(v.get("active", True))))
-        if ch.id is None:
-            cur = self.conn.execute(
-                f"INSERT INTO products({', '.join(cols)}) "
-                f"VALUES ({', '.join('?' * len(cols))})", tuple(cols.values()))
-            product_id = cur.lastrowid
-            rate_date = ch.rate_date or date.today()
-        else:
-            product_id = ch.id
-            self.conn.execute(
-                f"UPDATE products SET {', '.join(c + ' = ?' for c in cols)} "
-                "WHERE id = ?", (*cols.values(), product_id))
-            rate_date = ch.rate_date
-        if rate_date is not None:
-            self._put_rate(product_id, rate_date,
-                           {k: float(v.get(k) or 0) for k in RATE_FIELDS})
-
-    def _put_rate(self, product_id: int, day: date, rates: dict) -> None:
-        """Insert a rate row, or overwrite the one already on that date."""
-        self.conn.execute(
-            "INSERT INTO product_rates(product_id, effective_from, "
-            "selling_price, cost_price, labour_charge) VALUES (?, ?, ?, ?, ?) "
-            "ON CONFLICT(product_id, effective_from) DO UPDATE SET "
-            "selling_price = excluded.selling_price, "
-            "cost_price = excluded.cost_price, "
-            "labour_charge = excluded.labour_charge",
-            (product_id, _iso(day), rates["selling_price"],
-             rates["cost_price"], rates["labour_charge"]))
-
-    def _save_simple(self, master: str, ch: RowChange) -> None:
-        """Insert or update a Sales executive or Car row."""
-        cols = self._simple_columns(master, ch.values)
-        if ch.id is None:
-            self.conn.execute(
-                f"INSERT INTO {master}({', '.join(cols)}) "
-                f"VALUES ({', '.join('?' * len(cols))})", tuple(cols.values()))
-        else:
-            self.conn.execute(
-                f"UPDATE {master} SET {', '.join(c + ' = ?' for c in cols)} "
-                "WHERE id = ?", (*cols.values(), ch.id))
-
     @staticmethod
-    def _simple_columns(master: str, v: dict) -> dict:
-        """Database columns (including the matching key) for exec / car rows."""
+    def key_of(master: str, v: dict) -> str:
+        """The value that must be unique for this master."""
+        if master == "cars":
+            return car_key(v.get("make", ""), v.get("model", ""))
         if master == "executives":
-            return dict(name=str(v["name"]).strip(),
-                        name_key=name_key(v["name"]),
-                        phone=str(v.get("phone", "")).strip(),
-                        city=str(v.get("city", "")).strip(),
-                        active=int(bool(v.get("active", True))))
-        return dict(make=str(v.get("make", "")).strip(),
-                    model=str(v["model"]).strip(),
-                    car_key=car_key(v.get("make", ""), v["model"]),
-                    segment=str(v.get("segment", "")).strip(),
-                    active=int(bool(v.get("active", True))))
+            return phone_key(v.get("phone", ""))
+        return name_key(v.get("name", ""))
 
-    # ------------------------------------------------------------------
     @staticmethod
-    def _display_name(master: str, v: dict) -> str:
+    def display_name(master: str, v: dict) -> str:
+        """How a row is named in messages and in the audit log."""
         if master == "cars":
             return " ".join(p for p in (str(v.get("make", "")).strip(),
                                         str(v.get("model", "")).strip()) if p)
-        return str(v.get("name", "")).strip()
-
-    @staticmethod
-    def _key(master: str, v: dict) -> str:
-        if master == "cars":
-            return car_key(v.get("make", ""), v.get("model", ""))
-        return name_key(v.get("name", ""))
+        name = str(v.get("name", "")).strip()
+        if master == "executives" and str(v.get("phone", "")).strip():
+            return f"{name} ({str(v['phone']).strip()})"
+        return name
 
     def _find_id(self, master: str, key: str) -> int | None:
-        """Database id of the row with this matching key, or None."""
-        column = "car_key" if master == "cars" else "name_key"
+        """Database id of the row with this unique key, or None."""
+        if not key.strip("|"):
+            return None
+        st = STORES[master]
         row = self.conn.execute(
-            f"SELECT id FROM {master} WHERE {column} = ?", (key,)).fetchone()
+            f"SELECT id FROM {st.table} WHERE {st.key_column} = ?",
+            (key,)).fetchone()
         return row["id"] if row else None
+
+    def _incentive_id(self, name: str) -> int | None:
+        return self._find_id("incentives", name_key(name)) if name else None
+
+    def _row_problems(self, master: str, row_id: int | None, v: dict) -> list[str]:
+        """Everything wrong with one row (empty list = fine)."""
+        mdef = self.definition(master)
+        label = self.display_name(master, v) or f"New {mdef.singular}"
+        problems = []
+        for f in mdef.fields:
+            value = v.get(f.key)
+            if f.required and not str(value or "").strip():
+                problems.append(f"{label}: {f.label} is required.")
+            elif f.kind == "money" and float(value or 0) < 0:
+                problems.append(f"{label}: {f.label} cannot be negative.")
+            elif (f.kind == "choice" and not f.open_choice
+                    and value not in f.choices):
+                problems.append(f"{label}: {f.label} must be one of "
+                                f"{', '.join(f.choices)}.")
+            elif f.kind == "lookup" and str(value or "").strip() \
+                    and self._incentive_id(value) is None:
+                problems.append(f"{label}: {f.label} “{value}” is not in the "
+                                f"{self.definition(f.lookup).title} master.")
+
+        if master == "executives" and str(v.get("phone", "")).strip() \
+                and len(phone_key(v["phone"])) < 6:
+            problems.append(f"{label}: “{v['phone']}” does not look like a "
+                            "contact number.")
+
+        clash = self._find_id(master, self.key_of(master, v))
+        if clash is not None and clash != row_id:
+            other = self.display_name(master, self.get(master, clash))
+            what = {"executives": "contact number",
+                    "cars": "make and model"}.get(master, "name")
+            problems.append(
+                f"{label}: the {what} is already used by “{other}”. "
+                "Duplicates are not allowed.")
+
+        if master == "products":
+            sku = str(v.get("sku", "")).strip()
+            if sku:
+                other = self.conn.execute(
+                    "SELECT id, name FROM products WHERE sku = ? "
+                    "COLLATE NOCASE", (sku,)).fetchone()
+                if other is not None and other["id"] != row_id:
+                    problems.append(
+                        f"{label}: SKU {sku} already belongs to "
+                        f"“{other['name']}”.")
+        return problems
+
+    # ==================================================================
+    # Writing one row (used by save and import) - with audit entries
+    # ==================================================================
+    @staticmethod
+    def _db_value(f: FieldDef, value):
+        """A field value as stored in the database."""
+        if f.kind == "bool":
+            return int(bool(value))
+        if f.kind == "money":
+            return round(float(value or 0), 2)
+        return " ".join(str(value or "").split())
+
+    @staticmethod
+    def _show(f: FieldDef, value) -> str:
+        """A field value as written in the audit log."""
+        if f.kind == "bool":
+            return "Yes" if value else "No"
+        if f.kind == "money":
+            return format_inr(float(value or 0))
+        if f.kind == "date":
+            return value.strftime("%d-%m-%Y") if value else ""
+        return " ".join(str(value or "").split())
+
+    def _summary(self, master: str, v: dict) -> str:
+        """All values of a row in one line, for Added / Deleted entries."""
+        parts = []
+        for f in self.definition(master).fields:
+            if f.kind == "date":
+                continue
+            shown = self._show(f, v.get(f.key))
+            if shown and not (f.kind == "money" and not v.get(f.key)):
+                parts.append(f"{f.label}: {shown}")
+        return "; ".join(parts)
+
+    def _audit(self, master: str, record_id, record: str, action: str,
+               field_label: str = "", old: str = "", new: str = "",
+               source: str = "") -> None:
+        self.conn.execute(
+            "INSERT INTO audit_log(at, user, master, record_id, record, action, "
+            "field, old_value, new_value, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (datetime.now().isoformat(timespec="seconds"), self.user, master,
+             record_id, record, action, field_label, old, new, source))
+
+    def _put_rate(self, master: str, row_id: int, day: date, v: dict) -> None:
+        """Insert a dated row, or overwrite the one already on that date."""
+        st, mdef = STORES[master], self.definition(master)
+        keys = [f.key for f in mdef.dated_fields]
+        self.conn.execute(
+            f"INSERT INTO {st.rate_table}({st.rate_fk}, effective_from, "
+            f"{', '.join(keys)}) VALUES (?, ?, {', '.join('?' * len(keys))}) "
+            f"ON CONFLICT({st.rate_fk}, effective_from) DO UPDATE SET "
+            + ", ".join(f"{k} = excluded.{k}" for k in keys),
+            (row_id, _iso(day), *[round(float(v.get(k) or 0), 2) for k in keys]))
+
+    def _write_row(self, master: str, row_id: int | None, v: dict,
+                   rate_date: date | None, source: str) -> tuple[int, str, bool]:
+        """
+        Insert or update one row and log what changed.
+        Returns (id, "added" / "updated" / "unchanged", dated values changed).
+        The caller has already checked the row with _row_problems.
+        """
+        st, mdef = STORES[master], self.definition(master)
+        cols = {c: self._db_value(mdef.get_field(c), v.get(c)) for c in st.columns}
+        cols[st.key_column] = self.key_of(master, v)
+        if master == "products":
+            cols["incentive_id"] = self._incentive_id(
+                str(v.get("incentive_group") or "").strip())
+        label = self.display_name(master, v)
+        day = rate_date or date.today()
+
+        if row_id is None:
+            cur = self.conn.execute(
+                f"INSERT INTO {st.table}({', '.join(cols)}) "
+                f"VALUES ({', '.join('?' * len(cols))})", tuple(cols.values()))
+            new_id = cur.lastrowid
+            summary = self._summary(master, v)
+            if st.rate_table:
+                self._put_rate(master, new_id, day, v)
+                summary += f" (amounts from {day:%d-%m-%Y})"
+            self._audit(master, new_id, label, "Added", new=summary, source=source)
+            return new_id, "added", False
+
+        old = self.get(master, row_id)
+        changed = False
+        for f in mdef.fields:
+            if f.kind == "date" or f.dated:
+                continue
+            before, after = self._show(f, old.get(f.key)), self._show(f, v.get(f.key))
+            if before == after:
+                continue
+            changed = True
+            if f.key == "active":
+                self._audit(master, row_id, label,
+                            "Activated" if v.get("active") else "Deactivated",
+                            source=source)
+            else:
+                self._audit(master, row_id, label, "Edited", f.label,
+                            before, after, source)
+        if changed:
+            self.conn.execute(
+                f"UPDATE {st.table} SET {', '.join(c + ' = ?' for c in cols)} "
+                "WHERE id = ?", (*cols.values(), row_id))
+
+        rate_changed = False
+        if st.rate_table:
+            diffs = [f for f in mdef.dated_fields
+                     if abs(float(v.get(f.key) or 0)
+                            - float(old.get(f.key) or 0)) > 0.004]
+            if diffs:
+                self._put_rate(master, row_id, day, v)
+                rate_changed = True
+                for f in diffs:
+                    self._audit(master, row_id, label, "Edited", f.label,
+                                self._show(f, old.get(f.key)),
+                                f"{self._show(f, v.get(f.key))} from {day:%d-%m-%Y}",
+                                source)
+        return row_id, ("updated" if changed or rate_changed else "unchanged"), \
+            rate_changed
+
+    # ==================================================================
+    # Saving edits from the Masters screen
+    # ==================================================================
+    def save(self, master: str, changes: list[RowChange],
+             source: str = "Masters screen") -> None:
+        """
+        Store added and edited rows in one transaction, with audit entries.
+        Raises MasterError (and saves nothing) if any row has a problem.
+        """
+        problems: list[str] = []
+        seen: dict[str, str] = {}
+        seen_sku: set[str] = set()
+        for ch in changes:
+            problems += self._row_problems(master, ch.id, ch.values)
+            key = self.key_of(master, ch.values)
+            label = self.display_name(master, ch.values)
+            if key.strip("|"):
+                if key in seen:
+                    problems.append(f"“{label}” is entered twice (same as "
+                                    f"“{seen[key]}”).")
+                seen[key] = label
+            sku = str(ch.values.get("sku", "")).strip().lower()
+            if sku:
+                if sku in seen_sku:
+                    problems.append(f"SKU {ch.values['sku']} is entered twice.")
+                seen_sku.add(sku)
+        if problems:
+            raise MasterError(list(dict.fromkeys(problems)))   # no repeats
+        try:
+            with self.conn:
+                for ch in changes:
+                    self._write_row(master, ch.id, ch.values, ch.rate_date, source)
+        except sqlite3.IntegrityError as exc:       # safety net
+            raise MasterError([f"Could not save: {exc}"]) from exc
+
+    # ==================================================================
+    # Bulk actions
+    # ==================================================================
+    def delete(self, master: str, ids: list[int],
+               source: str = "Masters screen") -> int:
+        """
+        Permanently delete rows (and their dated history). Each deletion is
+        logged with everything the row held. Deleting an incentive row
+        clears the Incentive group of the products linked to it (logged
+        too). Returns the number of rows deleted.
+        """
+        st = STORES[master]
+        done = 0
+        with self.conn:
+            for row_id in ids:
+                row = self.get(master, row_id)
+                if row is None:
+                    continue
+                label = self.display_name(master, row)
+                if master == "incentives":
+                    for p in self.conn.execute(
+                            "SELECT id, name FROM products WHERE incentive_id = ?",
+                            (row_id,)).fetchall():
+                        self._audit("products", p["id"], p["name"], "Edited",
+                                    "Incentive group", row["name"], "",
+                                    f"{source} (incentive deleted)")
+                self._audit(master, row_id, label, "Deleted",
+                            old=self._summary(master, row), source=source)
+                self.conn.execute(f"DELETE FROM {st.table} WHERE id = ?", (row_id,))
+                done += 1
+        return done
+
+    def set_active(self, master: str, ids: list[int], active: bool,
+                   source: str = "Masters screen") -> int:
+        """Mark rows active / inactive. Returns how many actually changed."""
+        st = STORES[master]
+        done = 0
+        with self.conn:
+            for row_id in ids:
+                row = self.get(master, row_id)
+                if row is None or bool(row["active"]) == active:
+                    continue
+                self.conn.execute(f"UPDATE {st.table} SET active = ? WHERE id = ?",
+                                  (int(active), row_id))
+                self._audit(master, row_id, self.display_name(master, row),
+                            "Activated" if active else "Deactivated",
+                            source=source)
+                done += 1
+        return done
 
     # ==================================================================
     # Importing rows read from the client's sheet
     # ==================================================================
     def import_records(self, master: str, records: list[dict],
-                       effective_from: date | None = None) -> ImportResult:
+                       effective_from: date | None = None,
+                       source: str = "Import") -> ImportResult:
         """
         Add new rows and update existing ones from an imported sheet.
 
         records         dicts produced by excel_io.convert_rows: only the
                         fields the user matched to a column are present,
                         plus "_row" (the row number in the sheet).
-        effective_from  products only: the date new or changed rates apply
-                        from.
+        effective_from  the date new or changed dated values apply from.
 
-        Fields that were not matched to any column are left as they are for
-        existing rows, and take their default for new rows. Everything is
-        done in one transaction.
+        Existing rows are found by their unique key (products: SKU first,
+        then name). Fields not matched to any column keep their current
+        value; for new rows they take their default. A row that is inactive
+        but appears in the sheet is made active again. Rows with a problem
+        are left out and listed; everything else is saved in one
+        transaction, with audit entries.
         """
+        mdef = self.definition(master)
         result = ImportResult()
-        touched: dict[int, str] = {}      # id -> outcome, so repeats count once
-        first_row: dict[str, int] = {}    # matching key -> first sheet row
+        outcome_of: dict[int, str] = {}   # id -> best outcome (repeats count once)
+        first_row: dict[int, object] = {}
+        rank = {"added": 3, "updated": 2, "unchanged": 1}
         with self.conn:
             for rec in records:
                 row_no = rec.get("_row", "?")
-                if master == "products":
-                    outcome, key = self._import_product(
-                        rec, effective_from or date.today(), result, row_no)
-                else:
-                    outcome, key = self._import_simple(master, rec, result,
-                                                       row_no)
-                if outcome is None:
+                row_id, problem = self._find_for_import(master, rec)
+                if problem:
+                    result.skipped.append(f"Row {row_no}: {problem}")
                     continue
-                pid, what = outcome
-                if key in first_row:
-                    result.warnings.append(
-                        f"Row {row_no} repeats row {first_row[key]} "
-                        f"(“{self._display_name(master, rec)}”); "
-                        "the later row was used.")
+
+                # Start from the stored row (or defaults) and overlay the sheet.
+                if row_id is None:
+                    merged = {f.key: f.default for f in mdef.fields}
                 else:
-                    first_row[key] = row_no
-                # "added" beats "updated" beats "unchanged" for repeated rows
-                rank = {"added": 3, "updated": 2, "unchanged": 1}
-                if rank[what] > rank.get(touched.get(pid, ""), 0):
-                    touched[pid] = what
-        for what in touched.values():
+                    merged = dict(self.get(master, row_id))
+                for key, value in rec.items():
+                    if key == "_row":
+                        continue
+                    kind = mdef.get_field(key).kind
+                    if kind in ("money", "bool") or str(value or "").strip():
+                        merged[key] = value
+                if "active" not in rec:
+                    merged["active"] = True
+                if master == "products" and row_id is None:
+                    if not rec.get("category"):
+                        merged["category"] = infer_category(merged.get("hsn_sac"))
+                    if "has_labour" not in rec:
+                        merged["has_labour"] = float(merged.get("labour_charge") or 0) > 0
+                if master == "products" and merged.get("incentive_group") and \
+                        self._incentive_id(merged["incentive_group"]) is None:
+                    result.warnings.append(
+                        f"Row {row_no}: incentive group “{merged['incentive_group']}”"
+                        " is not in the Incentive master; left blank.")
+                    merged["incentive_group"] = "" if row_id is None else \
+                        self.get(master, row_id)["incentive_group"]
+
+                problems = self._row_problems(master, row_id, merged)
+                if problems:
+                    result.skipped.append(f"Row {row_no}: " + " ".join(
+                        p.split(": ", 1)[-1] for p in problems))
+                    continue
+
+                new_id, what, rate_changed = self._write_row(
+                    master, row_id, merged, effective_from, source)
+                result.rates_changed += int(rate_changed)
+                if new_id in first_row:
+                    result.warnings.append(
+                        f"Row {row_no} repeats row {first_row[new_id]} "
+                        f"(“{self.display_name(master, merged)}”); the later "
+                        "row was used.")
+                else:
+                    first_row[new_id] = row_no
+                if rank[what] > rank.get(outcome_of.get(new_id, ""), 0):
+                    outcome_of[new_id] = what
+        for what in outcome_of.values():
             setattr(result, what, getattr(result, what) + 1)
         return result
 
-    def _import_product(self, rec: dict, day: date, result: ImportResult,
-                        row_no) -> tuple[tuple[int, str] | None, str]:
-        name = str(rec.get("name", "")).strip()
-        if not name:
-            result.skipped.append(f"Row {row_no}: product name is empty.")
-            return None, ""
-        sku = str(rec.get("sku", "")).strip()
-        key = name_key(name)
-
-        # Find the existing product: by SKU first, then by name.
-        existing = None
-        if sku:
-            existing = self.conn.execute(
-                "SELECT * FROM products WHERE sku = ? COLLATE NOCASE",
-                (sku,)).fetchone()
-        if existing is None:
-            existing = self.conn.execute(
-                "SELECT * FROM products WHERE name_key = ?", (key,)).fetchone()
-            if existing is not None and sku and existing["sku"] \
-                    and existing["sku"].lower() != sku.lower():
-                result.skipped.append(
-                    f"Row {row_no}: “{name}” already exists with SKU "
-                    f"{existing['sku']}, but the sheet gives SKU {sku}.")
-                return None, ""
-
-        if any(float(rec.get(k) or 0) < 0 for k in RATE_FIELDS):
-            result.skipped.append(f"Row {row_no}: “{name}” has a negative amount.")
-            return None, ""
-
-        if existing is None:
-            # ---- new product -------------------------------------------
-            hsn = str(rec.get("hsn_sac", "")).strip()
-            category = rec.get("category") or infer_category(hsn)
-            labour = float(rec.get("labour_charge") or 0)
-            has_labour = rec["has_labour"] if "has_labour" in rec else labour > 0
-            cur = self.conn.execute(
-                "INSERT INTO products(sku, name, name_key, hsn_sac, category, "
-                "has_labour, active) VALUES (?, ?, ?, ?, ?, ?, 1)",
-                (sku, name, key, hsn, category, int(bool(has_labour))))
-            self._put_rate(cur.lastrowid, day,
-                           {k: float(rec.get(k) or 0) for k in RATE_FIELDS})
-            return (cur.lastrowid, "added"), key
-
-        # ---- existing product ------------------------------------------
-        pid = existing["id"]
-        updates = {}
-        for col in ("sku", "hsn_sac", "category"):
-            if col in rec and rec[col] not in (None, "") \
-                    and str(rec[col]).strip() != existing[col]:
-                updates[col] = str(rec[col]).strip()
-        if name != existing["name"]:
-            updates["name"], updates["name_key"] = name, key
-        if "has_labour" in rec and int(bool(rec["has_labour"])) != existing["has_labour"]:
-            updates["has_labour"] = int(bool(rec["has_labour"]))
-        if not existing["active"]:
-            updates["active"] = 1          # back in the client's sheet
-        if "sku" in updates:
-            # The SKU must not already belong to a different product.
-            other = self.conn.execute(
-                "SELECT name FROM products WHERE sku = ? COLLATE NOCASE "
-                "AND id <> ?", (updates["sku"], pid)).fetchone()
-            if other is not None:
-                result.skipped.append(
-                    f"Row {row_no}: SKU {updates['sku']} already belongs to "
-                    f"“{other['name']}”.")
-                return None, ""
-        if updates:
-            self.conn.execute(
-                f"UPDATE products SET {', '.join(c + ' = ?' for c in updates)} "
-                "WHERE id = ?", (*updates.values(), pid))
-
-        latest = self.conn.execute(
-            "SELECT * FROM product_rates WHERE product_id = ? "
-            "ORDER BY effective_from DESC LIMIT 1", (pid,)).fetchone()
-        new_rates = {k: float(rec[k]) if k in rec and rec[k] is not None
-                     else float(latest[k] if latest else 0)
-                     for k in RATE_FIELDS}
-        rate_changed = latest is None or any(
-            abs(new_rates[k] - float(latest[k])) > 0.004 for k in RATE_FIELDS)
-        if rate_changed:
-            self._put_rate(pid, day, new_rates)
-            result.rates_changed += 1
-        return (pid, "updated" if (updates or rate_changed) else "unchanged"), key
-
-    def _import_simple(self, master: str, rec: dict, result: ImportResult,
-                       row_no) -> tuple[tuple[int, str] | None, str]:
+    def _find_for_import(self, master: str, rec: dict) -> tuple[int | None, str]:
+        """
+        (existing id or None, problem text or ""). Products are found by SKU
+        first, then by name; a name that already belongs to a product with a
+        DIFFERENT SKU is a problem, not a match.
+        """
         mdef = self.definition(master)
-        required = [f for f in mdef.fields if f.required]
-        missing = [f.label for f in required if not str(rec.get(f.key, "")).strip()]
-        if missing:
-            result.skipped.append(
-                f"Row {row_no}: {', '.join(missing)} is empty.")
-            return None, ""
-        key = self._key(master, rec)
-        pid = self._find_id(master, key)
-        if pid is None:
-            values = {f.key: rec.get(f.key, f.default) for f in mdef.fields}
-            if "active" not in rec:
-                values["active"] = True
-            cols = self._simple_columns(master, values)
-            cur = self.conn.execute(
-                f"INSERT INTO {master}({', '.join(cols)}) "
-                f"VALUES ({', '.join('?' * len(cols))})", tuple(cols.values()))
-            return (cur.lastrowid, "added"), key
+        if master != "products":
+            if not self.key_of(master, rec).strip("|"):
+                missing = [f.label for f in mdef.fields if f.required
+                           and not str(rec.get(f.key) or "").strip()]
+                return None, f"{', '.join(missing) or 'Key'} is empty."
+            return self._find_id(master, self.key_of(master, rec)), ""
 
-        existing = self.conn.execute(
-            f"SELECT * FROM {master} WHERE id = ?", (pid,)).fetchone()
-        values = {f.key: existing[f.key] for f in mdef.fields}
-        for f in mdef.fields:
-            if f.key in rec and rec[f.key] not in (None, ""):
-                values[f.key] = rec[f.key]
-        if "active" not in rec:
-            values["active"] = True        # back in the client's sheet
-        cols = self._simple_columns(master, values)
-        changed = any(str(cols[c]) != str(existing[c]) for c in cols)
-        if changed:
-            self.conn.execute(
-                f"UPDATE {master} SET {', '.join(c + ' = ?' for c in cols)} "
-                "WHERE id = ?", (*cols.values(), pid))
-        return (pid, "updated" if changed else "unchanged"), key
+        name = str(rec.get("name", "")).strip()
+        sku = str(rec.get("sku", "")).strip()
+        if sku:
+            row = self.conn.execute(
+                "SELECT id FROM products WHERE sku = ? COLLATE NOCASE",
+                (sku,)).fetchone()
+            if row is not None:
+                return row["id"], ""
+        if not name:
+            return None, "Product name is empty."
+        row = self.conn.execute("SELECT id, sku FROM products WHERE name_key = ?",
+                                (name_key(name),)).fetchone()
+        if row is None:
+            return None, ""
+        if sku and row["sku"] and row["sku"].lower() != sku.lower():
+            return None, (f"“{name}” already exists with SKU {row['sku']}, "
+                          f"but the sheet gives SKU {sku}.")
+        return row["id"], ""
+
+    # ==================================================================
+    # Audit log
+    # ==================================================================
+    def audit_entries(self, master: str | None = None, action: str | None = None,
+                      date_from: date | None = None, date_to: date | None = None,
+                      text: str = "", limit: int | None = None) -> list[dict]:
+        """
+        Audit entries, newest first. All filters are optional:
+        master, action, a date range (inclusive) and free text searched in
+        record, field, old/new value, user and source.
+        """
+        where, params = [], []
+        if master:
+            where.append("master = ?")
+            params.append(master)
+        if action:
+            where.append("action = ?")
+            params.append(action)
+        if date_from:
+            where.append("at >= ?")
+            params.append(_iso(date_from))
+        if date_to:
+            where.append("at < ?")
+            params.append(_iso(date.fromordinal(date_to.toordinal() + 1)))
+        if text.strip():
+            where.append("(record || ' ' || field || ' ' || old_value || ' ' || "
+                         "new_value || ' ' || user || ' ' || source) LIKE ?")
+            params.append(f"%{text.strip()}%")
+        sql = "SELECT * FROM audit_log"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY at DESC, id DESC"
+        if limit:
+            sql += f" LIMIT {int(limit)}"
+        return [dict(r) for r in self.conn.execute(sql, params).fetchall()]

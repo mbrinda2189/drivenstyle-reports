@@ -18,11 +18,11 @@ sequence, so the steps are numbered:
 
 Below the steps, the user ticks which of the 12 reports to include.
 
-On the right, a "Run" panel shows how many products, sales executives and
-cars are loaded in the masters (amber if a master is still empty), the
+On the right, a "Run" panel shows how many products, sales executives,
+cars and incentive groups are loaded (amber if a master is still empty), the
 "Scan invoices" and "Generate Excel" buttons, a progress bar and a log.
 
-CURRENT BEHAVIOUR (v0.2.0)
+CURRENT BEHAVIOUR (v0.3.0)
 ---------------------------------------
 * Folder and file choosers are real. After choosing the invoice folder, the
   page counts the actual PDF files in it.
@@ -31,7 +31,7 @@ CURRENT BEHAVIOUR (v0.2.0)
   `scanFinished` so the Scan review page can show the sample issues.
 * "Generate Excel" is SIMULATED: it animates through the selected reports and
   then shows a message. No file is written yet.
-* "Masters in use" shows real counts from the masters database (v0.2.0).
+* "Masters in use" shows real counts from the masters database.
 
 SIGNALS
 -------
@@ -240,7 +240,7 @@ class GeneratePage(ScrollPage):
         m_lay.setSpacing(2)
         m_lay.addWidget(label("Masters in use", "Muted"))
         self.master_labels: dict[str, QLabel] = {}
-        for key in ("products", "executives", "cars"):
+        for key in ("products", "executives", "cars", "incentives"):
             self.master_labels[key] = label("")
             m_lay.addWidget(self.master_labels[key])
         self.masters_hint = label("Load them on the Masters screen.", "Muted")
@@ -302,7 +302,8 @@ class GeneratePage(ScrollPage):
         """
         names = {"products": ("product", "Products"),
                  "executives": ("sales executive", "Sales executives"),
-                 "cars": ("car", "Cars")}
+                 "cars": ("car", "Cars"),
+                 "incentives": ("incentive group", "Incentives")}
         any_empty = False
         for key, lbl in self.master_labels.items():
             singular, title = names[key]
