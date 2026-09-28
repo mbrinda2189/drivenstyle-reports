@@ -38,15 +38,28 @@ thread (app/scan_worker.py), so the window stays responsive:
 When a month that has already been scanned is selected, its last scan is
 shown (date, counts) and Generate is available without scanning again.
 
-CURRENT BEHAVIOUR
------------------
-* "Generate Excel" is still SIMULATED: the reports are built in v0.5.0.
-* "Masters in use" shows real counts from the masters database.
+GENERATING (v0.5.0)
+-------------------
+"Generate Excel" writes DriveNStyle_<Mon>-<YYYY>_Reports.xlsx in the "Save
+to" folder with the ticked reports (app/reports). Before writing it asks
+for confirmation if:
+    * issues are still open on Scan review - those invoices are left out
+      of every report and listed on the workbook's "Not included" sheet
+    * no indirect costs were entered on Monthly inputs for the month - the
+      P&L and cost % reports then show them as zero
+The payments export (step 3) is used for the payment mode report when
+chosen. Afterwards "Open workbook" opens the file, and the run is listed on
+the History screen. If the file is open in Excel, a message asks to close
+it and try again.
+
+"Masters in use" shows real counts from the masters database.
 
 SIGNALS
 -------
     scanFinished(int, int)  - a scan was saved (year, month)
     reviewRequested()       - user clicked "Review issues"
+    generated(int, int)     - a workbook was written (year, month)
+    inputsRequested()       - user chose to enter Monthly inputs first
 """
 
 from __future__ import annotations
@@ -54,19 +67,23 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import (
-    QDate, QEasingCurve, QPropertyAnimation, QThread, QTimer, Qt, Signal,
+    QDate, QEasingCurve, QPropertyAnimation, QThread, QUrl, Qt, Signal,
 )
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QProgressBar, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
+    QListWidget, QListWidgetItem, QMessageBox, QProgressBar, QVBoxLayout, QWidget,
 )
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QDesktopServices
 
+from app.data.inputs_repo import InputsRepo
 from app.data.invoices_repo import InvoicesRepo, month_label
+from app.data.masters_repo import MastersRepo
+from app.reports.generate import GenerateError, generate
 from app.pages.base import ScrollPage
 from app.sample_data import REPORTS
 from app.scan_worker import ScanWorker
 from app.theme import Colors
+from app.utils import format_inr
 from app.widgets.common import Card, PathPicker, StepHeader, button, label
 
 MONTHS = ["January", "February", "March", "April", "May", "June", "July",
@@ -86,14 +103,20 @@ class GeneratePage(ScrollPage):
 
     scanFinished = Signal(int, int)
     reviewRequested = Signal()
+    generated = Signal(int, int)
+    inputsRequested = Signal()
 
-    def __init__(self, invoices: InvoicesRepo, parent: QWidget | None = None):
+    def __init__(self, invoices: InvoicesRepo, masters: MastersRepo,
+                 inputs: InputsRepo, parent: QWidget | None = None):
         super().__init__(
             "Generate reports",
             "Read the month's invoices and build the Excel workbook with the 12 reports.",
             parent,
         )
         self.invoices = invoices
+        self.masters = masters
+        self.inputs = inputs
+        self._last_workbook: Path | None = None
         self._scanned = False          # True once the chosen month is scanned
         self._pdf_files: list[Path] = []
         self._thread: QThread | None = None
@@ -117,9 +140,6 @@ class GeneratePage(ScrollPage):
         right.addStretch(1)
         columns.addLayout(right, 2)
 
-        # Timer that drives the simulated generate animation (until v0.5.0).
-        self._gen_timer = QTimer(self)
-        self._gen_timer.timeout.connect(self._generate_step)
 
         # Smoothly animates the progress bar value instead of jumping.
         self._bar_anim = QPropertyAnimation(self.progress, b"value", self)
@@ -297,6 +317,12 @@ class GeneratePage(ScrollPage):
         self.summary_row.hide()
         card.body.addWidget(self.summary_row)
 
+        # Shown after a workbook is written.
+        self.open_btn = button("Open workbook", "Secondary")
+        self.open_btn.clicked.connect(self._open_workbook)
+        self.open_btn.hide()
+        card.body.addWidget(self.open_btn)
+
         # Log of what happened, newest at the bottom.
         self.log = QListWidget()
         self.log.setMinimumHeight(230)
@@ -345,6 +371,10 @@ class GeneratePage(ScrollPage):
         year, month = self.selected_month()
         run = self.invoices.scan_run(year, month)
         self._scanned = run is not None
+        # "Open workbook" for the month's latest workbook, if it still exists.
+        last = next((r for r in self.inputs.runs() if r["month"] == f"{year:04d}-{month:02d}"), None)
+        self._last_workbook = Path(last["file_path"]) if last else None
+        self.open_btn.setVisible(bool(self._last_workbook and self._last_workbook.exists()))
         self.log.clear()
         self.progress.setValue(0)
         if run:
@@ -396,12 +426,12 @@ class GeneratePage(ScrollPage):
         Enable buttons only when their inputs are ready, and explain what is
         missing in the hint line so the user is never stuck guessing.
         """
-        busy = self._thread is not None or self._gen_timer.isActive()
+        busy = self._thread is not None
         has_folder = bool(self._pdf_files)
         has_output = bool(self.output_picker.path())
         any_report = any(cb.isChecked() for cb in self.report_checks)
 
-        self.scan_btn.setEnabled(has_folder and self._gen_timer.isActive() is False)
+        self.scan_btn.setEnabled(has_folder)
         self.scan_btn.setText("Cancel scan" if self._thread is not None
                               else "Scan invoices")
         self.generate_btn.setEnabled(
@@ -515,31 +545,72 @@ class GeneratePage(ScrollPage):
             self._show_summary(*self.selected_month())
 
     # ------------------------------------------------------------------
-    # Simulated generate
+    # Generating the workbook
     # ------------------------------------------------------------------
     def _start_generate(self) -> None:
-        """Begin the simulated generation: one report sheet every 180 ms."""
-        self._gen_reports = [cb.text() for cb in self.report_checks if cb.isChecked()]
-        self._gen_index = 0
-        self.progress.setValue(0)
-        self._add_log("Building workbook…", Colors.SLATE)
-        self._gen_timer.start(180)
-        self._refresh_buttons()
+        """Check open issues and monthly inputs, then write the workbook."""
+        year, month = self.selected_month()
+        label = month_label(year, month)
+        reports = [cb.text() for cb in self.report_checks if cb.isChecked()]
 
-    def _generate_step(self) -> None:
-        total = len(self._gen_reports)
-        if self._gen_index >= total:
-            self._gen_timer.stop()
-            month = f"{self.month_combo.currentText()[:3]}-{self.year_combo.currentText()}"
-            self.status.setText("Workbook ready (preview)")
-            self._add_log(f"Preview only: DriveNStyle_{month}_Reports.xlsx "
-                          "will be written once the reports are built.", Colors.BLUE)
+        open_issues = [i for i in self.invoices.issues(year, month) if i.status == "open"]
+        if open_issues:
+            left = len({n for i in open_issues for n in i.invoices})
+            if QMessageBox.question(
+                    self, "Open issues",
+                    f"{len(open_issues)} issue{'s are' if len(open_issues) != 1 else ' is'} "
+                    f"still open on Scan review. {left} invoice{'s' if left != 1 else ''} "
+                    "will be left out of the reports and listed on the "
+                    "“Not included” sheet.\n\nGenerate anyway?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                return
+        needs_costs = {"Indirect vs direct cost %", "Profit & loss"} & set(reports)
+        if needs_costs and not self.inputs.has_inputs(year, month):
+            box = QMessageBox(self)
+            box.setWindowTitle("Monthly inputs")
+            box.setText(f"No indirect costs have been entered for {label}.")
+            box.setInformativeText("The profit & loss and cost % reports will show "
+                                   "indirect costs as zero.")
+            enter = box.addButton("Enter them first", QMessageBox.RejectRole)
+            box.addButton("Generate anyway", QMessageBox.AcceptRole)
+            box.exec()
+            if box.clickedButton() is enter:
+                self.inputsRequested.emit()
+                return
+
+        self.progress.setValue(0)
+        self.status.setText("Building the workbook…")
+        self._add_log(f"Building the {label} workbook ({len(reports)} reports)…", Colors.SLATE)
+        self.generate_btn.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            result = generate(self.masters, self.invoices, self.inputs, year, month,
+                              self.output_picker.path(), reports,
+                              self.payments_picker.path())
+        except GenerateError as exc:
+            QApplication.restoreOverrideCursor()
+            self.status.setText("Workbook not created.")
+            self._add_log(f"✗  {exc}", Colors.RED)
+            QMessageBox.warning(self, "Workbook not created", str(exc))
             self._refresh_buttons()
-            self.toast("Preview only – the Excel file will be created once "
-                       "the invoice reader and report logic are added.")
             return
-        name = self._gen_reports[self._gen_index]
-        self._gen_index += 1
-        self.status.setText(f"Building sheet {self._gen_index} of {total}  ·  {name}")
-        self._set_progress(int(self._gen_index * 100 / total))
-        self._add_log(f"✓  {name}", Colors.GREEN)
+        QApplication.restoreOverrideCursor()
+        self._set_progress(100)
+        self._last_workbook = result.path
+        self.open_btn.show()
+        self.status.setText("Workbook ready")
+        self._add_log(f"✓  {result.path.name}: {result.invoices} invoices, sales "
+                      f"₹{format_inr(result.sales)}, gross profit ₹{format_inr(result.gross_profit)}",
+                      Colors.GREEN)
+        if result.left_out:
+            self._add_log(f"–  {result.left_out} invoice{'s' if result.left_out != 1 else ''} "
+                          "left out (see the “Not included” sheet).", Colors.AMBER)
+        self._refresh_buttons()
+        self.generated.emit(year, month)
+        self.toast(f"{result.path.name} saved.")
+
+    def _open_workbook(self) -> None:
+        if self._last_workbook and self._last_workbook.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._last_workbook)))
+        else:
+            self.toast("The workbook is no longer in the Save to folder.")

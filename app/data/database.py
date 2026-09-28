@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 3)
+TABLES (schema version 4)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -61,6 +61,13 @@ TABLES (schema version 3)
     issue_acks        totals / labour notes accepted as correct
     Fixes and acknowledgements are kept when a month is scanned again.
 
+    Monthly inputs and reports (step 4, see inputs_repo.py):
+    monthly_costs     indirect cost heads and amounts per month
+    monthly_settings  per-month settings, e.g. the high-profit threshold
+    report_runs       every workbook generated: month, file, when, by whom,
+                      invoices, sales and gross profit, and the payments
+                      export used (so History can regenerate it)
+
     import_mappings   remembers which sheet column the user matched to each
                       field last time, so the next import is pre-filled
         master, field, column_header
@@ -78,6 +85,7 @@ an older database then upgrades it in place without losing data.
                      number instead of name; incentives + incentive_rates;
                      products.incentive_id; audit_log (read-only)
     step 3 (v0.4.0)  scanned invoices and Scan review fixes
+    step 4 (v0.5.0)  monthly inputs and generated-report history
 
 A step is either a block of SQL or a Python function taking the connection
 (used when values must be worked out in Python, e.g. contact-number keys).
@@ -92,7 +100,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -341,6 +349,36 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
         at          TEXT NOT NULL,
         PRIMARY KEY (invoice_no, kind)
     );
+    """,
+    # --- 3 -> 4 : monthly inputs and generated reports ---------------------
+    """
+    CREATE TABLE IF NOT EXISTS monthly_costs (
+        month     TEXT    NOT NULL,                      -- YYYY-MM
+        head      TEXT    NOT NULL,
+        amount    REAL    NOT NULL DEFAULT 0,
+        position  INTEGER NOT NULL DEFAULT 0,            -- order on screen
+        PRIMARY KEY (month, head)
+    );
+    CREATE TABLE IF NOT EXISTS monthly_settings (
+        month  TEXT NOT NULL,
+        key    TEXT NOT NULL,                            -- e.g. high_profit_pct
+        value  TEXT NOT NULL,
+        PRIMARY KEY (month, key)
+    );
+    CREATE TABLE IF NOT EXISTS report_runs (
+        id             INTEGER PRIMARY KEY,
+        month          TEXT NOT NULL,
+        file_path      TEXT NOT NULL,
+        generated_at   TEXT NOT NULL,
+        user           TEXT NOT NULL DEFAULT '',
+        invoices       INTEGER NOT NULL DEFAULT 0,       -- included in reports
+        left_out       INTEGER NOT NULL DEFAULT 0,
+        sales          REAL NOT NULL DEFAULT 0,
+        gross_profit   REAL NOT NULL DEFAULT 0,
+        payments_path  TEXT NOT NULL DEFAULT '',
+        reports_json   TEXT NOT NULL DEFAULT '[]'        -- reports included
+    );
+    CREATE INDEX IF NOT EXISTS ix_report_runs_month ON report_runs(month);
     """,
 ]
 

@@ -6,6 +6,48 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] – 2026-09-28 – The 12 reports
+
+### Added
+- **Excel workbook** `DriveNStyle_<Mon>-<YYYY>_Reports.xlsx` with a Cover,
+  the 12 reports and a "Not included" sheet (`app/reports/`). Totals,
+  gross profit, margins, averages, shares and summaries are live Excel
+  formulas; Arial, navy headings, frozen headings, filters, landscape
+  fit-to-width printing.
+- **Figures**: sales after discount without GST (no-GST invoices in full);
+  product cost and labour from the Product master at the rates on the
+  invoice date; gross profit; invoices with open issues left out and
+  listed with reasons.
+- **Report 7 – spot incentive (provisional)**: incentive × (amount billed ÷
+  bill value), capped at the full incentive; marked PROVISIONAL.
+- **Report 5 – packages**: products whose incentive group is a
+  "… Package".
+- **Report 11 – payment modes** from Zoho's "Payments Received" export
+  (`app/data/payments_io.py`): every payment applied to the month's
+  invoices, split by mode and by account deposited to, with "Not received";
+  falls back to the mode printed on the invoice.
+- **Report 4 – trend** over every scanned month (up to 12).
+- **Monthly inputs** saved per month in the database: indirect cost heads
+  and amounts (copy from the previous month, usual heads to start), and the
+  high-profit threshold. Unsaved-change warnings; changes in the audit log.
+- **History** of generated workbooks with Open and Regenerate.
+- Generate asks before writing if Scan review issues are open or no
+  indirect costs were entered ("Enter them first" opens Monthly inputs on
+  that month). "Open workbook" after generating.
+- Database schema 4: monthly_costs, monthly_settings, report_runs.
+- Tests for inputs, payments export, figures and the workbook (105 tests).
+
+### Changed
+- **Contact numbers must be 10-digit mobiles** (+91 / 91 / leading 0
+  allowed). Shorter or longer numbers are refused on save and left out on
+  import, with the row number.
+- Sample indirect costs and history removed from `sample_data.py`.
+
+### Pending
+- The client's actual spot incentive rule (report 7 is provisional).
+- Package definitions (which items make up each package), if the client
+  wants a package's contents analysed.
+
 ## [0.4.0] – 2026-09-28 – Invoice reader and Scan review
 
 ### Added

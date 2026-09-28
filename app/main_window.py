@@ -28,6 +28,8 @@ Connections between pages:
                                        re-checks (a product added to the
                                        master clears its issue at once)
     * Scan review: issue fixed      -> Generate page summary updates
+    * Generate: workbook written    -> History lists it
+    * Generate: "Enter them first"  -> Monthly inputs opens on that month
 
 The masters database (MastersRepo) is created in main.py and passed in, so
 the window itself never opens files. The scanned invoices (InvoicesRepo)
@@ -43,6 +45,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QWidget
 
 from app import __app_name__, __version__
+from app.data.inputs_repo import InputsRepo
 from app.data.invoices_repo import InvoicesRepo
 from app.data.masters_repo import MastersRepo
 from app.pages.generate_page import GeneratePage
@@ -64,6 +67,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.repo = repo
         self.invoices = InvoicesRepo(repo)
+        self.inputs = InputsRepo(repo)
         self.setWindowTitle(f"{__app_name__}  –  v{__version__}")
         self.resize(1320, 840)
         self.setMinimumSize(1120, 700)
@@ -82,11 +86,11 @@ class MainWindow(QMainWindow):
 
         # --- Pages ---------------------------------------------------------
         self.stack = AnimatedStack()
-        self.generate_page = GeneratePage(self.invoices)
+        self.generate_page = GeneratePage(self.invoices, repo, self.inputs)
         self.review_page = ReviewPage(self.invoices, repo)
         self.masters_page = MastersPage(repo)
-        self.inputs_page = InputsPage()
-        self.history_page = HistoryPage()
+        self.inputs_page = InputsPage(self.inputs)
+        self.history_page = HistoryPage(repo, self.invoices, self.inputs)
         for page in (self.generate_page, self.review_page, self.masters_page,
                      self.inputs_page, self.history_page):
             self.stack.addWidget(page)
@@ -104,12 +108,19 @@ class MainWindow(QMainWindow):
         self.review_page.openIssuesChanged.connect(
             lambda n: self.sidebar.set_badge(PAGE_REVIEW, str(n) if n else ""))
         self.review_page.backRequested.connect(lambda: self.go_to(PAGE_GENERATE))
+        self.generate_page.generated.connect(self.history_page.refresh)
+        self.generate_page.inputsRequested.connect(self._go_to_inputs)
         self.masters_page.mastersChanged.connect(self._refresh_master_counts)
         self.masters_page.mastersChanged.connect(self.review_page.refresh)
         self._refresh_master_counts()
         # Start on the month selected on the Generate page (last month), so a
         # month already scanned shows its issues and badge straight away.
         self.review_page.load(*self.generate_page.selected_month())
+
+    def _go_to_inputs(self) -> None:
+        """Generate asked for the month's Monthly inputs first."""
+        self.inputs_page.show_month(*self.generate_page.selected_month())
+        self.go_to(PAGE_INPUTS)
 
     def _refresh_master_counts(self) -> None:
         """Update the Generate page's 'Masters in use' panel."""
@@ -118,10 +129,10 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         """Ask before closing if the Masters screen has unsaved edits, and
         stop a running scan cleanly."""
-        if self.masters_page.has_unsaved_changes():
+        if self.masters_page.has_unsaved_changes() or self.inputs_page.has_unsaved_changes():
             answer = QMessageBox.question(
                 self, "Unsaved changes",
-                "Some master changes are not saved. Close without saving?",
+                "Some master changes or monthly inputs are not saved. Close without saving?",
                 QMessageBox.Discard | QMessageBox.Cancel, QMessageBox.Cancel)
             if answer != QMessageBox.Discard:
                 event.ignore()

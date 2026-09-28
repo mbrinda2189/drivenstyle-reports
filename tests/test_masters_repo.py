@@ -326,3 +326,21 @@ def test_import_is_logged_with_its_source(repo):
 def test_mapping_is_remembered(repo):
     repo.set_mapping("cars", {"make": "Brand", "model": "Car Model", "segment": None})
     assert repo.get_mapping("cars") == {"make": "Brand", "model": "Car Model"}
+
+
+@pytest.mark.parametrize("number, ok", [
+    ("9876543210", True), ("+91 98765 43210", True), ("098765-43210", True),
+    ("919876543210", True), ("9876543210.0", True), ("994264555", False),
+    ("98765432101", False), ("12345", False)])
+def test_valid_mobile(number, ok):
+    from app.data.masters_repo import valid_mobile
+    assert valid_mobile(number) is ok
+
+
+def test_nine_digit_number_is_refused(repo):
+    with pytest.raises(MasterError) as err:
+        repo.save("executives", [RowChange(None, executive("Naveendran", "994264555"))])
+    assert "must have 10 digits" in err.value.messages[0]
+    result = repo.import_records("executives", [{"_row": 5, "name": "Naveendran",
+                                                 "phone": "994264555"}])
+    assert result.added == 0 and "Row 5" in result.skipped[0]

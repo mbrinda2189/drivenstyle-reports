@@ -4,91 +4,148 @@ history_page.py - "History" screen
 
 WHAT THIS SCREEN DOES
 ---------------------
-Lists every month that has already been processed, newest first:
+Lists every month for which a workbook has been generated, newest first
+(the latest workbook of each month), from the database
+(inputs_repo.runs):
 
-    Month | Invoices | Sales (Rs.) | Generated on | Actions
+    Month | Invoices | Left out | Sales (₹) | Gross profit (₹) | Generated on | Actions
 
 Actions for each month:
-    Open        - open that month's Excel workbook
-    Regenerate  - rebuild the workbook (e.g. after a correction in the
-                  masters; earlier months still use the rates that applied
-                  then, thanks to effective dates)
+    Open        open that month's Excel workbook (if it is still where it
+                was saved)
+    Regenerate  write the workbook again with the same reports, folder and
+                payments export - e.g. after fixing Scan review issues or
+                correcting a rate in the masters. Earlier months still use
+                the rates that applied then (effective dates).
 
-The stored history of processed months is also what feeds report 4
-(month-on-month trend analysis).
+The months' invoices themselves are kept in the database, which is what
+report 4 (month-on-month trend) is built from.
 
-CURRENT BEHAVIOUR (v0.1.0 - UI preview)
----------------------------------------
-Rows come from sample_data.HISTORY. The buttons show a message only.
+SIGNALS
+-------
+    regenerated(int, int)   a month's workbook was written again
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+import json
+from datetime import datetime
+from pathlib import Path
+
+from PySide6.QtCore import QUrl, Qt, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QAbstractItemView, QHBoxLayout, QHeaderView, QTableWidget,
-    QTableWidgetItem, QWidget,
+    QAbstractItemView, QApplication, QHBoxLayout, QHeaderView, QMessageBox,
+    QTableWidget, QTableWidgetItem, QWidget,
 )
 
+from app.data.inputs_repo import InputsRepo
+from app.data.invoices_repo import InvoicesRepo, month_label
+from app.data.masters_repo import MastersRepo
 from app.pages.base import ScrollPage
-from app.sample_data import HISTORY
+from app.reports.generate import GenerateError, generate
 from app.utils import format_inr
 from app.widgets.common import Card, button, label
 
+ROW = 48
+
 
 class HistoryPage(ScrollPage):
-    """Table of processed months with Open / Regenerate actions."""
+    """Table of generated months with Open / Regenerate actions."""
 
-    def __init__(self, parent: QWidget | None = None):
+    regenerated = Signal(int, int)
+
+    def __init__(self, masters: MastersRepo, invoices: InvoicesRepo,
+                 inputs: InputsRepo, parent: QWidget | None = None):
         super().__init__(
             "History",
-            "Months already processed. Their figures feed the month-on-month trend report.",
+            "Workbooks already generated. Every scanned month also feeds the "
+            "month-on-month trend report.",
             parent,
         )
+        self.masters, self.invoices, self.inputs = masters, invoices, inputs
         card = Card()
-        card.body.addWidget(label("Processed months", "SectionTitle"))
-
-        table = QTableWidget(len(HISTORY), 5)
-        table.setHorizontalHeaderLabels(
-            ["Month", "Invoices", "Sales (₹)", "Generated on", ""])
-        table.verticalHeader().hide()
-        table.setAlternatingRowColors(True)
-        table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        table.setSelectionMode(QAbstractItemView.NoSelection)
-        table.setFocusPolicy(Qt.NoFocus)
-        table.verticalHeader().setDefaultSectionSize(48)
-        hdr = table.horizontalHeader()
+        card.body.addWidget(label("Generated workbooks", "SectionTitle"))
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(
+            ["Month", "Invoices", "Left out", "Sales (₹)", "Gross profit (₹)",
+             "Generated on", ""])
+        t = self.table
+        t.verticalHeader().hide()
+        t.setAlternatingRowColors(True)
+        t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        t.setSelectionMode(QAbstractItemView.NoSelection)
+        t.setFocusPolicy(Qt.NoFocus)
+        t.verticalHeader().setDefaultSectionSize(ROW)
+        hdr = t.horizontalHeader()
         hdr.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, width in ((1, 100), (2, 160), (3, 170), (4, 220)):
+        for col, width in ((1, 90), (2, 90), (3, 150), (4, 150), (5, 170), (6, 220)):
             hdr.setSectionResizeMode(col, QHeaderView.Fixed)
-            table.setColumnWidth(col, width)
-
-        for r, (month, count, sales, generated) in enumerate(HISTORY):
-            table.setItem(r, 0, QTableWidgetItem(month))
-            for c, text in ((1, str(count)), (2, format_inr(sales))):
-                it = QTableWidgetItem(text)
-                it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                table.setItem(r, c, it)
-            table.setItem(r, 3, QTableWidgetItem(generated))
-
-            actions = QWidget()
-            a_lay = QHBoxLayout(actions)
-            a_lay.setContentsMargins(6, 4, 6, 4)
-            a_lay.setSpacing(4)
-            open_btn = button("Open", "Ghost")
-            open_btn.clicked.connect(
-                lambda _=False, m=month: self.toast(f"Opening the {m} workbook (preview)."))
-            regen_btn = button("Regenerate", "Ghost")
-            regen_btn.clicked.connect(
-                lambda _=False, m=month: self.toast(f"{m} will be regenerated (preview)."))
-            a_lay.addWidget(open_btn)
-            a_lay.addWidget(regen_btn)
-            a_lay.addStretch(1)
-            table.setCellWidget(r, 4, actions)
-
-        table.setFixedHeight(hdr.height() + 48 * len(HISTORY) + 6)
-        card.body.addWidget(table)
-        card.body.addWidget(label("Sample months shown for the preview.", "Muted"))
+            t.setColumnWidth(col, width)
+        card.body.addWidget(t)
+        self.note = label("", "Muted")
+        card.body.addWidget(self.note)
         self.content.addWidget(card)
         self.content.addStretch(1)
+        self.refresh()
+
+    def refresh(self, *_) -> None:
+        runs = self.inputs.runs()
+        t = self.table
+        t.setRowCount(len(runs))
+        for r, run in enumerate(runs):
+            year, month = map(int, run["month"].split("-"))
+            t.setItem(r, 0, QTableWidgetItem(month_label(year, month)))
+            for c, text in ((1, str(run["invoices"])), (2, str(run["left_out"])),
+                            (3, format_inr(run["sales"])), (4, format_inr(run["gross_profit"]))):
+                it = QTableWidgetItem(text)
+                it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                t.setItem(r, c, it)
+            when = datetime.fromisoformat(run["generated_at"]).strftime("%d-%m-%Y %H:%M")
+            it = QTableWidgetItem(when + (f"  ({run['user']})" if run["user"] else ""))
+            it.setToolTip(run["file_path"])
+            t.setItem(r, 5, it)
+
+            actions = QWidget()
+            lay = QHBoxLayout(actions)
+            lay.setContentsMargins(6, 4, 6, 4)
+            lay.setSpacing(4)
+            open_btn = button("Open", "Ghost")
+            open_btn.clicked.connect(lambda _=False, p=run["file_path"]: self._open(p))
+            regen = button("Regenerate", "Ghost")
+            regen.clicked.connect(lambda _=False, x=run: self._regenerate(x))
+            lay.addWidget(open_btn)
+            lay.addWidget(regen)
+            lay.addStretch(1)
+            t.setCellWidget(r, 6, actions)
+        t.setFixedHeight(t.horizontalHeader().height() + ROW * max(1, len(runs)) + 6)
+        self.note.setText("" if runs else
+                          "No workbooks yet. Scan a month and generate it on Generate reports.")
+
+    def _open(self, path: str) -> None:
+        if not Path(path).exists():
+            self.toast("The workbook is no longer where it was saved. Regenerate it.")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+
+    def _regenerate(self, run: dict) -> None:
+        year, month = map(int, run["month"].split("-"))
+        payments = run["payments_path"]
+        if payments and not Path(payments).exists():
+            payments = ""
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            result = generate(self.masters, self.invoices, self.inputs, year, month,
+                              str(Path(run["file_path"]).parent),
+                              json.loads(run["reports_json"]), payments)
+        except GenerateError as exc:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "Workbook not created", str(exc))
+            return
+        QApplication.restoreOverrideCursor()
+        note = "" if payments or not run["payments_path"] else \
+            " (payments export no longer found; payment modes from invoices only)"
+        self.toast(f"{result.path.name} regenerated{note}.")
+        self.refresh()
+        self.regenerated.emit(year, month)

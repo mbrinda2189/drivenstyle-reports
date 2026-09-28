@@ -11,11 +11,10 @@ built. Nothing here is used for calculations.
                         (this list is permanent, not sample data)
     PACKAGES          - rows for Masters > Packages (package definitions are
                         not in the client's master sheets yet)
-    INDIRECT_COSTS    - default indirect cost heads for Monthly inputs
-    HISTORY           - months shown on the History screen
 
-The masters (since v0.2.0) and the scanned invoices and Scan review issues
-(since v0.4.0) come from the database (app/data), not from here. To try the Masters screen with sample
+The masters (v0.2.0), scanned invoices and Scan review issues (v0.4.0),
+monthly inputs and report history (v0.5.0) come from the database
+(app/data), not from here. To try the Masters screen with sample
 sheets, run:  python scripts/make_sample_masters.py
 
 IMPORTANT
@@ -45,21 +44,4 @@ REPORTS = [
 PACKAGES = [
     ("Basic Package", "Sunfilm Front, Sunfilm Side & Rear, Noodles Mat", 14000.00),
     ("Premium Package", "Basic Package + Seat Cover Premium + 7D Mat", 24500.00),
-]
-
-# (Head of expense, Amount in Rs.)
-INDIRECT_COSTS = [
-    ("Rent", 45000.00),
-    ("Salaries", 120000.00),
-    ("Electricity", 8500.00),
-    ("Internet & phone", 2200.00),
-    ("Marketing", 10000.00),
-]
-
-# (Month, Invoices, Sales in Rs., Generated on)
-HISTORY = [
-    ("August 2026", 126, 1845200.00, "05-09-2026 11:42"),
-    ("July 2026", 131, 1912750.00, "04-08-2026 16:05"),
-    ("June 2026", 109, 1528900.00, "06-07-2026 10:18"),
-    ("May 2026", 117, 1664300.00, "05-06-2026 12:47"),
 ]

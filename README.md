@@ -4,13 +4,13 @@ A Windows desktop tool for **Drive N Style** that reads a month's Zoho invoice
 PDFs and produces one Excel workbook with 12 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.4.0 – Invoice reader and Scan review.** The tool
-> reads the month's Carkrafts invoice PDFs, matches every line, salesperson
-> and car to the masters, checks each invoice's arithmetic, and lists
-> anything that needs attention on Scan review, where it can be fixed (fixes
-> are remembered and logged). The masters (Product, Sales executive, Car,
-> Incentive) are complete. The 12 reports and the Excel workbook are next
-> (v0.5.0); Monthly inputs and History still use sample data.
+> **Current status: v0.5.0 – The 12 reports.** The tool reads the month's
+> Carkrafts invoice PDFs, matches them to the masters, lets anything unclear
+> be fixed on Scan review, and writes the Excel workbook with all 12 reports.
+> Monthly inputs (indirect costs, high-profit threshold) and History (Open /
+> Regenerate) are live. Still to come: the client's actual spot incentive
+> rule (a provisional rule is used and marked), package definitions, and
+> packaging as an .exe.
 
 ## The 12 reports
 
@@ -81,7 +81,7 @@ kept in the tool; the Masters screen is used for occasional changes.
 | Master | Fields | Unique by |
 |---|---|---|
 | Product | SKU, Product name, HSN/SAC, Category (Product / Service), Incentive group, Selling price, Cost price, Labour involved, Labour charge, Effective from, Active | Product name, and SKU when given |
-| Sales executive | Name, Contact no, Branch, Active | Contact no (`+91 98765 43210` = `9876543210`) |
+| Sales executive | Name, Contact no, Branch, Active | Contact no - a 10-digit mobile (`+91 98765 43210` = `9876543210`) |
 | Car | Make, Model, Segment (Hatchback, Sedan, Compact SUV, SUV, MUV…; other values can be typed), Active | Make + model |
 | Incentive | Product / Service, Incentive amount, Bill value, Effective from, Active | Product / Service |
 
@@ -157,6 +157,56 @@ Each invoice's arithmetic is checked: line amounts must add up to the Sub
 Total, and Sub Total (before GST) − discount + GST + rounding must equal the
 Total, within ₹1.
 
+## The reports workbook
+
+**Generate Excel** writes `DriveNStyle_<Mon>-<YYYY>_Reports.xlsx` in the
+"Save to" folder with the ticked reports:
+
+| Sheet | Contents |
+|---|---|
+| Cover | Month, when and by whom generated, key figures, contents, notes |
+| 1 Invoice profitability | Per invoice: customer, salesperson, car, sales, discount, GST, total, product cost, labour, gross profit, margin % |
+| 2 Service vs product | Product / Service / labour-line summary and item-wise detail |
+| 3 Labour | Labour cost by product and every line with labour |
+| 4 Trend | One column per scanned month (up to 12): invoices, sales, product/service sales, costs, gross profit, margin, average bill, change |
+| 5 Packages | Sales of products whose incentive group is a "… Package" |
+| 6 Vehicle-wise | By segment and car model, with average sales and profit per car |
+| 7 Spot incentive | **Provisional** rule: incentive × (amount billed ÷ bill value), capped at the full incentive; by executive and per line |
+| 8 Executive-wise sales | Per executive (name and branch), including provisional incentive |
+| 9 High-profit products | Products at or above the month's threshold margin |
+| 10 Indirect vs direct | Direct and indirect costs as % of sales |
+| 11 Payment modes | Received by mode (payments export or mode printed on the invoice), by account, per invoice, and "Not received" |
+| 12 Profit & loss | Sales → gross profit → net profit, with % of sales |
+| Not included | Invoices left out (open issues) and skipped files, with reasons |
+
+How the figures are worked out:
+
+- **Sales** = each line after its share of the invoice discount, without
+  GST. Invoices that show no GST count in full.
+- **Product cost** and **labour** = the Product master's cost price and
+  labour charge (GST-exclusive) × quantity, at the rates that applied on the
+  invoice date. Labour only for products marked "Labour involved".
+- **Gross profit** = sales − product cost − labour.
+- Invoices with **open issues** on Scan review are left out of every report
+  and listed on "Not included", so included + left out = every invoice read.
+- **Payment modes** come from Zoho's "Payments Received" export (step 3),
+  counting every payment applied to the month's invoices whatever its date;
+  otherwise from the mode printed on the invoice.
+- Totals, profits, margins, averages and summaries are **live Excel
+  formulas**, so the workbook stays consistent if a figure is corrected.
+
+Before writing, Generate asks for confirmation if issues are still open or
+no indirect costs were entered for the month. If the file is open in Excel,
+close it and generate again.
+
+**Monthly inputs**: choose the month, enter the indirect cost heads and
+amounts (or "Copy from <previous month>"), set the high-profit threshold,
+and Save. Changes are logged in the audit log.
+
+**History**: the latest workbook of each month, with Open and Regenerate
+(same reports, folder and payments export; uses the current masters, fixes
+and inputs).
+
 ## Where the data is kept
 
 The masters are stored in one SQLite file, created on first run:
@@ -189,8 +239,9 @@ python main.py
 ## Automated tests
 
 The data layer (database, masters, rate history, Excel import/export,
-invoice amounts, matching, Scan review fixes) has automated tests that never
-touch the real data file:
+invoice amounts, matching, Scan review fixes, monthly inputs, payments
+export, report figures and workbook) has automated tests that never touch
+the real data file:
 
 ```powershell
 pip install -r requirements-dev.txt
@@ -233,6 +284,12 @@ drivenstyle-reports/
     │   ├── masters_repo.py  Reading/saving masters, rate history, duplicates, audit log
     │   ├── invoice_reader.py  Reads one Carkrafts invoice PDF (header, items, totals)
     │   ├── invoices_repo.py   Stores scans, matches to masters, Scan review issues and fixes
+    │   ├── inputs_repo.py     Monthly inputs (indirect costs, threshold) and report history
+    │   └── payments_io.py     Reads Zoho's Payments Received export
+    ├── reports/
+    │   ├── data.py          Every figure for a month (rates on the invoice date)
+    │   ├── workbook.py      Writes the Excel workbook (cover, 12 reports, not included)
+    │   └── generate.py      One call: figures -> workbook -> history
     │   └── excel_io.py      Reading client sheets, column matching, export
     ├── widgets/
     │   ├── common.py        Card, AnimatedButton, PathPicker, StatTile, Toast, headers
@@ -280,9 +337,9 @@ pyinstaller --noconsole --onefile --add-data "app/assets;app/assets" main.py
 - ~~v0.2 – Masters database (SQLite) and import of the client's master sheets~~ ✔
 - ~~v0.3 – Incentive master, filters, edit form, bulk actions, audit log~~ ✔
 - ~~v0.4 – Invoice reader, matching to the masters, real Scan review~~ ✔
+- ~~v0.5 – The 12 reports, Excel workbook, Monthly inputs, History~~ ✔
 - Spot incentive calculation – once the client confirms the rule
-- v0.5 – Report calculations and Excel workbook output
-- v0.6 – History, trend analysis, payments export, packaging as .exe
+- v0.6 – Client's spot incentive rule, package definitions, packaging as .exe
 
 ## Version control
 

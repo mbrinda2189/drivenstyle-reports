@@ -11,8 +11,10 @@ This package holds everything the desktop tool needs:
     app/utils.py         - Small helpers, e.g. Indian-style number formatting.
     app/sample_data.py   - Placeholder rows for screens not yet connected
                            (packages, scan issues, history).
-    app/data/            - Database, masters and Excel import/export. No UI
-                           code, so it can be tested on its own.
+    app/data/            - Database, masters, invoices, monthly inputs and
+                           Excel import/export. No UI code, so it can be
+                           tested on its own.
+    app/reports/         - The 12 reports: figures and the Excel workbook.
     app/main_window.py   - The main window: sidebar + animated page area.
     app/widgets/         - Reusable UI building blocks (cards, buttons, etc.).
     app/pages/           - One module per screen of the tool.
@@ -21,5 +23,5 @@ The version string below is shown in the sidebar footer and must be kept in
 step with CHANGELOG.md whenever a new version is released.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __app_name__ = "Drive N Style Reports"

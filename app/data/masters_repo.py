@@ -52,7 +52,9 @@ NO DUPLICATES
 -------------
     Product          product name, and SKU when given
     Sales executive  contact no (digits only, last 10: "+91 98765 43210"
-                     and "9876543210" are the same number)
+                     and "9876543210" are the same number). It must be a
+                     10-digit mobile number (valid_mobile); a short or long
+                     number is refused on save and left out on import.
     Car              make + model
     Incentive        product / service name
 Names are compared in a standard form (`name_key`): lower case, single
@@ -101,6 +103,24 @@ def phone_key(text: str) -> str:
     """
     digits = re.sub(r"\D", "", str(text or ""))
     return digits[-10:] if len(digits) > 10 else digits
+
+
+def valid_mobile(text: str) -> bool:
+    """
+    True for an Indian mobile number: exactly 10 digits, optionally written
+    with +91 / 91 in front or a leading 0, and with spaces or dashes
+    ("+91 98765 43210", "098765-43210", "9876543210"). Excel sometimes
+    stores numbers as 9876543210.0; the ".0" is ignored.
+    """
+    raw = str(text or "").strip()
+    if raw.endswith(".0"):
+        raw = raw[:-2]
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) == 12 and digits.startswith("91"):
+        digits = digits[2:]
+    elif len(digits) == 11 and digits.startswith("0"):
+        digits = digits[1:]
+    return len(digits) == 10
 
 
 def infer_category(hsn_sac: str) -> str:
@@ -374,9 +394,9 @@ class MastersRepo:
                                 f"{self.definition(f.lookup).title} master.")
 
         if master == "executives" and str(v.get("phone", "")).strip() \
-                and len(phone_key(v["phone"])) < 6:
-            problems.append(f"{label}: “{v['phone']}” does not look like a "
-                            "contact number.")
+                and not valid_mobile(v["phone"]):
+            problems.append(f"{label}: contact number “{v['phone']}” must have "
+                            "10 digits (+91 or a leading 0 may be added).")
 
         clash = self._find_id(master, self.key_of(master, v))
         if clash is not None and clash != row_id:

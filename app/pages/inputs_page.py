@@ -5,37 +5,43 @@ inputs_page.py - "Monthly inputs" screen
 WHAT THIS SCREEN DOES
 ---------------------
 Collects the figures that are NOT on the invoices but are needed for the
-reports, entered once per month:
+reports, entered once per month and saved in the database
+(app/data/inputs_repo.py):
 
     Indirect costs (left card)
-        A table of expense heads (Rent, Salaries, Electricity, ...) with the
-        month's amount for each. The user can add or remove heads. A running
-        total is shown underneath. "Copy from last month" refills the table
-        with the previous month's figures, since most heads repeat.
-        Used by: report 10 (indirect vs direct cost %) and report 12 (P&L).
+        Expense heads (Rent, Salaries, Electricity, ...) and the month's
+        amount for each. Add or remove heads; a running total is shown.
+        "Copy from <month>" fills the table with the latest earlier month's
+        heads and amounts, since most repeat. A month with nothing saved
+        starts with the usual heads at zero.
+        Used by report 10 (indirect vs direct cost %) and 12 (P&L).
 
     Report settings (right card)
-        High-profit threshold (%): items whose margin is at or above this
-        are listed in report 9 (high-profit product sales).
+        High-profit threshold (%): products whose margin is at or above
+        this appear in report 9. Default 40%.
 
-CURRENT BEHAVIOUR (v0.1.0 - UI preview)
----------------------------------------
-Starts with the sample heads from sample_data.INDIRECT_COSTS. Editing, the
-running total, add/remove and "Copy from last month" work on screen. Save
-shows a confirmation only.
+Changing the month shows that month's saved figures. Edits are held until
+"Save inputs" (the heading shows "unsaved changes"); switching month or
+closing with unsaved edits asks first. Duplicate heads and negative amounts
+are refused. Every saved change is recorded in the audit log (Masters >
+Audit log, "Monthly inputs").
+
+SIGNALS
+-------
+    saved(int, int)   inputs were saved for (year, month)
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
-    QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QSpinBox,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QMessageBox,
+    QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from app.data.inputs_repo import DEFAULT_HEADS, InputsRepo
+from app.data.invoices_repo import month_key, month_label
 from app.pages.base import ScrollPage
-from app.pages.generate_page import MONTHS
-from app.sample_data import INDIRECT_COSTS
 from app.theme import Colors
 from app.utils import format_inr, parse_inr
 from app.widgets.common import Card, button, label
@@ -44,38 +50,51 @@ from app.widgets.common import Card, button, label
 class InputsPage(ScrollPage):
     """Monthly indirect costs and report settings."""
 
-    def __init__(self, parent: QWidget | None = None):
+    saved = Signal(int, int)
+
+    def __init__(self, inputs: InputsRepo, parent: QWidget | None = None):
         super().__init__(
             "Monthly inputs",
             "Figures that are not on the invoices: indirect costs for the P&L and report settings.",
             parent,
         )
+        self.inputs = inputs
         self._loading = False
+        self._dirty = False
+        self._shown: tuple[int, int] | None = None
 
         columns = QHBoxLayout()
         columns.setSpacing(20)
         columns.addWidget(self._build_costs_card(), 3)
-
         right = QVBoxLayout()
         right.setSpacing(20)
         right.addWidget(self._build_settings_card())
         right.addStretch(1)
         columns.addLayout(right, 2)
         self.content.addLayout(columns, 1)
-
-        self._fill(INDIRECT_COSTS)
+        self._load_month()
 
     # ------------------------------------------------------------------
-    def _build_costs_card(self) -> Card:
+    # Building
+    # ------------------------------------------------------------------
+    def _build_costs_card(self):
         card = Card()
         head = QHBoxLayout()
         head.addWidget(label("Indirect costs", "SectionTitle"))
+        self.dirty_label = label("", "Muted")
+        head.addWidget(self.dirty_label)
         head.addStretch(1)
-        last = QDate.currentDate().addMonths(-1)
+        # This month and the 23 before it; last month is selected, as reports
+        # are prepared for the month just ended.
         self.month_combo = QComboBox()
-        for back in range(0, 12):
-            d = last.addMonths(-back)
-            self.month_combo.addItem(f"{MONTHS[d.month() - 1]} {d.year()}")
+        today = QDate.currentDate()
+        for back in range(0, 24):
+            d = today.addMonths(-back)
+            # Stored as "YYYY-MM" text: Qt cannot look up Python tuples.
+            self.month_combo.addItem(month_label(d.year(), d.month()),
+                                     month_key(d.year(), d.month()))
+        self.month_combo.setCurrentIndex(1)
+        self.month_combo.currentIndexChanged.connect(self._month_changed)
         head.addWidget(self.month_combo)
         card.body.addLayout(head)
 
@@ -95,7 +114,6 @@ class InputsPage(ScrollPage):
         self.table.itemChanged.connect(self._on_changed)
         card.body.addWidget(self.table)
 
-        # Total line
         total_row = QHBoxLayout()
         total_row.addWidget(label("Total indirect costs", "SectionTitle"))
         total_row.addStretch(1)
@@ -104,88 +122,139 @@ class InputsPage(ScrollPage):
         total_row.addWidget(self.total_label)
         card.body.addLayout(total_row)
 
-        # Buttons
         btns = QHBoxLayout()
         add = button("Add head", "Secondary")
         add.clicked.connect(self._add_head)
         remove = button("Remove", "Danger")
         remove.clicked.connect(self._remove_head)
-        copy = button("Copy from last month", "Ghost")
-        copy.clicked.connect(self._copy_last_month)
+        self.copy_btn = button("Copy from last month", "Ghost")
+        self.copy_btn.clicked.connect(self._copy_previous)
         btns.addWidget(add)
         btns.addWidget(remove)
-        btns.addWidget(copy)
+        btns.addWidget(self.copy_btn)
         btns.addStretch(1)
         save = button("Save inputs", "Primary")
-        save.clicked.connect(lambda: self.toast(
-            f"Inputs for {self.month_combo.currentText()} saved."))
+        save.clicked.connect(self._save)
         btns.addWidget(save)
         card.body.addLayout(btns)
         return card
 
-    def _build_settings_card(self) -> Card:
+    def _build_settings_card(self):
         card = Card()
         card.body.addWidget(label("Report settings", "SectionTitle"))
-        card.body.addWidget(label("High-profit threshold", ))
+        card.body.addWidget(label("High-profit threshold"))
         row = QHBoxLayout()
         self.threshold = QSpinBox()
         self.threshold.setRange(1, 100)
-        self.threshold.setValue(40)
         self.threshold.setSuffix(" %")
         self.threshold.setFixedWidth(110)
+        self.threshold.valueChanged.connect(lambda _: self._mark_dirty())
         row.addWidget(self.threshold)
         row.addStretch(1)
         card.body.addLayout(row)
         card.body.addWidget(label(
-            "Items with a margin at or above this are listed in the "
-            "high-profit product sales report.", "Muted", wrap=True))
+            "Products with a margin at or above this are listed in the "
+            "high-profit product sales report. Saved with the month's inputs.",
+            "Muted", wrap=True))
         return card
 
     # ------------------------------------------------------------------
+    # Month
+    # ------------------------------------------------------------------
+    def month(self) -> tuple[int, int]:
+        year, month = self.month_combo.currentData().split("-")
+        return int(year), int(month)
+
+    def show_month(self, year: int, month: int) -> None:
+        """Select a month (used when Generate sends the user here)."""
+        i = self.month_combo.findData(month_key(year, month))
+        if i >= 0:
+            self.month_combo.setCurrentIndex(i)
+
+    def _month_changed(self, *_) -> None:
+        if self._dirty and self._shown and self._shown != self.month():
+            answer = QMessageBox.question(
+                self, "Unsaved inputs",
+                f"Inputs for {month_label(*self._shown)} are not saved. Save them now?",
+                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
+                QMessageBox.Save)
+            if answer == QMessageBox.Cancel or (answer == QMessageBox.Save
+                                                and not self._save(self._shown)):
+                self.month_combo.blockSignals(True)
+                self.show_month(*self._shown)
+                self.month_combo.blockSignals(False)
+                return
+        self._load_month()
+
+    def _load_month(self) -> None:
+        """Show the selected month's saved figures (or the usual heads at zero)."""
+        year, month = self.month()
+        rows = self.inputs.costs(year, month)
+        if not rows:
+            rows = [(h, 0.0) for h in DEFAULT_HEADS]
+        self._fill(rows)
+        self._loading = True
+        self.threshold.setValue(int(round(self.inputs.threshold(year, month))))
+        self._loading = False
+        prev_label, prev = self.inputs.previous_costs(year, month)
+        self.copy_btn.setText(f"Copy from {prev_label}" if prev else "Copy from last month")
+        self.copy_btn.setEnabled(bool(prev))
+        self._shown = (year, month)
+        self._set_dirty(False)
+
+    # ------------------------------------------------------------------
+    # Table
+    # ------------------------------------------------------------------
     def _fill(self, rows) -> None:
-        """Put (head, amount) rows into the table."""
         self._loading = True
         self.table.setRowCount(0)
         for head, amount in rows:
-            r = self.table.rowCount()
-            self.table.insertRow(r)
-            self.table.setItem(r, 0, QTableWidgetItem(head))
-            amt = QTableWidgetItem(format_inr(amount))
-            amt.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.table.setItem(r, 1, amt)
+            self._append(head, amount)
         self._loading = False
         self._update_total()
+
+    def _append(self, head: str, amount: float) -> int:
+        r = self.table.rowCount()
+        self.table.insertRow(r)
+        self.table.setItem(r, 0, QTableWidgetItem(head))
+        amt = QTableWidgetItem(format_inr(amount))
+        amt.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.table.setItem(r, 1, amt)
+        return r
+
+    def _rows(self) -> list[tuple[str, float]]:
+        out = []
+        for r in range(self.table.rowCount()):
+            head = self.table.item(r, 0).text() if self.table.item(r, 0) else ""
+            amount = parse_inr(self.table.item(r, 1).text()) if self.table.item(r, 1) else 0
+            out.append((head, amount or 0.0))
+        return out
 
     def _on_changed(self, item: QTableWidgetItem) -> None:
-        """Re-format edited amounts and refresh the total."""
-        if self._loading or item.column() != 1:
+        """Re-format edited amounts, refresh the total, mark unsaved."""
+        if self._loading:
             return
-        value = parse_inr(item.text())
-        self._loading = True
-        item.setText(format_inr(value if value is not None and value >= 0 else 0))
-        self._loading = False
-        if value is None:
-            self.toast("Enter a valid amount, e.g. 45000")
+        if item.column() == 1:
+            value = parse_inr(item.text())
+            self._loading = True
+            item.setText(format_inr(value if value is not None and value >= 0 else 0))
+            self._loading = False
+            if value is None or value < 0:
+                self.toast("Enter a valid amount, e.g. 45000")
         self._update_total()
+        self._mark_dirty()
 
     def _update_total(self) -> None:
-        total = 0.0
-        for r in range(self.table.rowCount()):
-            it = self.table.item(r, 1)
-            total += parse_inr(it.text()) or 0 if it else 0
+        total = sum(a for _, a in self._rows())
         self.total_label.setText(f"₹ {format_inr(total)}")
 
     def _add_head(self) -> None:
         self._loading = True
-        r = self.table.rowCount()
-        self.table.insertRow(r)
-        self.table.setItem(r, 0, QTableWidgetItem(""))
-        amt = QTableWidgetItem(format_inr(0))
-        amt.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.table.setItem(r, 1, amt)
+        r = self._append("", 0.0)
         self._loading = False
         self.table.setCurrentCell(r, 0)
         self.table.editItem(self.table.item(r, 0))
+        self._mark_dirty()
 
     def _remove_head(self) -> None:
         r = self.table.currentRow()
@@ -194,7 +263,38 @@ class InputsPage(ScrollPage):
             return
         self.table.removeRow(r)
         self._update_total()
+        self._mark_dirty()
 
-    def _copy_last_month(self) -> None:
-        self._fill(INDIRECT_COSTS)
-        self.toast("Last month's figures copied. Adjust any that changed.")
+    def _copy_previous(self) -> None:
+        prev_label, prev = self.inputs.previous_costs(*self.month())
+        if prev:
+            self._fill(prev)
+            self._mark_dirty()
+            self.toast(f"{prev_label} figures copied. Adjust any that changed, then save.")
+
+    # ------------------------------------------------------------------
+    # Saving
+    # ------------------------------------------------------------------
+    def _mark_dirty(self) -> None:
+        if not self._loading:
+            self._set_dirty(True)
+
+    def _set_dirty(self, dirty: bool) -> None:
+        self._dirty = dirty
+        self.dirty_label.setText("· unsaved changes" if dirty else "")
+
+    def has_unsaved_changes(self) -> bool:
+        return self._dirty
+
+    def _save(self, month: tuple[int, int] | None = None) -> bool:
+        year, mon = month or self.month()
+        try:
+            self.inputs.save_costs(year, mon, self._rows())
+        except ValueError as exc:
+            QMessageBox.warning(self, "Inputs not saved", str(exc))
+            return False
+        self.inputs.save_threshold(year, mon, float(self.threshold.value()))
+        self._set_dirty(False)
+        self.toast(f"Inputs for {month_label(year, mon)} saved.")
+        self.saved.emit(year, mon)
+        return True
