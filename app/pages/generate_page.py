@@ -10,7 +10,8 @@ sequence, so the steps are numbered:
     1  Choose the report month          (defaults to last month, because
                                          reports are prepared before the 7th
                                          for the month just ended)
-    2  Choose the invoice folder        (folder of Zoho invoice PDFs)
+    2  Choose the invoice export        (Zoho Books invoice export,
+                                         Invoice.csv or .xlsx - v0.6.0)
     3  Add the payments export          (optional - Zoho "Payments Received"
                                          export, needed only for the payment
                                          mode report)
@@ -22,18 +23,23 @@ On the right, a "Run" panel shows how many products, sales executives,
 cars and incentive groups are loaded (amber if a master is still empty), the
 "Scan invoices" and "Generate Excel" buttons, a progress bar and a log.
 
-SCANNING (v0.4.0)
------------------
-"Scan invoices" reads every PDF in the invoice folder in a background
-thread (app/scan_worker.py), so the window stays responsive:
-    * each file is logged as it is read: ✓ read, – skipped (another month,
-      another firm, repeated invoice number), ✗ could not be read
+READING THE INVOICES (v0.6.0: from Zoho's invoice export)
+--------------------------------------------------------
+"Read invoices" reads the export chosen in step 2 (invoice_export.py). It
+takes under a second, so it runs directly (the PDF reader and its
+background thread, app/scan_worker.py, stay in the code but are no longer
+used on this screen):
+    * the chosen month's invoices are kept; invoices dated in other months
+      are counted in the log and ignored (an export may cover a quarter)
+    * Void / Draft invoices and another firm's invoices are listed as
+      skipped
     * the results are saved in the database for the chosen month
-      (invoices_repo.store_scan), replacing any earlier scan of that month;
-      fixes already made on Scan review are kept
-    * the summary shows invoices read, issues open and files skipped, and
-      the Scan review page is refreshed
-"Cancel" stops after the current file; nothing is saved then.
+      (invoices_repo.store_scan), replacing any earlier reading of that
+      month; fixes already made on Scan review are kept
+    * the summary shows invoices read, issues open and invoices skipped,
+      and the Scan review page is refreshed
+    * products whose Category was never set by hand take Zoho's Item Type
+      (goods / service) - the log says how many changed
 
 When a month that has already been scanned is selected, its last scan is
 shown (date, counts) and Generate is available without scanning again.
@@ -67,7 +73,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import (
-    QDate, QEasingCurve, QPropertyAnimation, QThread, QUrl, Qt, Signal,
+    QDate, QEasingCurve, QPropertyAnimation, QUrl, Qt, Signal,
 )
 from PySide6.QtWidgets import (
     QApplication, QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel,
@@ -76,12 +82,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QColor, QDesktopServices
 
 from app.data.inputs_repo import InputsRepo
-from app.data.invoices_repo import InvoicesRepo, month_label
+from app.data.invoice_export import ExportFileError, classify_export
+from app.data.invoices_repo import (
+    FIRM_GSTIN, ZOHO_CATEGORY_SOURCE, InvoicesRepo, month_label)
 from app.data.masters_repo import MastersRepo
 from app.reports.generate import GenerateError, generate
 from app.pages.base import ScrollPage
 from app.sample_data import REPORTS
-from app.scan_worker import ScanWorker
 from app.theme import Colors
 from app.utils import format_inr
 from app.widgets.common import Card, PathPicker, StepHeader, button, label
@@ -117,10 +124,8 @@ class GeneratePage(ScrollPage):
         self.masters = masters
         self.inputs = inputs
         self._last_workbook: Path | None = None
-        self._scanned = False          # True once the chosen month is scanned
-        self._pdf_files: list[Path] = []
-        self._thread: QThread | None = None
-        self._worker: ScanWorker | None = None
+        self._scanned = False          # True once the chosen month is read
+        self._busy = False             # reading or generating right now
 
         # Two columns: steps on the left (wider), run panel on the right.
         columns = QHBoxLayout()
@@ -181,13 +186,16 @@ class GeneratePage(ScrollPage):
 
         card.body.addWidget(divider())
 
-        # Step 2 - invoice folder
-        self.step_folder = StepHeader(2, "Invoice folder",
-                                      "The folder of Zoho invoice PDFs for the month.")
+        # Step 2 - invoice export (v0.6.0; replaces the folder of PDFs)
+        self.step_folder = StepHeader(
+            2, "Invoice export",
+            "Zoho Books › Sales › Invoices › Export (CSV or XLSX) covering the month.")
         card.body.addWidget(self.step_folder)
-        self.folder_picker = PathPicker("No folder chosen", mode="folder")
+        self.folder_picker = PathPicker(
+            "No file chosen", mode="file",
+            file_filter="Zoho invoice export (*.csv *.xlsx *.xlsm)")
         self.folder_picker.layout().setContentsMargins(36, 0, 0, 0)
-        self.folder_picker.pathChanged.connect(self._on_folder_chosen)
+        self.folder_picker.pathChanged.connect(self._on_export_chosen)
         card.body.addWidget(self.folder_picker)
         self.folder_info = label("", "Muted")
         self.folder_info.setContentsMargins(36, 0, 0, 0)
@@ -286,7 +294,7 @@ class GeneratePage(ScrollPage):
         # Buttons
         btn_row = QHBoxLayout()
         btn_row.setSpacing(10)
-        self.scan_btn = button("Scan invoices", "Secondary")
+        self.scan_btn = button("Read invoices", "Secondary")
         self.scan_btn.clicked.connect(self._start_scan)
         self.generate_btn = button("Generate Excel", "Primary")
         self.generate_btn.clicked.connect(self._start_generate)
@@ -366,7 +374,7 @@ class GeneratePage(ScrollPage):
 
     def _on_month_changed(self, *_) -> None:
         """Show the chosen month's last scan, if there is one."""
-        if self._thread is not None:
+        if self._busy:
             return
         year, month = self.selected_month()
         run = self.invoices.scan_run(year, month)
@@ -380,26 +388,24 @@ class GeneratePage(ScrollPage):
         if run:
             self._show_summary(year, month)
             when = run["scanned_at"].replace("T", " ")[:16]
-            self.status.setText(f"{month_label(year, month)} last scanned {when}.")
+            self.status.setText(f"{month_label(year, month)} invoices last read {when}.")
         else:
             self.summary_row.hide()
             self.status.setText("Ready")
         self._refresh_buttons()
 
-    def _on_folder_chosen(self, path: str) -> None:
-        """Count the PDFs in the chosen folder and mark step 2 done."""
-        folder = Path(path)
-        # One list, compared in lower case: on Windows "*.pdf" and "*.PDF"
-        # find the same files, so two separate searches counted each twice.
-        self._pdf_files = sorted((p for p in folder.iterdir()
-                                  if p.is_file() and p.suffix.lower() == ".pdf"),
-                                 key=lambda p: p.name.lower()) if folder.is_dir() else []
-        count = len(self._pdf_files)
-        self.folder_info.setText(
-            f"{count} PDF file{'s' if count != 1 else ''} found in this folder."
-            if count else "No PDF files found in this folder.")
+    def _export_path(self) -> Path | None:
+        """The chosen export file, if it (still) exists."""
+        path = self.folder_picker.path()
+        return Path(path) if path and Path(path).is_file() else None
+
+    def _on_export_chosen(self, path: str) -> None:
+        """Mark step 2 done when a file is chosen (it is read on "Read invoices")."""
+        ok = self._export_path() is not None
+        self.folder_info.setText(f"{Path(path).name} chosen. Click “Read invoices”."
+                                 if ok else "The file was not found.")
         self.folder_info.show()
-        self.step_folder.set_done(count > 0)
+        self.step_folder.set_done(ok)
         self._refresh_buttons()
 
     def _on_output_chosen(self, path: str) -> None:
@@ -426,23 +432,21 @@ class GeneratePage(ScrollPage):
         Enable buttons only when their inputs are ready, and explain what is
         missing in the hint line so the user is never stuck guessing.
         """
-        busy = self._thread is not None
-        has_folder = bool(self._pdf_files)
+        busy = self._busy
+        has_folder = self._export_path() is not None
         has_output = bool(self.output_picker.path())
         any_report = any(cb.isChecked() for cb in self.report_checks)
 
-        self.scan_btn.setEnabled(has_folder)
-        self.scan_btn.setText("Cancel scan" if self._thread is not None
-                              else "Scan invoices")
+        self.scan_btn.setEnabled(has_folder and not busy)
         self.generate_btn.setEnabled(
             self._scanned and has_output and any_report and not busy)
 
         if busy:
             self.hint.setText("")
-        elif not has_folder:
-            self.hint.setText("Choose the invoice folder to start.")
+        elif not has_folder and not self._scanned:
+            self.hint.setText("Choose the invoice export to start.")
         elif not self._scanned:
-            self.hint.setText("Scan the invoices to check them before generating.")
+            self.hint.setText("Read the invoices to check them before generating.")
         elif not has_output:
             self.hint.setText("Choose where to save the workbook.")
         elif not any_report:
@@ -467,66 +471,76 @@ class GeneratePage(ScrollPage):
         self.log.scrollToBottom()
 
     def _start_scan(self) -> None:
-        """Start reading the folder in the background (or cancel a running scan)."""
-        if self._worker is not None:
-            self._worker.cancel()
-            self.status.setText("Stopping after the current file…")
+        """Read the chosen export for the chosen month and save the result."""
+        path = self._export_path()
+        if path is None:
+            self.toast("Choose the invoice export first.")
             return
         year, month = self.selected_month()
+        label_ = month_label(year, month)
         self.log.clear()
         self.summary_row.hide()
         self.progress.setValue(0)
-        self._add_log(f"Reading {len(self._pdf_files)} files for "
-                      f"{month_label(year, month)}…", Colors.SLATE)
-
-        self._thread = QThread(self)
-        self._worker = ScanWorker(list(self._pdf_files), year, month)
-        self._worker.moveToThread(self._thread)
-        self._thread.started.connect(self._worker.run)
-        self._worker.progress.connect(self._on_scan_progress)
-        self._worker.finished.connect(self._on_scan_finished)
-        self._thread.start()
+        self._add_log(f"Reading {path.name} for {label_}…", Colors.SLATE)
+        self._busy = True
         self._refresh_buttons()
-
-    def _on_scan_progress(self, done: int, total: int, name: str,
-                          status: str, reason: str) -> None:
-        """One file read: log it and move the progress bar."""
-        self.status.setText(f"Reading {done} of {total}  ·  {name}")
-        self._set_progress(int(done * 100 / max(total, 1)))
-        if status == "read":
-            self._add_log(f"✓  {name}", Colors.GREEN)
-        elif status == "skipped":
-            self._add_log(f"–  {name}: {reason}", Colors.SLATE)
-        else:
-            self._add_log(f"✗  {name}: {reason}", Colors.RED)
-
-    def _on_scan_finished(self, results: list) -> None:
-        """Save the results (unless cancelled) and update the summary."""
-        cancelled = self._worker.is_cancelled if self._worker else False
-        self._thread.quit()
-        self._thread.wait()
-        self._thread, self._worker = None, None
-        year, month = self.selected_month()
-        if cancelled:
-            self.status.setText("Scan cancelled. Nothing was saved.")
-            self._add_log("Scan cancelled – nothing was saved.", Colors.AMBER)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            scan = classify_export(path, year, month, FIRM_GSTIN)
+        except ExportFileError as exc:
+            QApplication.restoreOverrideCursor()
+            self._busy = False
+            self.status.setText("The export could not be read.")
+            self._add_log(f"✗  {exc}", Colors.RED)
+            QMessageBox.warning(self, "Invoice export", str(exc))
             self._refresh_buttons()
             return
-        counts = self.invoices.store_scan(
-            year, month, str(Path(self.folder_picker.path())), results)
+        if not scan.results:
+            QApplication.restoreOverrideCursor()
+            self._busy = False
+            self.status.setText(f"No {label_} invoices in this export.")
+            self._add_log(f"✗  No invoice in {path.name} is dated in {label_} "
+                          f"({scan.other_months} invoices from other months). "
+                          "Nothing was saved.", Colors.RED)
+            self._refresh_buttons()
+            return
+        before = self._category_changes()
+        counts = self.invoices.store_scan(year, month, str(path), scan.results)
+        changed = self._category_changes() - before
+        QApplication.restoreOverrideCursor()
+        self._busy = False
         self._scanned = True
-        self._bar_anim.stop()
-        self.progress.setValue(100)
-        self.status.setText("Scan complete")
+
+        for r in scan.results:
+            if r.status == "skipped":
+                self._add_log(f"–  {r.file_name}: {r.reason}", Colors.SLATE)
+            elif r.status == "error":
+                self._add_log(f"✗  {r.file_name}: {r.reason}", Colors.RED)
+        self._add_log(f"✓  {counts['read']} invoices ({scan.rows} lines in the file) "
+                      f"read for {label_}.", Colors.GREEN)
+        if scan.other_months:
+            self._add_log(f"–  {scan.other_months} invoice{'s' if scan.other_months != 1 else ''}"
+                          " dated in other months ignored.", Colors.SLATE)
+        if changed:
+            self._add_log(f"–  Category set from Zoho's item type for {changed} "
+                          f"product{'s' if changed != 1 else ''} (see the audit log).",
+                          Colors.SLATE)
+        self._set_progress(100)
+        self.status.setText("Invoices read")
         self._show_summary(year, month)
         open_n = sum(1 for i in self.invoices.issues(year, month) if i.status == "open")
-        self._add_log(f"{counts['read']} invoices read, {open_n} issue"
-                      f"{'s' if open_n != 1 else ''} to review.",
+        self._add_log(f"{open_n} issue{'s' if open_n != 1 else ''} to review.",
                       Colors.AMBER if open_n else Colors.GREEN)
         self.scanFinished.emit(year, month)
         self._refresh_buttons()
-        self.toast("Scan complete. Review the issues before generating."
-                   if open_n else "Scan complete. No issues found.")
+        self.toast("Invoices read. Review the issues before generating."
+                   if open_n else "Invoices read. No issues found.")
+
+    def _category_changes(self) -> int:
+        """How many Category changes Zoho's item type has made so far."""
+        return self.invoices.conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE source = ?",
+            (ZOHO_CATEGORY_SOURCE,)).fetchone()[0]
 
     def _show_summary(self, year: int, month: int) -> None:
         """'34 invoices read · 5 need attention · 2 skipped' + Review link."""
@@ -541,7 +555,7 @@ class GeneratePage(ScrollPage):
 
     def refresh_summary(self) -> None:
         """Called when masters change or an issue is fixed elsewhere."""
-        if self._scanned and self._thread is None:
+        if self._scanned and not self._busy:
             self._show_summary(*self.selected_month())
 
     # ------------------------------------------------------------------

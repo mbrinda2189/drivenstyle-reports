@@ -23,5 +23,5 @@ The version string below is shown in the sidebar footer and must be kept in
 step with CHANGELOG.md whenever a new version is released.
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __app_name__ = "Drive N Style Reports"

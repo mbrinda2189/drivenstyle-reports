@@ -1,11 +1,13 @@
 # Drive N Style Reports
 
-A Windows desktop tool for **Drive N Style** that reads a month's Zoho invoice
-PDFs and produces one Excel workbook with 12 management reports. Reports are
+A Windows desktop tool for **Drive N Style** that reads a month's invoices
+from Zoho Books' invoice export and produces one Excel workbook with 12
+management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.5.0 – The 12 reports.** The tool reads the month's
-> Carkrafts invoice PDFs, matches them to the masters, lets anything unclear
+> **Current status: v0.6.0 – Zoho invoice export.** The tool reads the
+> month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
+> matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
 > Monthly inputs (indirect costs, high-profit threshold) and History (Open /
 > Regenerate) are live. Still to come: the client's actual spot incentive
@@ -31,7 +33,7 @@ prepared each month before the 7th, for the month just ended.
 
 | Screen | What it is for |
 |---|---|
-| **Generate reports** | Choose the month, the invoice folder, the optional Zoho payments export and the save folder; tick reports; scan the invoices, then generate the workbook. |
+| **Generate reports** | Choose the month, Zoho's invoice export, the optional Zoho payments export and the save folder; tick reports; read the invoices, then generate the workbook. |
 | **Scan review** | Everything the scan could not settle: items not in the Product master, salesperson or vehicle not found / ambiguous / not printed, labour lines without a labour item, totals that do not add up, and skipped files - each with a fix control. A second tab lists every invoice read, as understood by the tool. |
 | **Masters** | Products, Sales executives, Cars and Incentives, stored in the database. Search, filter, Edit form, import from Excel with column matching, export, rate history, Select all with Mark active / inactive / Delete / Delete all. Changing an amount asks for an "effective from" date so earlier months keep the old amount. Packages (sample) and Audit log tabs. |
 | **Monthly inputs** | Indirect costs for the month (for the P&L and cost % report) and the high-profit threshold. |
@@ -39,29 +41,37 @@ prepared each month before the 7th, for the month just ended.
 
 ## Key decisions so far
 
-- **Carkrafts invoice format only** (Zoho "TAX INVOICE" with Sales person,
-  Customer Type, Vehicle and VIN / Registration Number). Invoices are text
-  PDFs, read directly - no OCR. The GSTIN `33AAOFD7793F1Z2` is checked as a
-  safety net; another firm's invoice would be skipped.
-- **Tax-inclusive rates.** GST is removed from line amounts and the
-  invoice-level discount is spread across lines in proportion to their value.
-  Invoices that show **no GST** (e.g. the `DNS-xxx-2627` series) count in full
-  as sales.
-- **₹1 "Labour Charges for …" lines are markers** that labour was done, not
+- **Invoices come from Zoho's invoice export (v0.6.0).** Zoho Books › Sales ›
+  Invoices › Export gives one row per invoice line. Zoho's own `Item Total`
+  (the line after its share of the invoice discount, without GST) is the
+  line's **sales**, and `Item Tax Amount` its GST - checked equal to the
+  tool's own calculation to the paisa. Each invoice must satisfy lines + GST
+  + round-off = Total. The GSTIN `33AAOFD7793F1Z2` is checked as a safety
+  net; Void / Draft invoices are skipped. The invoice PDF reader of v0.4.0
+  is kept in the code but no longer used on screen.
+- **Tax-inclusive rates.** Invoices that show **no GST** (e.g. the
+  `DNS-xxx-2627` series) count in full as sales.
+- **₹1 "Labour Charges for …" and "Labour - …" lines are markers** that labour was done, not
   sales items. The labour cost comes from the main product's labour charge in
   the Product master.
 - **Salesperson** is printed as "Name - Branch" (e.g. "Kumaran - HO"); it is
   matched on name and branch. Without a branch, the name must match exactly
-  one executive.
-- **Payment mode** is taken from the invoice when printed; otherwise from the
-  optional Zoho payments export.
+  one executive. Spaces and dots are ignored ("Udhayakumar" = "UDHAYA
+  KUMAR") and "Head Office" = "HO", "KTG" = "Kothagiri".
+- **Payment mode** comes from the optional Zoho payments export; where it has
+  nothing for an invoice, the export's `CF.Invoice Type` (UPI / Cash / CHY)
+  is used.
+- **Branch** in the reports is the salesperson's branch from the Sales
+  executive master; the invoice's `CF.Branch` is stored but not reported.
 - **Category from the Product master.** Every invoice line carries SAC
   998729, so product vs service comes from the Product master's Category,
   not from the invoice. If the client's sheet has no Category column, it is
-  worked out from the master's HSN/SAC code (SAC codes start with 99).
-- **Item matching** by item name (Carkrafts invoices print no SKU). The
-  Product master should use the same names as Zoho; any other name is mapped
-  once on Scan review and remembered.
+  worked out from the master's HSN/SAC code (SAC codes start with 99) and
+  then replaced by Zoho's Item Type from the invoice export (see *Reading
+  the invoices*), unless set by hand.
+- **Item matching** by item name, then a remembered mapping, then the SKU
+  (the export gives the SKU for most lines). Any other name is mapped once
+  on Scan review and remembered.
 - **Labour depends on the item** and is kept on the Product master
   (Labour involved + Labour charge).
 - **Incentive groups.** The client's incentive sheet lists groups ("PPF",
@@ -99,6 +109,14 @@ for the next import. Importing again updates existing rows and adds new
 ones. **Import the Incentive sheet before the Product sheet**, so product
 incentive groups can be linked.
 
+The client's items sheet (*Master Data - Items* in the Chandra Hyundai
+pricelist) is recognised as it is: CODE → SKU, Item Description → Product
+name, Labour (amounts; "-" = none) → Labour charge, Sale with GST → Selling
+price, Purchase without GST → Cost price, HSN/SAC. Labour involved is set
+for items with a labour charge. Vendor, Margin, Min Sale Price and Usage
+Unit are not used; the "Product Type" notes column is ignored as a
+category. Rows priced in words ("mrp less 10%") are listed and left out.
+
 **Finding rows.** Each tab has a search box, a filter (Products: category,
 Sales executives: branch, Cars: segment) and a status filter (active /
 inactive).
@@ -131,15 +149,22 @@ refuses it.
 `data/samples/` (sales executive and incentive sheets in the client's own
 layout), then import them - incentives first.
 
-## Scanning invoices
+## Reading the invoices
 
-1. On **Generate reports**, choose the month and the folder of that month's
-   invoice PDFs, then **Scan invoices**. The PDFs are read in the background
-   (about 0.1 s each); the log shows each file: ✓ read, – skipped (another
-   month, repeated invoice number), ✗ could not be read.
-2. The month's invoices are saved in the database, replacing an earlier scan
-   of the same month. **Fixes made on Scan review are kept**, so scanning
-   again (e.g. after adding late invoices to the folder) never loses work.
+1. In Zoho Books: **Sales › Invoices › Export**, CSV or XLSX, covering at
+   least the month (a longer period is fine - other months are ignored).
+2. On **Generate reports**, choose the month and that file (step 2), then
+   **Read invoices**. The log shows how many invoices were read, how many
+   dated in other months were ignored, and any Void / Draft or other-firm
+   invoice skipped.
+3. The month's invoices are saved in the database, replacing an earlier
+   reading of the same month. **Fixes made on Scan review are kept**, so
+   reading a fresh export again (e.g. after late invoices) never loses work.
+4. **Category from Zoho.** Products whose Category was never set by hand
+   take Zoho's Item Type (goods → Product, service → Service) - the HSN
+   code alone is not reliable (many goods carry the service code 998729).
+   Change a product's Category on the Masters screen and Zoho no longer
+   touches it. Each change is in the audit log (source "Invoice export").
 3. **Scan review** lists what needs attention. Each fix is saved at once:
    - *Item not in the Product master* - choose the product; the tool
      remembers that name for every invoice. Or add the product on the Masters
@@ -148,14 +173,13 @@ layout), then import them - incentives first.
      executive / car. "All invoices" applies it to every invoice printing the
      same name (off for ambiguous names, which are decided per invoice).
    - *Labour line without a labour item* / *totals do not add up* - open the
-     file to check, then Accept (or correct the master).
+     export to check, then Accept (or correct the master).
    Every fix is recorded in the audit log (master "Scan review").
 4. The **Invoices read** tab shows each invoice as the tool understood it;
    hover an invoice number to see its lines and the product each matched.
 
-Each invoice's arithmetic is checked: line amounts must add up to the Sub
-Total, and Sub Total (before GST) − discount + GST + rounding must equal the
-Total, within ₹1.
+Each invoice's arithmetic is checked: the lines' Item Total + GST + round-off
+must equal the invoice Total, within ₹1.
 
 ## The reports workbook
 
@@ -275,14 +299,15 @@ drivenstyle-reports/
     ├── utils.py             Indian number formatting (12,34,567.00), parsing, date helper
     ├── sample_data.py       Placeholder rows for screens not yet connected
     ├── main_window.py       Window layout and wiring between pages
-    ├── scan_worker.py       Reads the invoice PDFs in a background thread
+    ├── scan_worker.py       Reads invoice PDFs in a background thread (not used from v0.6.0)
     ├── assets/              SVG icons used by the stylesheet
     ├── data/                No UI code here
     │   ├── paths.py         Where the database file lives
     │   ├── master_defs.py   Fields of each master (drives screen, import and export)
     │   ├── database.py      SQLite tables and schema upgrades
     │   ├── masters_repo.py  Reading/saving masters, rate history, duplicates, audit log
-    │   ├── invoice_reader.py  Reads one Carkrafts invoice PDF (header, items, totals)
+    │   ├── invoice_export.py  Reads Zoho's invoice export (one invoice per number) - v0.6.0
+    │   ├── invoice_reader.py  Reads one Carkrafts invoice PDF (kept; not used on screen)
     │   ├── invoices_repo.py   Stores scans, matches to masters, Scan review issues and fixes
     │   ├── inputs_repo.py     Monthly inputs (indirect costs, threshold) and report history
     │   └── payments_io.py     Reads Zoho's Payments Received export
@@ -338,8 +363,9 @@ pyinstaller --noconsole --onefile --add-data "app/assets;app/assets" main.py
 - ~~v0.3 – Incentive master, filters, edit form, bulk actions, audit log~~ ✔
 - ~~v0.4 – Invoice reader, matching to the masters, real Scan review~~ ✔
 - ~~v0.5 – The 12 reports, Excel workbook, Monthly inputs, History~~ ✔
+- ~~v0.6 – Invoices from Zoho's invoice export; Items master import fixes~~ ✔
 - Spot incentive calculation – once the client confirms the rule
-- v0.6 – Client's spot incentive rule, package definitions, packaging as .exe
+- Package definitions, packaging as .exe
 
 ## Version control
 

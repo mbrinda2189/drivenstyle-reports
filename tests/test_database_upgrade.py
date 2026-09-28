@@ -45,3 +45,14 @@ def test_upgrade_from_v020(tmp_path):
     assert (tmp_path / "drivenstyle.schema1.bak.db").exists()   # safety copy
     ver = repo.conn.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()[0]
     assert int(ver) == SCHEMA_VERSION
+
+
+def test_upgrade_adds_export_columns(tmp_path):
+    """Step 5 (v0.6.0): invoices / lines get the export's extra fields."""
+    db = tmp_path / "drivenstyle.db"
+    make_v1_database(db)
+    conn = connect(db)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(invoices)")}
+    assert {"source", "status", "branch"} <= cols
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(invoice_lines)")}
+    assert "item_type" in cols

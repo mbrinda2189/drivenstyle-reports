@@ -154,7 +154,11 @@ PRODUCTS = MasterDef(
                            "hsn/sac code")),
         # Category decides "service vs product" in the reports. If the sheet
         # has no category column, it is worked out from the HSN/SAC code
-        # (see masters_repo.infer_category).
+        # (see masters_repo.infer_category) and, from v0.6.0, replaced by
+        # Zoho's Item Type once the product appears on the invoice export
+        # (invoices_repo.apply_zoho_categories) unless set by hand.
+        # A matched column holding other text (Items.xlsx "Product Type"
+        # has notes such as "120 sqft purchased") is ignored for that row.
         FieldDef("category", "Category", kind="choice",
                  choices=PRODUCT_CATEGORIES, default="Product", width=100,
                  synonyms=("type", "product type", "item type",
@@ -169,23 +173,33 @@ PRODUCTS = MasterDef(
         FieldDef("selling_price", "Selling price (₹)", kind="money",
                  dated=True, default=0.0, width=130,
                  synonyms=("selling price", "sp", "sale price", "sales price",
-                           "selling rate", "rate", "price", "mrp")),
+                           "selling rate", "rate", "price", "mrp",
+                           # client's Items.xlsx (v0.6.0)
+                           "sale with gst", "selling price with gst",
+                           "sale price with gst")),
         FieldDef("cost_price", "Cost price (₹)", kind="money",
                  dated=True, default=0.0, width=120,
                  synonyms=("cost price", "cp", "cost", "purchase price",
-                           "purchase rate", "landing cost", "cost rate")),
+                           "purchase rate", "landing cost", "cost rate",
+                           # client's Items.xlsx (v0.6.0)
+                           "purchase without gst", "purchase price without gst",
+                           "cost without gst")),
         FieldDef("has_labour", "Labour involved", kind="bool",
                  default=False, width=125,
                  synonyms=("labour involved", "labor involved",
                            "labour applicable", "involves labour",
                            "labour yes/no", "labour (yes/no)", "labour y/n",
-                           "labour required", "labour")),
+                           "labour required")),
+        # A heading of just "Labour" holds AMOUNTS in the client's
+        # Items.xlsx, so it belongs to Labour charge, not to the yes/no
+        # field above (fixed in v0.6.0). When no Labour involved column is
+        # matched, Labour involved = Yes for a labour charge above zero.
         FieldDef("labour_charge", "Labour charge (₹)", kind="money",
                  dated=True, default=0.0, width=135,
                  synonyms=("labour charge", "labour charges", "labor charge",
                            "labor charges", "labour cost", "labour amount",
                            "labour rate", "fitting charge",
-                           "installation charge")),
+                           "installation charge", "labour")),
         FieldDef("effective_from", "Effective from", kind="date",
                  importable=False, width=115),
         FieldDef("active", "Active", kind="bool", importable=False,

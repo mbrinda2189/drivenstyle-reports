@@ -55,7 +55,7 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
              year: int, month: int, out_dir: str | Path, reports: list[str],
              payments_path: str = "") -> GenerateResult:
     if invoices.scan_run(year, month) is None:
-        raise GenerateError("This month has not been scanned yet.")
+        raise GenerateError("This month's invoices have not been read yet.")
     out_dir = Path(out_dir)
     if not out_dir.is_dir():
         raise GenerateError(f"The folder “{out_dir}” does not exist.")
@@ -67,6 +67,9 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
         except PaymentsFileError as exc:
             raise GenerateError(str(exc)) from exc
 
+    # Products added or imported since the invoices were read also take
+    # Zoho's item type as their category, unless it was set by hand.
+    invoices.apply_zoho_categories()
     data = build_month(masters, invoices, inputs, year, month)
     trend = (trend_months(masters, invoices, inputs, year, month)
              if "Trend analysis (month on month)" in reports else [])

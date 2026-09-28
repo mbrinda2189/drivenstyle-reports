@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 4)
+TABLES (schema version 5)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -49,7 +49,8 @@ TABLES (schema version 4)
     invoices          one row per invoice read, with everything printed on
                       it (month = YYYY-MM it was scanned for)
     invoice_lines     its item lines, with the per-line split of discount
-                      and GST worked out at scan time
+                      and GST (worked out at scan time for PDFs; taken as
+                      they are from Zoho's export from v0.6.0)
     invoice_checks    arithmetic differences found on an invoice
     scan_files        every PDF in the month's folder: read / skipped /
                       error, and why
@@ -86,6 +87,10 @@ an older database then upgrades it in place without losing data.
                      products.incentive_id; audit_log (read-only)
     step 3 (v0.4.0)  scanned invoices and Scan review fixes
     step 4 (v0.5.0)  monthly inputs and generated-report history
+    step 5 (v0.6.0)  invoices read from Zoho's invoice export: invoices get
+                     source (pdf / export), status (Closed / Overdue ...)
+                     and branch (CF.Branch); invoice lines get item_type
+                     (Zoho goods / service)
 
 A step is either a block of SQL or a Python function taking the connection
 (used when values must be worked out in Python, e.g. contact-number keys).
@@ -100,7 +105,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -379,6 +384,13 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
         reports_json   TEXT NOT NULL DEFAULT '[]'        -- reports included
     );
     CREATE INDEX IF NOT EXISTS ix_report_runs_month ON report_runs(month);
+    """,
+    # --- 4 -> 5 : invoices from Zoho's invoice export -----------------------
+    """
+    ALTER TABLE invoices ADD COLUMN source TEXT NOT NULL DEFAULT 'pdf';
+    ALTER TABLE invoices ADD COLUMN status TEXT NOT NULL DEFAULT '';
+    ALTER TABLE invoices ADD COLUMN branch TEXT NOT NULL DEFAULT '';
+    ALTER TABLE invoice_lines ADD COLUMN item_type TEXT NOT NULL DEFAULT '';
     """,
 ]
 

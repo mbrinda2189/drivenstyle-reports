@@ -16,6 +16,7 @@ dist/
 output/
 *.xlsx
 *.pdf
+*.csv
 
 # Editors / OS
 .vscode/

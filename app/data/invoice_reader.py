@@ -119,6 +119,12 @@ class InvoiceLine:
     rate: float = 0.0
     amount: float = 0.0
     sku: str = ""                 # only if an "SKU : ..." line is printed
+    # Filled only when the line comes from Zoho's invoice EXPORT
+    # (invoice_export.py), which gives each line's value after discount
+    # and its GST directly - then nothing has to be worked out.
+    net_value: float | None = None    # after discount, excluding GST
+    gst: float | None = None          # GST on the line
+    item_type: str = ""               # Zoho "Item Type": goods / service
 
 
 @dataclass
@@ -151,6 +157,10 @@ class ParsedInvoice:
     balance_due: float = 0.0
     extra: dict[str, str] = field(default_factory=dict)     # unknown labels
     pages: int = 0
+    # Set for invoices read from the export (v0.6.0):
+    source: str = "pdf"            # "pdf" or "export"
+    status: str = ""               # Zoho Invoice Status: Closed / Overdue ...
+    branch: str = ""               # Zoho custom field CF.Branch (stored only)
 
     @property
     def tax_total(self) -> float:

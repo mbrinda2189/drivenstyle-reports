@@ -4,9 +4,16 @@ invoices_repo.py - Scanned invoices: storing, matching and Scan review
 
 WHAT THIS MODULE DOES
 ---------------------
-Takes the invoices read by invoice_reader.py and:
+Takes the invoices read from Zoho's invoice export (invoice_export.py,
+from v0.6.0) - or, in earlier versions, from the invoice PDFs
+(invoice_reader.py) - and:
 
-    1. classify_file(path, year, month)
+    0. classify_export(...) in invoice_export.py
+           Reads the export and keeps the chosen month's invoices. Each
+           invoice becomes one "file" entry below (its name is the invoice
+           number), so everything that follows is the same for both.
+
+    1. classify_file(path, year, month)          (PDFs - no longer on screen)
            Reads one PDF and decides what to do with it:
                read     - a Drive N Style invoice dated in the month
                skipped  - another month, another firm's GSTIN, or an
@@ -35,14 +42,25 @@ Takes the invoices read by invoice_reader.py and:
            set_car          same, for the vehicle
            acknowledge      accept a totals difference or a labour note
 
+    5. apply_zoho_categories()
+           Products whose Category was never set by hand take Zoho's Item
+           Type from the export (goods -> Product, service -> Service).
+           Agreed with Brinda (v0.6.0, decision A): Items.xlsx has no
+           category, and the HSN code alone is unreliable (many goods carry
+           the service code 998729). Once someone changes a product's
+           Category on the Masters screen or by import, Zoho no longer
+           touches it. Every change is written to the audit log.
+
 MATCHING RULES
 --------------
 Item      1. a remembered mapping for this item name
           2. a product with exactly this name (compared ignoring capitals,
              extra spaces and dash style)
           3. the SKU, if the invoice prints one
-Labour    lines named "Labour Charges for ..." (billed at Rs. 1) are
-marker    markers that labour was done, not sales items. The labour cost
+Labour    lines named "Labour Charges for ..." or "Labour - ..." (billed at
+marker    Rs. 1) are markers that labour was done, not sales items.
+          ("... + Labour Extra" in the middle of a name is a product.) The
+          labour cost
           comes from the main product's labour charge in the Product
           master. A marker on an invoice with no product needing labour is
           flagged.
@@ -50,6 +68,10 @@ Sales     "Kumaran - HO" is split into name "Kumaran" and branch "HO"; the
 person    executive with that name AND branch is used. With no branch
           printed ("Nandha Kumar"), the name alone must match exactly one
           executive. None or several matches -> Scan review.
+          Names are compared on letters and digits only, so "Udhayakumar"
+          = "UDHAYA KUMAR" and "S.F. Naveen" = "SF Naveen". Branches are
+          compared the same way, with the short forms the invoices use:
+          "Head Office" = "HO", "KTG" = "Kothagiri" (BRANCH_ALIASES).
           (A per-invoice choice or a remembered name comes first.)
 Car       the printed Vehicle ("PUNCH.EV", "CRETA") compared with the Car
           master's model (or make + model), ignoring capitals, spaces and
@@ -57,6 +79,10 @@ Car       the printed Vehicle ("PUNCH.EV", "CRETA") compared with the Car
 
 AMOUNTS PER LINE (for the reports)
 ----------------------------------
+From the EXPORT (v0.6.0): Zoho's own "Item Total" (after the line's share
+of the discount, without GST) and "Item Tax Amount" are stored as they are
+- see invoice_export.py. What follows applies to PDFs only.
+
 Rates are tax inclusive and the discount is given on the whole invoice.
 `allocate_lines()` splits the invoice into per-line figures:
     GST invoice (e.g. 18%)   value before GST = amount / 1.18
@@ -73,8 +99,14 @@ Rounding stays on the invoice as a whole.
 
 CHECKS ON EACH INVOICE
 ----------------------
+Export:
+    * line values (Item Total) + GST + Round Off = Total
+    * the invoice-level columns agree on every line of the invoice
+PDF:
     * line amounts add up to the Sub Total
     * Sub Total (before GST) - discount + GST + rounding = Total
+Both:
+    * quantity x rate = line amount
 Differences above Rs. 1 are shown on Scan review so a misread can never
 slip into the reports unnoticed.
 """
@@ -94,7 +126,15 @@ from app.data.masters_repo import MastersRepo, name_key
 
 FIRM_GSTIN = "33AAOFD7793F1Z2"          # Drive N Style
 TOLERANCE = 1.00                        # rupees allowed in the checks
-LABOUR_MARKER_RE = re.compile(r"^\s*labou?r\s+charges?\b", re.IGNORECASE)
+# "Labour Charges for Sunfilm - Front", "Labour Charges PVC/...",
+# "Labour - Seat Cover - Art Leather". Only at the START of the name.
+LABOUR_MARKER_RE = re.compile(r"^\s*labou?r\s*(charges?\b|-)", re.IGNORECASE)
+# Branch short forms on invoices -> the form used for comparing
+# (compared after branch_key has removed spaces and punctuation).
+BRANCH_ALIASES = {"headoffice": "ho", "ktg": "kothagiri"}
+# Zoho "Item Type" -> Product master Category.
+ZOHO_ITEM_TYPES = {"goods": "Product", "service": "Service"}
+ZOHO_CATEGORY_SOURCE = "Invoice export (Zoho item type)"
 MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
                "August", "September", "October", "November", "December"]
 
@@ -111,7 +151,7 @@ def month_label(year: int, month: int) -> str:
 
 
 def is_labour_marker(description: str) -> bool:
-    """True for 'Labour Charges for ...' lines."""
+    """True for 'Labour Charges for ...' and 'Labour - ...' lines."""
     return bool(LABOUR_MARKER_RE.match(description or ""))
 
 
@@ -121,6 +161,17 @@ def split_salesperson(printed: str) -> tuple[str, str]:
     if m and m.group(1).strip():
         return m.group(1).strip(), m.group(2).strip()
     return (printed or "").strip(), ""
+
+
+def person_key(text: str) -> str:
+    """'UDHAYA KUMAR' / 'Udhayakumar' / 'S.F. Naveen' -> letters and digits only."""
+    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
+
+
+def branch_key(text: str) -> str:
+    """'Head Office' / 'HO' -> 'ho'; 'KTG' / 'Kothagiri' -> 'kothagiri'."""
+    key = person_key(text)
+    return BRANCH_ALIASES.get(key, key)
 
 
 def vehicle_key(text: str) -> str:
@@ -194,9 +245,28 @@ def allocate_lines(amounts: list[float], tax_rate: float, discount: float,
     return out
 
 
+def _export_shares(inv: ParsedInvoice) -> list[dict]:
+    """
+    Per-line figures for an invoice from the export: Zoho's values as they
+    are. "Before tax" (the line before discount, without GST) is the tax
+    inclusive amount less the line's GST share at the line's own rate; the
+    discount share is what separates it from Zoho's Item Total.
+    """
+    out = []
+    for l in inv.lines:
+        net, gst = round(l.net_value or 0, 2), round(l.gst or 0, 2)
+        rate = gst / net if net else 0.0
+        before = round(l.amount / (1 + rate), 2) if l.amount else net
+        out.append(dict(before_tax=before, discount=round(max(before - net, 0.0), 2),
+                        net=net, gst=gst))
+    return out
+
+
 def check_totals(inv: ParsedInvoice) -> list[str]:
     """Differences between the printed figures (empty list = all agree)."""
     problems = []
+    if inv.source == "export":
+        return _check_export(inv)
     lines_sum = round(sum(l.amount for l in inv.lines), 2)
     if abs(lines_sum - inv.sub_total) > TOLERANCE:
         problems.append(f"Line amounts add up to {lines_sum:,.2f} but the "
@@ -214,6 +284,22 @@ def check_totals(inv: ParsedInvoice) -> list[str]:
     for l in qty_rate:
         problems.append(f"Line {l.line_no}: {l.qty:g} × {l.rate:,.2f} is not "
                         f"{l.amount:,.2f}.")
+    return problems
+
+
+def _check_export(inv: ParsedInvoice) -> list[str]:
+    """Checks for an invoice from the export (see module notes)."""
+    problems = []
+    note = inv.extra.get("export_notes", "")
+    if note:
+        problems.append(note)
+    net = round(sum(l.net_value or 0 for l in inv.lines), 2)
+    gst = round(sum(l.gst or 0 for l in inv.lines), 2)
+    expected = round(net + gst + inv.rounding, 2)
+    if abs(expected - inv.total) > TOLERANCE:
+        problems.append(f"Line values {net:,.2f} + GST {gst:,.2f} + round-off "
+                        f"{inv.rounding:,.2f} give {expected:,.2f} but the Total "
+                        f"is {inv.total:,.2f}.")
     return problems
 
 
@@ -259,6 +345,8 @@ class InvoicesRepo:
         """
         Replace the month's invoices with this scan. Invoice numbers seen
         twice keep the first file; the later one is listed as skipped.
+        `folder` is the PDF folder, or (v0.6.0) the path of the export file;
+        for the export each result is one invoice, named by its number.
         Returns counts: read, skipped, error.
         """
         key = month_key(year, month)
@@ -287,6 +375,7 @@ class InvoicesRepo:
             self.conn.execute(
                 "INSERT OR REPLACE INTO scan_runs(month, folder, scanned_at, "
                 "files) VALUES (?, ?, ?, ?)", (key, folder, now, len(results)))
+        self.apply_zoho_categories()
         return counts
 
     def _insert_invoice(self, key: str, inv: ParsedInvoice, now: str) -> None:
@@ -298,28 +387,32 @@ class InvoicesRepo:
             "seller, gstin, customer, customer_type, salesperson, vehicle, vin, "
             "po_no, terms, place_of_supply, payment_mode, sub_total, discount, "
             "discount_base, taxes_json, tax_total, tax_rate, rounding, total, "
-            "payment_made, balance_due, scanned_at) VALUES "
-            "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "payment_made, balance_due, scanned_at, source, status, branch) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (key, inv.file_name, inv.invoice_no, inv.invoice_date.isoformat(),
              inv.seller, inv.gstin, inv.customer, inv.customer_type,
              inv.salesperson, inv.vehicle, inv.vin, inv.po_no, inv.terms,
              inv.place_of_supply, inv.payment_mode, inv.sub_total, inv.discount,
              inv.discount_base, json.dumps(inv.taxes), inv.tax_total,
              inv.tax_rate, inv.rounding, inv.total, inv.payment_made,
-             inv.balance_due, now))
+             inv.balance_due, now, inv.source, inv.status, inv.branch))
         invoice_id = cur.lastrowid
-        shares = allocate_lines([l.amount for l in inv.lines], inv.tax_rate,
-                                inv.discount, inv.tax_total, inv.total, inv.rounding)
+        if all(l.net_value is not None for l in inv.lines):
+            shares = _export_shares(inv)
+        else:
+            shares = allocate_lines([l.amount for l in inv.lines], inv.tax_rate,
+                                    inv.discount, inv.tax_total, inv.total,
+                                    inv.rounding)
         for line, share in zip(inv.lines, shares):
             self.conn.execute(
                 "INSERT INTO invoice_lines(invoice_id, line_no, description, sku, "
                 "hsn_sac, qty, unit, rate, amount, is_labour_marker, before_tax, "
-                "discount_share, net_value, gst) VALUES "
-                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "discount_share, net_value, gst, item_type) VALUES "
+                "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (invoice_id, line.line_no, line.description, line.sku,
                  line.hsn_sac, line.qty, line.unit, line.rate, line.amount,
                  int(is_labour_marker(line.description)), share["before_tax"],
-                 share["discount"], share["net"], share["gst"]))
+                 share["discount"], share["net"], share["gst"], line.item_type))
         for problem in check_totals(inv):
             self.conn.execute(
                 "INSERT INTO invoice_checks(invoice_id, message) VALUES (?, ?)",
@@ -407,9 +500,9 @@ class InvoicesRepo:
         if eid in m["exec_ids"]:
             return eid, ("", [])
         name, branch = split_salesperson(printed)
-        by_name = [e for e in m["execs"] if name_key(e["name"]) == name_key(name)]
+        by_name = [e for e in m["execs"] if person_key(e["name"]) == person_key(name)]
         if branch:
-            both = [e for e in by_name if name_key(e["branch"]) == name_key(branch)]
+            both = [e for e in by_name if branch_key(e["branch"]) == branch_key(branch)]
             if len(both) == 1:
                 return both[0]["id"], ("", [])
             if len(both) > 1:
@@ -417,7 +510,7 @@ class InvoicesRepo:
         elif len(by_name) == 1:
             return by_name[0]["id"], ("", [])
         # The whole printed text as a name (e.g. a hyphenated name).
-        whole = [e for e in m["execs"] if name_key(e["name"]) == name_key(printed)]
+        whole = [e for e in m["execs"] if person_key(e["name"]) == person_key(printed)]
         if len(whole) == 1:
             return whole[0]["id"], ("", [])
         if len(by_name) > 1:
@@ -549,6 +642,7 @@ class InvoicesRepo:
                 (name_key(printed), product_id,
                  datetime.now().isoformat(timespec="seconds")))
             self._log(f"Item “{printed}”", "Product", name)
+        self.apply_zoho_categories()          # the item's Zoho type now applies
 
     def set_salesperson(self, invoice_no: str, printed: str, executive_id: int,
                         all_invoices: bool) -> None:
@@ -582,6 +676,50 @@ class InvoicesRepo:
                     (invoice_no, kind, target, now))
                 record = f"Invoice {invoice_no}"
             self._log(record, field_label, label)
+
+    def apply_zoho_categories(self) -> int:
+        """
+        Give products whose Category was never set by hand the category of
+        Zoho's Item Type on the invoices (see module notes, item 5).
+
+        "Set by hand" = the audit log has a Category change for the product
+        from anywhere other than this step, or the product was added on the
+        Masters screen (where the category is chosen). A product sold as
+        both goods and service in Zoho is left alone. Returns the number of
+        products changed.
+        """
+        seen: dict[int, set[str]] = {}
+        m = self._masters_snapshot()
+        for line in self.conn.execute(
+                "SELECT description, sku, item_type FROM invoice_lines "
+                "WHERE item_type <> '' AND is_labour_marker = 0").fetchall():
+            pid = self._match_product(dict(line), m)
+            category = ZOHO_ITEM_TYPES.get(line["item_type"])
+            if pid is not None and category:
+                seen.setdefault(pid, set()).add(category)
+        if not seen:
+            return 0
+        by_hand = {r["record_id"] for r in self.conn.execute(
+            "SELECT DISTINCT record_id FROM audit_log WHERE master = 'products' "
+            "AND ((field = 'Category' AND source <> ?) "
+            "     OR (action = 'Added' AND source = 'Masters screen'))",
+            (ZOHO_CATEGORY_SOURCE,))}
+        changed = 0
+        with self.conn:
+            for pid, cats in seen.items():
+                if len(cats) != 1 or pid in by_hand:
+                    continue
+                product = self.masters.get("products", pid)
+                new = next(iter(cats))
+                if product is None or product["category"] == new:
+                    continue
+                self.conn.execute("UPDATE products SET category = ? WHERE id = ?",
+                                  (new, pid))
+                self.masters._audit("products", pid, product["name"], "Edited",
+                                    "Category", product["category"], new,
+                                    ZOHO_CATEGORY_SOURCE)
+                changed += 1
+        return changed
 
     def acknowledge(self, invoice_no: str, kind: str, note: str = "") -> None:
         """Accept a totals difference or a labour note for one invoice."""

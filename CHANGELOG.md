@@ -6,6 +6,66 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] – 2026-09-28 – Zoho invoice export
+
+### Added
+- **Invoices from Zoho's invoice export** (`app/data/invoice_export.py`):
+  Generate step 2 is now "Invoice export (.csv / .xlsx)" and the button
+  "Read invoices". One row per line is grouped into one invoice per number;
+  only the chosen month is kept (other months are counted and ignored, so a
+  quarter's export works). Void / Draft and other-GSTIN invoices are listed
+  as skipped. A file that is not a Zoho invoice export is refused with the
+  missing columns named.
+- Zoho's per-line **`Item Total`** (after discount, without GST) and
+  **`Item Tax Amount`** are stored as they are - no allocation needed.
+  Check per invoice: lines + GST + round-off = Total (within ₹1), plus a
+  check that invoice-level columns agree on every line.
+- **Category from Zoho's Item Type** (decision A): products whose Category
+  was never set by hand take goods → Product / service → Service, applied
+  after reading, after mapping an item on Scan review and before
+  generating. A Category changed on the Masters screen or by import is
+  never overridden. Every change is in the audit log (source "Invoice
+  export (Zoho item type)").
+- Stored for later use: invoice status (Closed / Overdue), `CF.Branch`,
+  line item type. Payment made = Total − Balance.
+- Database schema 5 (backup taken before upgrading): invoices.source /
+  status / branch, invoice_lines.item_type.
+- Tests for the export reader, checks, matching, categories and the
+  Items.xlsx headings (118 tests).
+
+### Changed
+- **Payment mode fallback** (decision B): the export's `CF.Invoice Type`
+  (UPI / Cash / CHY) is used in report 11 only where the Payments Received
+  export has nothing for the invoice.
+- **Labour markers** also include "Labour - …" ₹1 lines (e.g. "Labour -
+  Seat Cover - Art Leather"), not only "Labour Charges …".
+- **Salesperson matching** ignores spaces and dots ("Udhayakumar" =
+  "UDHAYA KUMAR") and treats branch "Head Office" = "HO", "KTG" =
+  "Kothagiri".
+- Branch in reports stays the executive's branch from the master
+  (decision C).
+- Scan review "Open file" opens the export the month was read from.
+- The PDF reader (`invoice_reader.py`, `scan_worker.py`) stays in the code
+  but is no longer used on screen.
+
+### Fixed
+- **Items master import**: a "Labour" heading holding amounts was matched to
+  the yes/no field Labour involved; it now goes to Labour charge (Labour
+  involved = Yes when the charge is above zero). New headings recognised:
+  "Sale with GST", "Purchase without GST" ("CODE" already was).
+- "-", "Nil" or "NA" in an amount column now read as 0 instead of
+  rejecting the row (the client's Labour column uses "-").
+- A Category column holding notes (Items.xlsx "Product Type") no longer
+  rejects the row; the note is ignored and the category worked out instead.
+
+### Pending
+- 7 Items rows are priced in words ("mrp less 10%", "DC Product…"); they are
+  left out on import until the client gives amounts.
+- Salespeople still not in the executive list, or at another branch (see
+  CLAUDE.md), and the list's open points (a 9-digit number, missing
+  branches).
+- The client's actual spot incentive rule; package definitions.
+
 ## [0.5.0] – 2026-09-28 – The 12 reports
 
 ### Added

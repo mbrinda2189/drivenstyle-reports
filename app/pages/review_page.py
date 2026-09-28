@@ -171,8 +171,8 @@ class ReviewPage(ScrollPage):
         card.body.setAlignment(Qt.AlignCenter)
         title = label("No scan yet", "SectionTitle")
         title.setAlignment(Qt.AlignCenter)
-        text = label("Choose the month and the invoice folder on the Generate "
-                     "reports page and scan the invoices. Anything that needs "
+        text = label("Choose the month and Zoho's invoice export on the Generate "
+                     "reports page and read the invoices. Anything that needs "
                      "attention will be listed here.", "Muted", wrap=True)
         text.setAlignment(Qt.AlignCenter)
         text.setMaximumWidth(460)
@@ -445,9 +445,14 @@ class ReviewPage(ScrollPage):
 
     def _open_file(self, file_name: str) -> None:
         run = self.invoices.scan_run(self.year, self.month)
-        path = Path(run["folder"]) / file_name if run else None
+        path = None
+        if run:
+            # v0.6.0: "folder" is the export file itself (every invoice is in
+            # it); for months read from PDFs it is the folder of PDFs.
+            source = Path(run["folder"])
+            path = source if source.is_file() else source / file_name
         if path is None or not path.exists():
-            self.toast("The file is no longer in the scanned folder.")
+            self.toast("The file is no longer where it was read from.")
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 

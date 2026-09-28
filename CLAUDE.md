@@ -9,13 +9,14 @@ truth. Keep all three up to date.
 
 A Windows desktop tool (Python 3.10+, PySide6) for the client **Drive N
 Style / Carkrafts** (car accessories and detailing, Coimbatore; GSTIN
-`33AAOFD7793F1Z2`). Each month it reads the month's Zoho invoices, matches
+`33AAOFD7793F1Z2`). Each month it reads the month's invoices from Zoho's
+invoice export (Invoice.csv / .xlsx; PDFs until v0.5.0), matches
 every line, salesperson and car to the masters, lets anything unclear be
 fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.5.0** (tags v0.1.0 … v0.5.0 on GitHub
+Current version: **v0.6.0** (tags v0.1.0 … v0.6.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -51,6 +52,13 @@ $env:DNS_SAMPLE_INVOICES = "path\to\sample pdfs"; python -m pytest tests/test_in
 python scripts/make_sample_masters.py   # sample master sheets in data/samples/
 ```
 
+Git from the Cowork Linux VM (the folder is mounted from Windows): files
+are CRLF on disk and LF in the repo, and file modes differ, so always run
+`git -c core.autocrlf=input -c core.filemode=false …` there, stage files by
+name (never `git add -A`; `.git.zip` is Brinda's own backup), and remove a
+stale `.git/index.lock` if one is left. Qt cannot start in that VM (no
+libEGL); run screen tests in the cloud workspace instead.
+
 When testing Qt code headless, wait with `app.processEvents()` in a loop,
 **not** `QTest.qWait` – `qWait` starves the background scan thread (a scan
 of 7 PDFs took 14 s instead of 0.9 s).
@@ -63,7 +71,12 @@ executive list) stay out of Git. Keep samples in `data/samples/`
 (ignored). Tests build their data in code; real-file tests are opt-in via
 environment variables. The app's database lives in
 `%LOCALAPPDATA%\Drive N Style Reports\drivenstyle.db` (override with
-`DNS_REPORTS_DATA_DIR`; tests always do).
+`DNS_REPORTS_DATA_DIR`; tests always do). The client's current files are
+in `data/Samples/` (ignored): Invoice.csv (Sep 2026 export),
+Customer_Payment.csv (payments export), "Chandra Hyundai - Retail Counter -
+Pricelist (1).xlsx" (sheets: Master Data - Items, Executive ph.no,
+Incentive, Incentive Details = incentives actually paid per invoice,
+Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
 
 ## Architecture rules
 
@@ -96,7 +109,17 @@ environment variables. The app's database lives in
 - **Dated values**: selling price, cost price, labour charge, incentive
   amount and bill value keep an effective-from history; a date before the
   first rate uses the first rate.
-- **₹1 "Labour Charges for …" lines are markers** that labour was done,
+- **Invoices come from Zoho's invoice export** (v0.6.0). Sales per line =
+  `Item Total`, GST = `Item Tax Amount`, used as they are. Check: lines +
+  GST + Round Off = Total. Month by `Invoice Date`; other months ignored;
+  Void/Draft skipped. Payment made = Total − Balance.
+- **Category**: products never set by hand take Zoho's Item Type (goods →
+  Product, service → Service); a hand-set Category is never overridden
+  (`invoices_repo.apply_zoho_categories`, audit source "Invoice export (Zoho
+  item type)").
+- **Branch** in reports = the executive's branch from the master; the
+  invoice's CF.Branch is stored only.
+- **₹1 "Labour Charges for …" and "Labour - …" lines are markers** that labour was done,
   not products (category "Labour line"; their ₹1 stays in sales so totals
   agree).
 - **Invoices with any open Scan review issue are left out of every
@@ -107,7 +130,8 @@ environment variables. The app's database lives in
   Scan review, mapped once, remembered for all invoices.
 - **Sales executives are unique by contact number** (10-digit mobile;
   +91 / 91 / leading 0 allowed). Printed salesperson "Name - Branch" is
-  matched on name AND branch; none or several matches → Scan review.
+  matched on name AND branch (letters/digits only; "Head Office" = "HO",
+  "KTG" = "Kothagiri"); none or several matches → Scan review.
   Products unique by name (and SKU), cars by make+model, incentive groups
   by name. No duplicates anywhere.
 - **Nothing is deleted silently.** Rows can be marked inactive or deleted
@@ -121,93 +145,38 @@ environment variables. The app's database lives in
 - **Payment modes (report 11)** come from Zoho's "Payments Received"
   export (`Mode`, `Amount Applied to Invoice`, `Invoice Number`, `Deposit
   To`): every payment applied to the month's invoices, whatever the payment
-  date; otherwise the mode printed on the invoice; the rest is "Not
-  received".
+  date; otherwise the export's CF.Invoice Type (UPI / Cash / CHY); the
+  rest is "Not received".
 - Workbook: Cover, 12 report sheets, "Not included". Totals, profits,
   margins, averages and summaries are **live Excel formulas** (verify with
   LibreOffice recalculation: zero errors).
 
-## Next: v0.6.0 – switch to the Zoho invoice export (PROPOSED, NOT YET CONFIRMED)
+## Done: v0.6.0 – Zoho invoice export (2026-09-28)
 
-Brinda found that invoices can be exported from Zoho as a spreadsheet
-(`Invoice.csv`, 181 columns) and supplied the client's items master
-(`Items.xlsx`). The analysis below was shown to her; **she has not yet
-confirmed points 1–5 or answered A–C. Ask before coding.**
+Brinda confirmed points 1–5 and decisions A (category default from Zoho
+Item Type), B (CF.Invoice Type only as payment-mode fallback) and C (keep
+the executive's branch). See CHANGELOG.md for the full list.
 
-### What the export contains (September 2026 sample: 127 invoices, 371 lines, 1–26 Sep)
-- One row per invoice line. Key columns: `Invoice Number`, `Invoice Date`
-  (YYYY-MM-DD), `Invoice Status` (Closed / Overdue), `Customer Name`,
-  `Sales person`, `CF.Vehicle`, `CF.VIN / Registration Number`,
-  `CF.Customer Type`, `CF.Branch`, `CF.Invoice Type` (UPI / Cash / CHY),
-  `Item Name`, `SKU` (297 of 371 lines), `HSN/SAC`, `Item Type`
-  (goods/service), `Quantity`, `Item Price` (tax inclusive), `Item Total`,
-  `Item Tax %`, `Item Tax Amount`, `CGST`, `SGST`, `IGST`,
-  `Entity Discount Amount`, `SubTotal`, `Round Off`, `Total`, `Balance`,
-  `Supplier GST Registration Number`.
-- **`Item Total` = the line's value after its share of the entity-level
-  discount, excluding GST; `Item Tax Amount` = its GST.** Verified equal
-  to the tool's own allocation to the paisa on DNS-226-2627,
-  DNS26-GST-0753 and DNS26-GST1-0770.
-- Series: `DNS-###-2627` (99 invoices, only 5 with GST), `DNS26-GST-####`
-  (26, all GST), `DNS26-GST1-####` (2). All `Is Inclusive Tax` = True,
-  discount entity-level before tax.
-- Every invoice has a salesperson; 4 have no vehicle. 8 are Overdue
-  (unpaid) – their sales count; report 11 shows them as not received.
+Result on the real September files (127 invoices, 371 lines): every invoice
+reconciles to the paisa (no totals issues). With the pricelist's masters
+imported: 172 of 179 items import (7 priced in words – "mrp less 10%"), 61
+of 62 executives (NAVEENDRAN's 9-digit number). Open on Scan review: 24
+item names not in the master, 67 salesperson issues (13 people not in the
+list – Mano Vikram alone 29 invoices, Nandha Kumar 14 – and branch
+conflicts Karthick - HO ×3, Pravin - CMP), 4 invoices without a vehicle.
+Zoho's Item Type changed 12 categories from the HSN guess, e.g. Teflon /
+Underbody / Silencer / Glass Coating and Interior Foam Wash → Product
+(Zoho marks them goods) and the Blaupunkt sunfilm roll → Service. Brinda
+should confirm these with the client or correct them on the Masters screen.
 
-### Items.xlsx (179 items, no duplicate names/codes)
-Columns: (serial), `CODE`, `Item Description`, `Vendor`, `Labour`,
-`Sale with GST`, `Purchase without GST`, `Margin`,
-`Min Sale Price with GST`, `HSN/SAC`, `Product Type` (notes), `Usuage Unit`.
-Map: CODE → SKU, Item Description → Product name, Sale with GST → Selling
-price (GST incl.), Purchase without GST → Cost price, Labour → Labour charge
-(Labour involved = Yes when > 0), HSN/SAC. Ignore Vendor, Margin, Min Sale
-Price for now. The master's Margin = price/1.18 − purchase − labour, which
-confirms the cost rules above.
-- 213 of 267 sold (non-labour) lines match by name or code; 26 distinct item
-  names (54 lines) are not in the master, e.g. "Roof Rail - All cars" (13),
-  "Steering Grip - All cars", "MLF MAT EXTER/CRETA/VENUE + LABOUR EXTRA",
-  "HORN RELAY", "Headlight Restoration", "PVC Boot Mat".
-- Water Wash items have cost ₹1 (≈100% margin) – ask if intended.
-- "Sunfilm - Budget Nano Ceramic - Side and Rear (SK)": min sale price
-  ₹7,000 > sale price ₹6,000 – ask the client.
-
-### Salespeople vs the executive list (62 people)
-22 of 38 printed names match; 16 do not: not in the list (Karupusamy,
-Arunkumar, Asanar, Mano Vikram, Faizal, Thiyagarajan, Asif, Manojkumar,
-Karthickperiyasamy, Muthu, Johnson, Nandha Kumar, H.Vignesh) or branch
-differs (Karthick - HO, Udhayakumar - HO, Pravin - CMP). Printed branches
-include "Head Office", "Ho", "OOTY", "KTG".
-The executive list itself still has open points (see
-Sales_executive_master_check.xlsx given to Brinda): one 9-digit number
-(NAVEENDRAN), 6 people without branch, KTG vs KOTHAGIRI, Edhayan's branch.
-
-### Proposed changes (1–5 awaiting confirmation)
-1. Generate step 2 becomes **"Invoice export (.csv / .xlsx)"** instead of
-   the PDF folder. Keep `invoice_reader.py` in the code, off the screen.
-2. Use Zoho's per-line `Item Total` and `Item Tax Amount` directly; check
-   that each invoice's lines + GST + round-off = `Total` (flag differences
-   on Scan review as today). Month by `Invoice Date`.
-3. Items master import: recognise its headings automatically. Fix:
-   a heading "Labour" (amounts) is currently matched to the yes/no field
-   `has_labour`; it must map to `labour_charge`. Add synonyms "Sale with
-   GST", "Purchase without GST", "CODE".
-4. Labour markers also include "Labour - …" lines billed at ₹1 (e.g.
-   "Labour - Seat Cover - Art Leather"), not only "Labour Charges for …".
-5. Salesperson matching ignores spaces and dots ("Udhayakumar" =
-   "UDHAYA KUMAR") and treats branch "Head Office" = "HO", "KTG" =
-   "Kothagiri".
-
-### Open decisions (A–C) – ask Brinda
-- **A. Product vs service**: Items.xlsx has no category. Zoho `Item Type`
-  and HSN codes both mark sunfilm and coatings as goods. Suggested: default
-  from Zoho Item Type, and the client corrects the Category of items they
-  count as services.
-- **B. `CF.Invoice Type` (UPI / Cash / CHY)**: is it the payment mode?
-  CHY appears on Chandra Hyundai invoices. Suggested: payments export stays
-  the main source for report 11; Invoice Type is the fallback.
-- **C. `CF.Branch` on invoices** (HO, Kothagiri, KVP…, "Walk-In", blank on
-  a third of lines): add a branch-wise summary to the reports, or keep using
-  the salesperson's branch from the executive master?
+## Next – ideas, NOT confirmed (ask before coding)
+- "Incentive Details" sheet in the pricelist lists incentives actually
+  paid per invoice – could be used to derive / test the spot incentive rule
+  (report 7).
+- "Labour Payment" sheet gives labour paid by car model (e.g. VERNA PVC
+  500, ALCAZAR PVC 600) – labour may depend on the car, not only the item.
+- Items master open points: Water Wash cost ₹1; Sunfilm Budget Nano
+  Ceramic min price > sale price.
 
 ## Still awaited from the client (not blocking)
 - The actual spot incentive rule (report 7 is provisional).

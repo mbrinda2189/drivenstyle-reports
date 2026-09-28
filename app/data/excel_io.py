@@ -23,9 +23,9 @@ will happen before anything is saved:
 
     3. convert_rows(master, sheet, mapping)
            Turns each data row into clean values: amounts such as
-           "₹ 2,400.00" into numbers, "Yes"/"Y"/"✓" into True, "Goods" into
-           the category Product, HSN codes such as 8708.0 into "8708", and so
-           on. Rows with a value that cannot be understood are listed as
+           "₹ 2,400.00" into numbers ("-" or "Nil" as 0), "Yes"/"Y"/"✓" into
+           True, "Goods" into the category Product, HSN codes such as
+           8708.0 into "8708", and so on. Rows with a value that cannot be understood are listed as
            problems (with their sheet row number) and left out; blank rows
            are ignored.
 
@@ -62,6 +62,9 @@ HEADER_SEARCH_ROWS = 15
 _YES = {"yes", "y", "true", "1", "active", "✓", "✔", "x", "applicable", "a"}
 _NO = {"no", "n", "false", "0", "inactive", "not applicable", "na", "n/a",
        "-", "nil"}
+
+# Written in amount columns to mean "no amount" -> 0.
+_NO_AMOUNT = {"-", "–", "—", "nil", "na", "n/a", "nill", "none"}
 
 # Extra words accepted for the product Category field.
 _CATEGORY_WORDS = {
@@ -277,7 +280,9 @@ def convert_value(f: FieldDef, value):
     reason (e.g. '“abc” is not an amount') if it cannot.
     """
     if f.kind == "money":
-        if _blank(value):
+        # "-" / "nil" / "NA" in an amount column mean nothing (Items.xlsx
+        # writes "-" in the Labour column for items without labour).
+        if _blank(value) or _as_text(value).lower() in _NO_AMOUNT:
             return 0.0
         if isinstance(value, (int, float)):
             number = float(value)
@@ -308,8 +313,11 @@ def convert_value(f: FieldDef, value):
         for choice in f.choices:
             if word.lower() == choice.lower():
                 return choice
-        if f.key == "category" and word.lower() in _CATEGORY_WORDS:
-            return _CATEGORY_WORDS[word.lower()]
+        if f.key == "category":
+            # Known words -> Product / Service. Any other text (notes) is
+            # ignored: the category is then worked out from the HSN/SAC
+            # code, and later from Zoho's Item Type (v0.6.0).
+            return _CATEGORY_WORDS.get(word.lower())
         if f.open_choice:
             return word
         raise ValueError(
