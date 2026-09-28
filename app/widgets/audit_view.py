@@ -4,7 +4,8 @@ audit_view.py - The "Audit log" tab of the Masters screen
 
 WHAT THIS MODULE DOES
 ---------------------
-Shows every change made to the masters, newest first, read from the
+Shows every change made to the masters, and every fix made on Scan review
+(master "Scan review"), newest first, read from the
 database's audit_log table (written by masters_repo.py). It is read-only:
 there is no way to edit or delete an entry from the tool, and the database
 itself refuses such changes.
@@ -79,6 +80,7 @@ class AuditLogView(QWidget):
         self.repo = repo
         self.toast = toast
         self.titles = {m.key: m.title for m in ALL_MASTERS}
+        self.titles["scan"] = "Scan review"      # fixes made on Scan review
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 14, 0, 0)
@@ -91,6 +93,7 @@ class AuditLogView(QWidget):
         self.master_combo.addItem("All masters", None)
         for m in ALL_MASTERS:
             self.master_combo.addItem(m.title, m.key)
+        self.master_combo.addItem("Scan review", "scan")
         self.action_combo = QComboBox()
         self.action_combo.addItem("All actions", None)
         for a in ACTIONS:

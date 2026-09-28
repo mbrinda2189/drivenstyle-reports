@@ -22,21 +22,31 @@ On the right, a "Run" panel shows how many products, sales executives,
 cars and incentive groups are loaded (amber if a master is still empty), the
 "Scan invoices" and "Generate Excel" buttons, a progress bar and a log.
 
-CURRENT BEHAVIOUR (v0.3.0)
----------------------------------------
-* Folder and file choosers are real. After choosing the invoice folder, the
-  page counts the actual PDF files in it.
-* "Scan invoices" is SIMULATED: it steps through the real PDF file names with
-  an animated progress bar but does not read them yet. When done it emits
-  `scanFinished` so the Scan review page can show the sample issues.
-* "Generate Excel" is SIMULATED: it animates through the selected reports and
-  then shows a message. No file is written yet.
+SCANNING (v0.4.0)
+-----------------
+"Scan invoices" reads every PDF in the invoice folder in a background
+thread (app/scan_worker.py), so the window stays responsive:
+    * each file is logged as it is read: ✓ read, – skipped (another month,
+      another firm, repeated invoice number), ✗ could not be read
+    * the results are saved in the database for the chosen month
+      (invoices_repo.store_scan), replacing any earlier scan of that month;
+      fixes already made on Scan review are kept
+    * the summary shows invoices read, issues open and files skipped, and
+      the Scan review page is refreshed
+"Cancel" stops after the current file; nothing is saved then.
+
+When a month that has already been scanned is selected, its last scan is
+shown (date, counts) and Generate is available without scanning again.
+
+CURRENT BEHAVIOUR
+-----------------
+* "Generate Excel" is still SIMULATED: the reports are built in v0.5.0.
 * "Masters in use" shows real counts from the masters database.
 
 SIGNALS
 -------
-    scanFinished(int)   - emitted when a scan completes (number of PDFs)
-    reviewRequested()   - user clicked "Review issues"
+    scanFinished(int, int)  - a scan was saved (year, month)
+    reviewRequested()       - user clicked "Review issues"
 """
 
 from __future__ import annotations
@@ -44,7 +54,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import (
-    QDate, QEasingCurve, QPropertyAnimation, QTimer, Qt, Signal,
+    QDate, QEasingCurve, QPropertyAnimation, QThread, QTimer, Qt, Signal,
 )
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QListWidget,
@@ -52,8 +62,10 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QColor
 
+from app.data.invoices_repo import InvoicesRepo, month_label
 from app.pages.base import ScrollPage
-from app.sample_data import REPORTS, SCAN_ISSUES
+from app.sample_data import REPORTS
+from app.scan_worker import ScanWorker
 from app.theme import Colors
 from app.widgets.common import Card, PathPicker, StepHeader, button, label
 
@@ -72,17 +84,20 @@ def divider() -> QFrame:
 class GeneratePage(ScrollPage):
     """The main screen: choose inputs, scan invoices, generate the workbook."""
 
-    scanFinished = Signal(int)
+    scanFinished = Signal(int, int)
     reviewRequested = Signal()
 
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, invoices: InvoicesRepo, parent: QWidget | None = None):
         super().__init__(
             "Generate reports",
             "Read the month's invoices and build the Excel workbook with the 12 reports.",
             parent,
         )
-        self._scanned = False          # True once a scan has completed
-        self._pdf_files: list[str] = []
+        self.invoices = invoices
+        self._scanned = False          # True once the chosen month is scanned
+        self._pdf_files: list[Path] = []
+        self._thread: QThread | None = None
+        self._worker: ScanWorker | None = None
 
         # Two columns: steps on the left (wider), run panel on the right.
         columns = QHBoxLayout()
@@ -102,9 +117,7 @@ class GeneratePage(ScrollPage):
         right.addStretch(1)
         columns.addLayout(right, 2)
 
-        # Timers that drive the simulated scan / generate animations.
-        self._scan_timer = QTimer(self)
-        self._scan_timer.timeout.connect(self._scan_step)
+        # Timer that drives the simulated generate animation (until v0.5.0).
         self._gen_timer = QTimer(self)
         self._gen_timer.timeout.connect(self._generate_step)
 
@@ -113,7 +126,9 @@ class GeneratePage(ScrollPage):
         self._bar_anim.setDuration(180)
         self._bar_anim.setEasingCurve(QEasingCurve.OutCubic)
 
-        self._refresh_buttons()
+        self.month_combo.currentIndexChanged.connect(self._on_month_changed)
+        self.year_combo.currentIndexChanged.connect(self._on_month_changed)
+        self._on_month_changed()
 
     # ------------------------------------------------------------------
     # Building the cards
@@ -214,8 +229,8 @@ class GeneratePage(ScrollPage):
 
         # Warning shown when the payment report is ticked without the export.
         self.payment_warning = label(
-            "Payment mode analysis needs the payments export (step 3). "
-            "Without it, that sheet will be marked incomplete.", wrap=True)
+            "Payment mode analysis uses the payment mode printed on the "
+            "invoice, or the payments export (step 3) where it is not printed.", wrap=True)
         self.payment_warning.setStyleSheet(
             f"background: {Colors.AMBER_TINT}; color: {Colors.AMBER};"
             "border-radius: 6px; padding: 8px 10px;")
@@ -320,19 +335,41 @@ class GeneratePage(ScrollPage):
     # ------------------------------------------------------------------
     # Reacting to user choices
     # ------------------------------------------------------------------
+    def selected_month(self) -> tuple[int, int]:
+        return int(self.year_combo.currentText()), self.month_combo.currentIndex() + 1
+
+    def _on_month_changed(self, *_) -> None:
+        """Show the chosen month's last scan, if there is one."""
+        if self._thread is not None:
+            return
+        year, month = self.selected_month()
+        run = self.invoices.scan_run(year, month)
+        self._scanned = run is not None
+        self.log.clear()
+        self.progress.setValue(0)
+        if run:
+            self._show_summary(year, month)
+            when = run["scanned_at"].replace("T", " ")[:16]
+            self.status.setText(f"{month_label(year, month)} last scanned {when}.")
+        else:
+            self.summary_row.hide()
+            self.status.setText("Ready")
+        self._refresh_buttons()
+
     def _on_folder_chosen(self, path: str) -> None:
         """Count the PDFs in the chosen folder and mark step 2 done."""
         folder = Path(path)
-        self._pdf_files = sorted(p.name for p in folder.glob("*.pdf")) + \
-            sorted(p.name for p in folder.glob("*.PDF"))
+        # One list, compared in lower case: on Windows "*.pdf" and "*.PDF"
+        # find the same files, so two separate searches counted each twice.
+        self._pdf_files = sorted((p for p in folder.iterdir()
+                                  if p.is_file() and p.suffix.lower() == ".pdf"),
+                                 key=lambda p: p.name.lower()) if folder.is_dir() else []
         count = len(self._pdf_files)
         self.folder_info.setText(
             f"{count} PDF file{'s' if count != 1 else ''} found in this folder."
             if count else "No PDF files found in this folder.")
         self.folder_info.show()
         self.step_folder.set_done(count > 0)
-        self._scanned = False       # a new folder needs a fresh scan
-        self.summary_row.hide()
         self._refresh_buttons()
 
     def _on_output_chosen(self, path: str) -> None:
@@ -359,12 +396,14 @@ class GeneratePage(ScrollPage):
         Enable buttons only when their inputs are ready, and explain what is
         missing in the hint line so the user is never stuck guessing.
         """
-        busy = self._scan_timer.isActive() or self._gen_timer.isActive()
+        busy = self._thread is not None or self._gen_timer.isActive()
         has_folder = bool(self._pdf_files)
         has_output = bool(self.output_picker.path())
         any_report = any(cb.isChecked() for cb in self.report_checks)
 
-        self.scan_btn.setEnabled(has_folder and not busy)
+        self.scan_btn.setEnabled(has_folder and self._gen_timer.isActive() is False)
+        self.scan_btn.setText("Cancel scan" if self._thread is not None
+                              else "Scan invoices")
         self.generate_btn.setEnabled(
             self._scanned and has_output and any_report and not busy)
 
@@ -382,7 +421,7 @@ class GeneratePage(ScrollPage):
             self.hint.setText("Ready to generate.")
 
     # ------------------------------------------------------------------
-    # Simulated scan
+    # Scanning (background thread)
     # ------------------------------------------------------------------
     def _set_progress(self, value: int) -> None:
         """Animate the progress bar to `value` (0-100)."""
@@ -398,42 +437,82 @@ class GeneratePage(ScrollPage):
         self.log.scrollToBottom()
 
     def _start_scan(self) -> None:
-        """Begin the simulated scan: one PDF every 45 ms."""
+        """Start reading the folder in the background (or cancel a running scan)."""
+        if self._worker is not None:
+            self._worker.cancel()
+            self.status.setText("Stopping after the current file…")
+            return
+        year, month = self.selected_month()
         self.log.clear()
         self.summary_row.hide()
         self.progress.setValue(0)
-        self._scan_index = 0
-        self._add_log(f"Scanning {len(self._pdf_files)} files…", Colors.SLATE)
-        self._scan_timer.start(45)
+        self._add_log(f"Reading {len(self._pdf_files)} files for "
+                      f"{month_label(year, month)}…", Colors.SLATE)
+
+        self._thread = QThread(self)
+        self._worker = ScanWorker(list(self._pdf_files), year, month)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.progress.connect(self._on_scan_progress)
+        self._worker.finished.connect(self._on_scan_finished)
+        self._thread.start()
         self._refresh_buttons()
 
-    def _scan_step(self) -> None:
-        """Advance the simulated scan by one file."""
-        total = len(self._pdf_files)
-        if self._scan_index >= total:
-            self._scan_timer.stop()
-            self._finish_scan()
+    def _on_scan_progress(self, done: int, total: int, name: str,
+                          status: str, reason: str) -> None:
+        """One file read: log it and move the progress bar."""
+        self.status.setText(f"Reading {done} of {total}  ·  {name}")
+        self._set_progress(int(done * 100 / max(total, 1)))
+        if status == "read":
+            self._add_log(f"✓  {name}", Colors.GREEN)
+        elif status == "skipped":
+            self._add_log(f"–  {name}: {reason}", Colors.SLATE)
+        else:
+            self._add_log(f"✗  {name}: {reason}", Colors.RED)
+
+    def _on_scan_finished(self, results: list) -> None:
+        """Save the results (unless cancelled) and update the summary."""
+        cancelled = self._worker.is_cancelled if self._worker else False
+        self._thread.quit()
+        self._thread.wait()
+        self._thread, self._worker = None, None
+        year, month = self.selected_month()
+        if cancelled:
+            self.status.setText("Scan cancelled. Nothing was saved.")
+            self._add_log("Scan cancelled – nothing was saved.", Colors.AMBER)
+            self._refresh_buttons()
             return
-        name = self._pdf_files[self._scan_index]
-        self._scan_index += 1
-        self.status.setText(f"Reading {self._scan_index} of {total}  ·  {name}")
-        self._set_progress(int(self._scan_index * 100 / total))
-        self._add_log(f"✓  {name}", Colors.GREEN)
-
-    def _finish_scan(self) -> None:
-        """Show the (sample) scan result and notify the Scan review page."""
+        counts = self.invoices.store_scan(
+            year, month, str(Path(self.folder_picker.path())), results)
         self._scanned = True
-        open_issues = sum(1 for i in SCAN_ISSUES if i[2] not in ("skip", "open"))
-        skipped = sum(1 for i in SCAN_ISSUES if i[2] in ("skip", "open"))
+        self._bar_anim.stop()
+        self.progress.setValue(100)
         self.status.setText("Scan complete")
-        self._add_log(f"⚠  {open_issues} invoices need attention (sample)", Colors.AMBER)
-        self.summary.setText(
-            f"{len(self._pdf_files)} files scanned  ·  "
-            f"{open_issues} need attention  ·  {skipped} skipped")
-        self.summary_row.show()
-        self.scanFinished.emit(len(self._pdf_files))
+        self._show_summary(year, month)
+        open_n = sum(1 for i in self.invoices.issues(year, month) if i.status == "open")
+        self._add_log(f"{counts['read']} invoices read, {open_n} issue"
+                      f"{'s' if open_n != 1 else ''} to review.",
+                      Colors.AMBER if open_n else Colors.GREEN)
+        self.scanFinished.emit(year, month)
         self._refresh_buttons()
-        self.toast("Scan complete. Review the issues before generating.")
+        self.toast("Scan complete. Review the issues before generating."
+                   if open_n else "Scan complete. No issues found.")
+
+    def _show_summary(self, year: int, month: int) -> None:
+        """'34 invoices read · 5 need attention · 2 skipped' + Review link."""
+        files = self.invoices.scan_files(year, month)
+        read = sum(f["status"] == "read" for f in files)
+        skipped = len(files) - read
+        open_n = sum(1 for i in self.invoices.issues(year, month) if i.status == "open")
+        self.summary.setText(
+            f"{read} invoice{'s' if read != 1 else ''} read  ·  "
+            f"{open_n} need{'s' if open_n == 1 else ''} attention  ·  {skipped} skipped")
+        self.summary_row.show()
+
+    def refresh_summary(self) -> None:
+        """Called when masters change or an issue is fixed elsewhere."""
+        if self._scanned and self._thread is None:
+            self._show_summary(*self.selected_month())
 
     # ------------------------------------------------------------------
     # Simulated generate

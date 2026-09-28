@@ -18,16 +18,20 @@ Page order (same order as the sidebar buttons):
 
 Connections between pages:
     * Sidebar click                 -> animated switch to that page
-    * Generate: scan finished       -> Scan review loads the issues and the
-                                       sidebar shows the open-issue count
+    * Generate: scan finished       -> Scan review loads that month's issues
+                                       and the sidebar shows the open count
     * Generate: "Review issues"     -> switch to Scan review
     * Scan review: issue fixed      -> sidebar badge count updates
     * Scan review: "Continue..."    -> switch back to Generate reports
     * Masters: saved or imported    -> Generate page's "Masters in use"
-                                       counts refresh
+                                       counts refresh, and Scan review
+                                       re-checks (a product added to the
+                                       master clears its issue at once)
+    * Scan review: issue fixed      -> Generate page summary updates
 
 The masters database (MastersRepo) is created in main.py and passed in, so
-the window itself never opens files. Closing the window with unsaved edits
+the window itself never opens files. The scanned invoices (InvoicesRepo)
+share the same database connection. Closing the window with unsaved edits
 on the Masters screen asks before discarding them.
 
 `toast(text)` shows a fading message; every page calls it through
@@ -39,6 +43,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMessageBox, QWidget
 
 from app import __app_name__, __version__
+from app.data.invoices_repo import InvoicesRepo
 from app.data.masters_repo import MastersRepo
 from app.pages.generate_page import GeneratePage
 from app.pages.history_page import HistoryPage
@@ -58,6 +63,7 @@ class MainWindow(QMainWindow):
     def __init__(self, repo: MastersRepo):
         super().__init__()
         self.repo = repo
+        self.invoices = InvoicesRepo(repo)
         self.setWindowTitle(f"{__app_name__}  –  v{__version__}")
         self.resize(1320, 840)
         self.setMinimumSize(1120, 700)
@@ -76,8 +82,8 @@ class MainWindow(QMainWindow):
 
         # --- Pages ---------------------------------------------------------
         self.stack = AnimatedStack()
-        self.generate_page = GeneratePage()
-        self.review_page = ReviewPage()
+        self.generate_page = GeneratePage(self.invoices)
+        self.review_page = ReviewPage(self.invoices, repo)
         self.masters_page = MastersPage(repo)
         self.inputs_page = InputsPage()
         self.history_page = HistoryPage()
@@ -91,20 +97,27 @@ class MainWindow(QMainWindow):
 
         # --- Wiring --------------------------------------------------------
         self.sidebar.pageRequested.connect(self.go_to)
-        self.generate_page.scanFinished.connect(self.review_page.load_issues)
+        self.generate_page.scanFinished.connect(self.review_page.load)
+        self.review_page.openIssuesChanged.connect(
+            lambda _: self.generate_page.refresh_summary())
         self.generate_page.reviewRequested.connect(lambda: self.go_to(PAGE_REVIEW))
         self.review_page.openIssuesChanged.connect(
             lambda n: self.sidebar.set_badge(PAGE_REVIEW, str(n) if n else ""))
         self.review_page.backRequested.connect(lambda: self.go_to(PAGE_GENERATE))
         self.masters_page.mastersChanged.connect(self._refresh_master_counts)
+        self.masters_page.mastersChanged.connect(self.review_page.refresh)
         self._refresh_master_counts()
+        # Start on the month selected on the Generate page (last month), so a
+        # month already scanned shows its issues and badge straight away.
+        self.review_page.load(*self.generate_page.selected_month())
 
     def _refresh_master_counts(self) -> None:
         """Update the Generate page's 'Masters in use' panel."""
         self.generate_page.set_master_counts(self.repo.counts())
 
     def closeEvent(self, event) -> None:
-        """Ask before closing if the Masters screen has unsaved edits."""
+        """Ask before closing if the Masters screen has unsaved edits, and
+        stop a running scan cleanly."""
         if self.masters_page.has_unsaved_changes():
             answer = QMessageBox.question(
                 self, "Unsaved changes",
@@ -113,6 +126,11 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.Discard:
                 event.ignore()
                 return
+        worker, thread = self.generate_page._worker, self.generate_page._thread
+        if worker is not None and thread is not None:
+            worker.cancel()
+            thread.quit()
+            thread.wait(5000)
         event.accept()
 
     def go_to(self, index: int) -> None:

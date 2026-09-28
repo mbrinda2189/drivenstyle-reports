@@ -3,3 +3,4 @@
 PySide6>=6.6        # Qt 6 desktop UI framework
 openpyxl>=3.1       # Reading the client's master sheets / writing Excel files
 pytest>=8.0         # Testing framework
+pdfplumber>=0.11    # Reading the words and their positions on invoice PDFs

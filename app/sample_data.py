@@ -12,12 +12,10 @@ built. Nothing here is used for calculations.
     PACKAGES          - rows for Masters > Packages (package definitions are
                         not in the client's master sheets yet)
     INDIRECT_COSTS    - default indirect cost heads for Monthly inputs
-    SCAN_ISSUES       - issues shown on the Scan review screen (until the
-                        invoice reader arrives in v0.3)
     HISTORY           - months shown on the History screen
 
-Since v0.2.0 the Product, Sales executive and Car masters come from the
-database (app/data), not from here. To try the Masters screen with sample
+The masters (since v0.2.0) and the scanned invoices and Scan review issues
+(since v0.4.0) come from the database (app/data), not from here. To try the Masters screen with sample
 sheets, run:  python scripts/make_sample_masters.py
 
 IMPORTANT
@@ -56,23 +54,6 @@ INDIRECT_COSTS = [
     ("Electricity", 8500.00),
     ("Internet & phone", 2200.00),
     ("Marketing", 10000.00),
-]
-
-# (Invoice no, Issue, Fix type, Fix options)
-#   Fix type decides which control appears in the "Fix" column:
-#     "confirm" -> a Confirm button
-#     "choose"  -> a drop-down with the given options
-#     "add"     -> an "Add to master" button
-#     "skip"    -> a greyed "Skipped" label
-#     "open"    -> an "Open file" button
-SCAN_ISSUES = [
-    ("DNS26-0777", "“Noodles Mat Role - PVC” has no SKU – matched by name", "confirm", []),
-    ("DNS26-0781", "Car model missing", "choose", ["Select car model…", "Nexon", "Creta", "Seltos", "Brezza", "XUV700"]),
-    ("DNS26-0790", "Salesperson missing", "choose", ["Select salesperson…", "Arun", "Karthik", "Priya", "Selvam"]),
-    ("DNS26-0795", "Item “Sunfilm XYZ” not in cost sheet", "add", []),
-    ("DNS26-0802", "Payment mode not found in payments export", "choose", ["Select mode…", "UPI", "Cash", "Card", "Cheque", "Bank transfer"]),
-    ("DNSE26-1242", "DNS Enterprises invoice – not included", "skip", []),
-    ("scan_03.pdf", "Not a Zoho text PDF – could not be read", "open", []),
 ]
 
 # (Month, Invoices, Sales in Rs., Generated on)

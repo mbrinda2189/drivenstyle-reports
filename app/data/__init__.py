@@ -15,6 +15,11 @@ invoice reader and report builder.
     masters_repo.py  - Reading and saving the masters: dated rate history,
                        duplicate checks, bulk delete / activate, and the
                        audit log of every change.
+    invoice_reader.py - Reading one Carkrafts invoice PDF (header, items,
+                       totals) from the words and their positions.
+    invoices_repo.py - Scanned invoices: storing a month's scan, matching
+                       lines / salesperson / car to the masters, Scan review
+                       issues and fixes, per-line discount and GST split.
     excel_io.py      - Reading the client's Excel / CSV master sheets,
                        suggesting column matches, converting rows, and
                        exporting a master or the audit log to Excel.

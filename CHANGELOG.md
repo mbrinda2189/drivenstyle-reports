@@ -6,6 +6,59 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] – 2026-09-28 – Invoice reader and Scan review
+
+### Added
+- **Invoice reader** for the Carkrafts (Zoho) invoice format
+  (`app/data/invoice_reader.py`). Works from word positions on the page, so
+  the two-column header, wrapped item descriptions and units ("1.00 no") are
+  read correctly. Reads invoice number (all series: `DNS26-GST-`,
+  `DNS26-GST1-`, `DNS-xxx-2627`…), dates, P.O.#, place of supply, salesperson,
+  customer type, vehicle, VIN / registration, customer, items (description,
+  HSN/SAC, qty, unit, rate, amount), Sub Total, discount and its base,
+  CGST/SGST/IGST, rounding, total, payment made, balance due, and payment
+  mode when printed.
+- **Real scan** on Generate reports, in a background thread with per-file log
+  (read / skipped / could not be read) and Cancel. Invoices outside the
+  chosen month, another firm's GSTIN and repeated invoice numbers are
+  skipped with the reason. The month's last scan is shown when the month is
+  selected again.
+- **Per-line amounts:** value before GST, share of the invoice discount, net
+  value and GST for every line, saved at scan time for the reports.
+  Invoices with no GST shown count in full as sales.
+- **Arithmetic checks** on every invoice (lines = Sub Total; Sub Total before
+  GST − discount + GST + rounding = Total, within ₹1).
+- **Matching to the masters** every time issues are shown: items by name
+  (then remembered mapping, then SKU), salesperson by name and branch
+  ("Kumaran - HO"), vehicle by car model ignoring punctuation ("PUNCH.EV" =
+  "Punch EV"). "Labour Charges for …" ₹1 lines are treated as labour markers.
+- **Scan review rebuilt** on real data: tiles, Issues tab with a fix control
+  per issue (searchable product / executive / car drop-downs, "All invoices"
+  option, Accept, Open file), Fixed / Open / Skipped pills, and an
+  **Invoices read** tab showing each invoice as understood. Items missing
+  from the master are listed once with their invoice count.
+- Fixes are saved immediately, kept when a month is re-scanned, and logged in
+  the audit log (new "Scan review" filter). Adding a missing product or car
+  on the Masters screen clears its issue at once.
+- Database schema 3: invoices, invoice_lines, invoice_checks, scan_files,
+  scan_runs, match_aliases, invoice_overrides, issue_acks.
+- Tests for amounts, checks, matching, issues and fixes (85 tests), plus an
+  optional test that reads real sample PDFs (`DNS_SAMPLE_INVOICES`).
+- `pdfplumber` added to requirements.
+
+### Fixed
+- The invoice folder counted every PDF twice on Windows ("*.pdf" and
+  "*.PDF" find the same files there). Files are now listed once.
+
+### Changed
+- Payment mode report note: uses the payment mode printed on the invoice,
+  or the payments export where it is not printed.
+- Scan review sample issues removed from `sample_data.py`.
+
+### Pending
+- Reports and the Excel workbook (v0.5.0).
+- Spot incentive calculation: awaiting the client's rule.
+
 ## [0.3.0] – 2026-09-28 – Incentive master, bulk actions and audit log
 
 ### Added

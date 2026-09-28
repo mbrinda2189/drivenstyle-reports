@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 2)
+TABLES (schema version 3)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -45,6 +45,22 @@ TABLES (schema version 2)
                       Database triggers refuse any change to or deletion of
                       an audit row, so the log cannot be altered.
 
+    Scanned invoices (step 3, see invoices_repo.py):
+    invoices          one row per invoice read, with everything printed on
+                      it (month = YYYY-MM it was scanned for)
+    invoice_lines     its item lines, with the per-line split of discount
+                      and GST worked out at scan time
+    invoice_checks    arithmetic differences found on an invoice
+    scan_files        every PDF in the month's folder: read / skipped /
+                      error, and why
+    scan_runs         when each month was last scanned, and from where
+    match_aliases     fixes that apply to every invoice: "this printed item
+                      name / salesperson / vehicle means this master row"
+    invoice_overrides fixes for one invoice only (e.g. which of two
+                      executives with the same name)
+    issue_acks        totals / labour notes accepted as correct
+    Fixes and acknowledgements are kept when a month is scanned again.
+
     import_mappings   remembers which sheet column the user matched to each
                       field last time, so the next import is pre-filled
         master, field, column_header
@@ -61,6 +77,7 @@ an older database then upgrades it in place without losing data.
     step 2 (v0.3.0)  executives: "city" becomes "branch", unique by contact
                      number instead of name; incentives + incentive_rates;
                      products.incentive_id; audit_log (read-only)
+    step 3 (v0.4.0)  scanned invoices and Scan review fixes
 
 A step is either a block of SQL or a Python function taking the connection
 (used when values must be worked out in Python, e.g. contact-number keys).
@@ -75,7 +92,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -227,6 +244,104 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
     """,
     # --- 1 -> 2 : branch, unique contact no, incentives, audit log --------
     _step_2,
+    # --- 2 -> 3 : scanned invoices and Scan review fixes -------------------
+    """
+    CREATE TABLE IF NOT EXISTS invoices (
+        id               INTEGER PRIMARY KEY,
+        month            TEXT NOT NULL,                  -- YYYY-MM
+        file_name        TEXT NOT NULL,
+        invoice_no       TEXT NOT NULL UNIQUE,
+        invoice_date     TEXT NOT NULL,                  -- YYYY-MM-DD
+        seller           TEXT NOT NULL DEFAULT '',
+        gstin            TEXT NOT NULL DEFAULT '',
+        customer         TEXT NOT NULL DEFAULT '',
+        customer_type    TEXT NOT NULL DEFAULT '',
+        salesperson      TEXT NOT NULL DEFAULT '',       -- as printed
+        vehicle          TEXT NOT NULL DEFAULT '',       -- as printed
+        vin              TEXT NOT NULL DEFAULT '',
+        po_no            TEXT NOT NULL DEFAULT '',
+        terms            TEXT NOT NULL DEFAULT '',
+        place_of_supply  TEXT NOT NULL DEFAULT '',
+        payment_mode     TEXT NOT NULL DEFAULT '',       -- if printed
+        sub_total        REAL NOT NULL DEFAULT 0,        -- tax inclusive
+        discount         REAL NOT NULL DEFAULT 0,
+        discount_base    REAL NOT NULL DEFAULT 0,
+        taxes_json       TEXT NOT NULL DEFAULT '{}',     -- {"CGST 9%": 633.04, ...}
+        tax_total        REAL NOT NULL DEFAULT 0,
+        tax_rate         REAL NOT NULL DEFAULT 0,        -- 18, 0 = no GST, -1 = mixed
+        rounding         REAL NOT NULL DEFAULT 0,
+        total            REAL NOT NULL DEFAULT 0,
+        payment_made     REAL NOT NULL DEFAULT 0,
+        balance_due      REAL NOT NULL DEFAULT 0,
+        scanned_at       TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_invoices_month ON invoices(month);
+
+    CREATE TABLE IF NOT EXISTS invoice_lines (
+        id                INTEGER PRIMARY KEY,
+        invoice_id        INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        line_no           INTEGER NOT NULL,
+        description       TEXT NOT NULL,
+        sku               TEXT NOT NULL DEFAULT '',
+        hsn_sac           TEXT NOT NULL DEFAULT '',
+        qty               REAL NOT NULL DEFAULT 0,
+        unit              TEXT NOT NULL DEFAULT '',
+        rate              REAL NOT NULL DEFAULT 0,
+        amount            REAL NOT NULL DEFAULT 0,       -- tax inclusive
+        is_labour_marker  INTEGER NOT NULL DEFAULT 0,
+        before_tax        REAL NOT NULL DEFAULT 0,
+        discount_share    REAL NOT NULL DEFAULT 0,
+        net_value         REAL NOT NULL DEFAULT 0,       -- after discount, before GST
+        gst               REAL NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS ix_lines_invoice ON invoice_lines(invoice_id);
+
+    CREATE TABLE IF NOT EXISTS invoice_checks (
+        id          INTEGER PRIMARY KEY,
+        invoice_id  INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        message     TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS scan_files (
+        month       TEXT NOT NULL,
+        file_name   TEXT NOT NULL,
+        status      TEXT NOT NULL,                       -- read / skipped / error
+        reason      TEXT NOT NULL DEFAULT '',
+        invoice_no  TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (month, file_name)
+    );
+
+    CREATE TABLE IF NOT EXISTS scan_runs (
+        month       TEXT PRIMARY KEY,
+        folder      TEXT NOT NULL,
+        scanned_at  TEXT NOT NULL,
+        files       INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS match_aliases (
+        kind        TEXT NOT NULL,                       -- product / executive / car
+        raw_key     TEXT NOT NULL,                       -- printed text, standard form
+        target_id   INTEGER NOT NULL,
+        created_at  TEXT NOT NULL,
+        PRIMARY KEY (kind, raw_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS invoice_overrides (
+        invoice_no  TEXT NOT NULL,
+        kind        TEXT NOT NULL,                       -- executive / car
+        target_id   INTEGER NOT NULL,
+        created_at  TEXT NOT NULL,
+        PRIMARY KEY (invoice_no, kind)
+    );
+
+    CREATE TABLE IF NOT EXISTS issue_acks (
+        invoice_no  TEXT NOT NULL,
+        kind        TEXT NOT NULL,                       -- totals / labour
+        note        TEXT NOT NULL DEFAULT '',
+        at          TEXT NOT NULL,
+        PRIMARY KEY (invoice_no, kind)
+    );
+    """,
 ]
 
 
