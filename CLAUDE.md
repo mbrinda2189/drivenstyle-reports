@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.6.4** (tags v0.1.0 … v0.6.4 on GitHub
+Current version: **v0.6.5** (tags v0.1.0 … v0.6.5 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -123,10 +123,14 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `Item Total`, GST = `Item Tax Amount`, used as they are. Check: lines +
   GST + Round Off = Total. Month by `Invoice Date`; other months ignored;
   Void/Draft skipped. Payment made = Total − Balance.
-- **Category**: products never set by hand take Zoho's Item Type (goods →
-  Product, service → Service); a hand-set Category is never overridden
-  (`invoices_repo.apply_zoho_categories`, audit source "Invoice export (Zoho
-  item type)").
+- **Category**: the client's sheet now has a "category" column – SALES =
+  Product, SERVICE = Service – and that (or a choice on the Masters screen)
+  is final (`products.category_fixed`). Products without it take Zoho's
+  Item Type (goods → Product, service → Service) via
+  `invoices_repo.apply_zoho_categories`.
+- **CODE is not reliable in the client's sheet** (HSN codes typed as CODE,
+  shared by several items). A CODE shared by different names in one import
+  is dropped for those rows (v0.6.5); items match invoices by name.
 - **Branch** in reports = the executive's branch from the master; the
   invoice's CF.Branch is stored only.
 - **₹1 labour marker lines are IGNORED** (client confirmed, v0.6.3): not in

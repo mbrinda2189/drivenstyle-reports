@@ -569,7 +569,16 @@ class MastersRepo:
         try:
             with self.conn:
                 for ch in changes:
-                    self._write_row(master, ch.id, ch.values, ch.rate_date, source)
+                    old_cat = (self.get(master, ch.id) or {}).get("category") \
+                        if master == "products" and ch.id is not None else None
+                    new_id, _, _ = self._write_row(master, ch.id, ch.values,
+                                                   ch.rate_date, source)
+                    # A category chosen on the Masters screen (new product, or
+                    # category changed) is final: Zoho's item type never
+                    # overrides it (v0.6.5).
+                    if master == "products" and source == "Masters screen" and (
+                            ch.id is None or old_cat != ch.values.get("category")):
+                        self._fix_category(new_id)
         except sqlite3.IntegrityError as exc:       # safety net
             raise MasterError([f"Could not save: {exc}"]) from exc
 
@@ -646,6 +655,8 @@ class MastersRepo:
         """
         mdef = self.definition(master)
         result = ImportResult()
+        if master == "products":
+            records = self._drop_shared_codes(records, result)
         outcome_of: dict[int, str] = {}   # id -> best outcome (repeats count once)
         first_row: dict[int, object] = {}
         rank = {"added": 3, "updated": 2, "unchanged": 1}
@@ -691,6 +702,10 @@ class MastersRepo:
 
                 new_id, what, rate_changed = self._write_row(
                     master, row_id, merged, effective_from, source)
+                if master == "products" and rec.get("category"):
+                    # The sheet gave a category: it is the client's choice
+                    # and Zoho's item type must not change it (v0.6.5).
+                    self._fix_category(new_id)
                 result.rates_changed += int(rate_changed)
                 if new_id in first_row:
                     result.warnings.append(
@@ -704,6 +719,47 @@ class MastersRepo:
         for what in outcome_of.values():
             setattr(result, what, getattr(result, what) + 1)
         return result
+
+    @staticmethod
+    def _drop_shared_codes(records: list[dict], result: ImportResult) -> list[dict]:
+        """
+        A CODE (SKU) used on rows with DIFFERENT item names in one sheet
+        cannot identify an item: matching by it made each such row
+        overwrite the previous one, so only the last survived (the client's
+        sheet had e.g. the HSN 87089900 typed as the CODE of four items).
+        Those rows are imported without the CODE - each as its own item,
+        found by name - and a warning lists them (v0.6.5). A CODE repeated
+        on rows with the SAME name is left alone (a genuine repeat).
+        """
+        names: dict[str, set[str]] = {}
+        rows: dict[str, list] = {}
+        for rec in records:
+            sku = str(rec.get("sku") or "").strip().lower()
+            if sku:
+                names.setdefault(sku, set()).add(name_key(rec.get("name", "")))
+                rows.setdefault(sku, []).append(rec.get("_row", "?"))
+        shared = {s for s, n in names.items() if len(n) > 1}
+        if not shared:
+            return records
+        out = []
+        for rec in records:
+            sku = str(rec.get("sku") or "").strip().lower()
+            if sku in shared:
+                rec = dict(rec, sku="")
+            out.append(rec)
+        for sku in sorted(shared):
+            original = next(str(r.get("sku")) for r in records
+                            if str(r.get("sku") or "").strip().lower() == sku)
+            result.warnings.append(
+                f"CODE {original} is used for {len(names[sku])} different items "
+                f"(rows {', '.join(str(r) for r in rows[sku])}): each was imported "
+                "as its own item, without the CODE.")
+        return out
+
+    def _fix_category(self, product_id: int) -> None:
+        """Mark a product's Category as final (client's sheet / Masters screen)."""
+        self.conn.execute("UPDATE products SET category_fixed = 1 WHERE id = ?",
+                          (product_id,))
 
     def _find_for_import(self, master: str, rec: dict) -> tuple[int | None, str]:
         """

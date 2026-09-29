@@ -68,6 +68,9 @@ _NO_AMOUNT = {"-", "–", "—", "nil", "na", "n/a", "nill", "none"}
 
 # Extra words accepted for the product Category field.
 _CATEGORY_WORDS = {
+    # The client's items sheet says SALES for products and SERVICE for
+    # services (v0.6.5).
+    "sales": "Product", "sale": "Product",
     "product": "Product", "products": "Product", "goods": "Product",
     "good": "Product", "item": "Product", "accessory": "Product",
     "accessories": "Product", "material": "Product",

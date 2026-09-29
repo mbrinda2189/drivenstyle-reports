@@ -49,6 +49,8 @@ from v0.6.0) - or, in earlier versions, from the invoice PDFs
     5. apply_zoho_categories()
            Products whose Category was never set by hand take Zoho's Item
            Type from the export (goods -> Product, service -> Service).
+           (Once the client's sheet carries its own category column - SALES
+           = Product, SERVICE = Service - that is used and is final.)
            Agreed with Brinda (v0.6.0, decision A): Items.xlsx has no
            category, and the HSN code alone is unreliable (many goods carry
            the service code 998729). Once someone changes a product's
@@ -711,9 +713,9 @@ class InvoicesRepo:
         Give products whose Category was never set by hand the category of
         Zoho's Item Type on the invoices (see module notes, item 5).
 
-        "Set by hand" = the audit log has a Category change for the product
-        from anywhere other than this step, or the product was added on the
-        Masters screen (where the category is chosen). A product sold as
+        "Set by hand" = products.category_fixed: the category came from the
+        client's sheet (its category column, e.g. SALES / SERVICE) or was
+        chosen on the Masters screen (v0.6.5). A product sold as
         both goods and service in Zoho is left alone. Returns the number of
         products changed.
         """
@@ -728,11 +730,11 @@ class InvoicesRepo:
                 seen.setdefault(pid, set()).add(category)
         if not seen:
             return 0
-        by_hand = {r["record_id"] for r in self.conn.execute(
-            "SELECT DISTINCT record_id FROM audit_log WHERE master = 'products' "
-            "AND ((field = 'Category' AND source <> ?) "
-            "     OR (action = 'Added' AND source = 'Masters screen'))",
-            (ZOHO_CATEGORY_SOURCE,))}
+        # v0.6.5: a category given in the client's sheet (their SALES /
+        # SERVICE column) or chosen on the Masters screen is marked
+        # products.category_fixed and never changed here.
+        by_hand = {r["id"] for r in self.conn.execute(
+            "SELECT id FROM products WHERE category_fixed = 1")}
         changed = 0
         with self.conn:
             for pid, cats in seen.items():

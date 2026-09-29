@@ -6,6 +6,26 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.5] – 2026-09-29 – Client's category column; repeated CODEs
+
+### Added
+- **The client's category column** in the items sheet is read: SALES →
+  Product, SERVICE → Service (heading "category" is matched automatically).
+- **A category from the sheet, or chosen on the Masters screen, is final**:
+  Zoho's goods / service type never changes it (new `products.category_fixed`,
+  database schema 6, filled from the audit log for existing products).
+  Products without a sheet category still follow Zoho's item type.
+
+### Fixed
+- **Rows lost on import when several items shared one CODE** (the client's
+  sheet has HSN codes such as 87089900 typed as the CODE of up to four
+  items): each such row overwrote the previous one and only the last
+  survived. Now a CODE used for different item names in one file is
+  dropped for those rows; each is imported as its own item (matched by
+  name) and a warning lists them. Pricelist 3: 191 of 191 rows imported,
+  8 previously lost.
+- Tests for both (128 tests).
+
 ## [0.6.4] – 2026-09-29 – Import window fits the screen
 
 ### Fixed

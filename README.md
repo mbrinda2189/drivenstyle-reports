@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.6.3 – Zoho invoice export; ₹1 labour lines ignored.** The tool reads the
+> **Current status: v0.6.5 – Zoho invoice export; client's category column.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -118,6 +118,10 @@ price, Purchase without GST → Cost price, HSN/SAC. Labour involved is set
 for items with a labour charge. Vendor, Margin, Min Sale Price and Usage
 Unit are not used; the "Product Type" notes column is ignored as a
 category. Rows priced in words ("mrp less 10%") are listed and left out.
+From v0.6.5 the sheet's own "category" column is read (SALES = Product,
+SERVICE = Service) and is final - Zoho's item type never overrides it. A
+CODE used for several different items in the sheet is ignored for those
+rows (each imported by name, with a warning) so no item is overwritten.
 
 **Finding rows.** Each tab has a search box, a filter (Products: category,
 Sales executives: branch, Cars: segment) and a status filter (active /

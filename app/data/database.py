@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 5)
+TABLES (schema version 6)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -87,6 +87,10 @@ an older database then upgrades it in place without losing data.
                      products.incentive_id; audit_log (read-only)
     step 3 (v0.4.0)  scanned invoices and Scan review fixes
     step 4 (v0.5.0)  monthly inputs and generated-report history
+    step 6 (v0.6.5)  products.category_fixed: 1 = the Category was set by
+                     the client (their sheet's category column) or on the
+                     Masters screen, so Zoho's item type never changes it.
+                     Filled from the audit log for existing products.
     step 5 (v0.6.0)  invoices read from Zoho's invoice export: invoices get
                      source (pdf / export), status (Closed / Overdue ...)
                      and branch (CF.Branch); invoice lines get item_type
@@ -105,7 +109,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -391,6 +395,14 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
     ALTER TABLE invoices ADD COLUMN status TEXT NOT NULL DEFAULT '';
     ALTER TABLE invoices ADD COLUMN branch TEXT NOT NULL DEFAULT '';
     ALTER TABLE invoice_lines ADD COLUMN item_type TEXT NOT NULL DEFAULT '';
+    """,
+    # --- 5 -> 6 : category set by the client / by hand is final ------------
+    """
+    ALTER TABLE products ADD COLUMN category_fixed INTEGER NOT NULL DEFAULT 0;
+    UPDATE products SET category_fixed = 1 WHERE id IN (
+        SELECT DISTINCT record_id FROM audit_log WHERE master = 'products'
+        AND ((field = 'Category' AND source <> 'Invoice export (Zoho item type)')
+             OR (action = 'Added' AND source = 'Masters screen')));
     """,
 ]
 
