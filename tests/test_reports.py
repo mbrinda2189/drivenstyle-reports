@@ -106,11 +106,15 @@ def test_month_figures(world):
     repo, inv, inp = world
     d = build_month(repo, inv, inp, 2026, 9)
     assert len(d.invoices) == 2 and not d.left_out
-    assert d.sales == pytest.approx(7033.75 + 20000, abs=0.05)
+    # v0.6.3: the Rs. 1 labour lines (1 on 0753, 3 on 226) are ignored -
+    # not in sales; their value is reported separately.
+    assert d.marker_lines == 4 and 0 < d.marker_value < 4
+    assert d.sales == pytest.approx(7033.75 + 20000 - d.marker_value, abs=0.05)
     i226 = next(i for i in d.invoices if i.invoice_no == "DNS-226-2627")
     # cost: 2400 + 3100 + 1100 + 300 + 1900 + 200; labour: 300 + 500 + 150
     assert i226.cost == 9000 and i226.labour == 950
-    assert sum(1 for l in i226.lines if l.category == "Labour line") == 3
+    assert i226.markers == 3 and not any(l.category == "Labour line" for l in d.lines)
+    assert i226.labour == 950                                  # from the products
     package = [l for l in d.lines if l.is_package]
     assert [l.incentive_group for l in package] == ["Basic Package"]
 

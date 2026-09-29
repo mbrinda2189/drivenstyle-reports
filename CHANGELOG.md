@@ -6,6 +6,24 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.3] – 2026-09-29 – ₹1 labour lines ignored
+
+### Changed
+- **₹1 labour marker lines are ignored** (confirmed by the client): no more
+  "Labour line" rows in the reports, and their small value (about ₹0.85
+  each after discount and GST) is not in sales. The cover sheet shows how
+  many were ignored and their value (September: 40 lines, ₹36.82), with a
+  note that sales are therefore slightly below the invoice totals.
+- **Labour comes from the product only**: labour charge × quantity for
+  products marked "Labour involved" in the Product master (unchanged
+  calculation; the labour sheet now says the marker lines are not used).
+- Report 2 summary shows Product and Service only.
+
+### Removed
+- The Scan review check "labour line but no product on this invoice has
+  labour" - it no longer applies, and invoices it held back are now
+  included. ("Labour line" issues are no longer exported either.)
+
 ## [0.6.2] – 2026-09-29 – Export issues
 
 ### Added

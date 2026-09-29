@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.6.2** (tags v0.1.0 … v0.6.2 on GitHub
+Current version: **v0.6.3** (tags v0.1.0 … v0.6.3 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -124,9 +124,10 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   item type)").
 - **Branch** in reports = the executive's branch from the master; the
   invoice's CF.Branch is stored only.
-- **₹1 "Labour Charges for …" and "Labour - …" lines are markers** that labour was done,
-  not products (category "Labour line"; their ₹1 stays in sales so totals
-  agree).
+- **₹1 labour marker lines are IGNORED** (client confirmed, v0.6.3): not in
+  any report, their value left out of sales (count and value on the cover
+  sheet), no Scan review check. Labour = product's labour charge × qty for
+  "Labour involved" products only.
 - **Invoices with any open Scan review issue are left out of every
   report** and listed on the workbook's "Not included" sheet (included +
   left out = every invoice read).
@@ -186,12 +187,8 @@ slow (no separate cause found; the Masters table itself is plain items).
 "Export issues" on Scan review (open issues only, with "What we need" and
 "Client's reply" columns – Brinda's choice); quantity format fix.
 
-## Awaiting Brinda's decision
-- ₹1 labour marker lines in the product reports ("Labour line" rows show
-  e.g. 8.74 sales, 100% margin – the lines' Item Totals after discount and
-  GST). Options given: A hide from product rows (still in invoice totals /
-  P&L), B add to the main product's sales, C one grouped "Labour markers"
-  line. She will confirm – do not change until she does.
+## Done: v0.6.3 – ₹1 labour lines ignored (2026-09-29)
+Client: ignore the ₹1 lines; labour only from the product master.
 
 ## Next – ideas, NOT confirmed (ask before coding)
 - "Incentive Details" sheet in the pricelist lists incentives actually

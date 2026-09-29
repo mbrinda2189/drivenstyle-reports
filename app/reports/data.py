@@ -29,9 +29,13 @@ HOW EACH LINE IS VALUED
                  marked "Labour involved" (what Drive N Style pays for the
                  labour)
     gross profit sales - product cost - labour cost
-"Labour Charges for ..." Rs. 1 lines are kept as category "Labour line":
-their Rs. 1 is part of sales (so totals agree with the invoices) but they
-are not products and carry no cost.
+The Rs. 1 "Labour Charges for ..." / "Labour - ..." lines are IGNORED
+(v0.6.3, confirmed by the client): they only show that labour was done.
+Labour is worked out from the product (Labour involved + labour charge in
+the Product master), never from these lines. Their small value (about
+Rs. 0.85 each after discount and GST) is left out of sales, so report sales
+are slightly below the invoice totals; the count and value are kept on the
+invoice (`markers`, `marker_value`) and shown on the cover sheet.
 
 INCENTIVES (report 7 - PROVISIONAL)
 -----------------------------------
@@ -68,7 +72,7 @@ class Line:
     car: str
     segment: str
     product: str                  # master name (or printed text for labour lines)
-    category: str                 # Product / Service / Labour line
+    category: str                 # Product / Service
     qty: float
     sales: float                  # after discount, before GST
     discount: float
@@ -108,6 +112,8 @@ class Invoice:
     payment_mode: str             # printed on the invoice, if any
     payment_made: float
     lines: list[Line] = field(default_factory=list)
+    markers: int = 0              # Rs. 1 labour marker lines ignored
+    marker_value: float = 0.0     # their value (after discount, before GST)
 
     @property
     def sales(self) -> float:
@@ -127,7 +133,7 @@ class Invoice:
 
     @property
     def items(self) -> float:
-        return sum(l.qty for l in self.lines if l.category != "Labour line")
+        return sum(l.qty for l in self.lines)
 
 
 @dataclass
@@ -161,6 +167,15 @@ class MonthData:
     @property
     def sales(self) -> float:
         return round(sum(i.sales for i in self.invoices), 2)
+
+    @property
+    def marker_lines(self) -> int:
+        """Rs. 1 labour marker lines ignored on the included invoices."""
+        return sum(i.markers for i in self.invoices)
+
+    @property
+    def marker_value(self) -> float:
+        return round(sum(i.marker_value for i in self.invoices), 2)
 
     @property
     def gross_profit(self) -> float:
@@ -215,9 +230,9 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
                           segment=inv.segment, qty=ln["qty"] or 1,
                           sales=ln["net_value"], discount=ln["discount_share"],
                           gst=ln["gst"])
-            if ln["is_labour_marker"]:
-                inv.lines.append(Line(product=ln["description"], category="Labour line",
-                                      cost=0.0, labour=0.0, **common))
+            if ln["is_labour_marker"]:            # ignored - see module notes
+                inv.markers += 1
+                inv.marker_value = round(inv.marker_value + (ln["net_value"] or 0), 2)
                 continue
             p = products[ln["product_id"]]
             r = rate("products", p["id"], day)

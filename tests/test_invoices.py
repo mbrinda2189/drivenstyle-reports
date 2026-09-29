@@ -207,13 +207,12 @@ def test_car_matching_and_fix(repo, irepo):
     assert not [i for i in irepo.issues(2026, 9) if i.kind == "car"]
 
 
-def test_labour_marker_without_labour_product(repo, irepo):
+def test_labour_marker_without_labour_product_is_not_flagged(repo, irepo):
+    """v0.6.3: Rs. 1 labour lines are ignored, so they never raise an issue."""
     for name in ("I20 - PVC Full Floor Mat + Labour Extra", "Underbody Coating - 5 Seater",
                  "Silencer Coating - All Cars"):
         add_product(repo, name, labour=False)
     scan(irepo, inv_0753())
-    [labour] = [i for i in irepo.issues(2026, 9) if i.kind == "labour"]
-    irepo.acknowledge(labour.key, "labour")
     assert not [i for i in irepo.issues(2026, 9) if i.kind == "labour"]
 
 

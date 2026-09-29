@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.6.2 – Zoho invoice export, Scan review export.** The tool reads the
+> **Current status: v0.6.3 – Zoho invoice export; ₹1 labour lines ignored.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -51,7 +51,9 @@ prepared each month before the 7th, for the month just ended.
   is kept in the code but no longer used on screen.
 - **Tax-inclusive rates.** Invoices that show **no GST** (e.g. the
   `DNS-xxx-2627` series) count in full as sales.
-- **₹1 "Labour Charges for …" and "Labour - …" lines are markers** that labour was done, not
+- **₹1 "Labour Charges for …" and "Labour - …" lines are ignored** (v0.6.3,
+  confirmed by the client); their few paise are left out of sales and noted
+  on the cover sheet. They are markers that labour was done, not
   sales items. The labour cost comes from the main product's labour charge in
   the Product master.
 - **Salesperson** is printed as "Name - Branch" (e.g. "Kumaran - HO"); it is

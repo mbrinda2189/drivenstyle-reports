@@ -28,8 +28,6 @@ ISSUES TAB (one row per issue; open issues first)
     executives / not printed          invoice by invoice); "All invoices"
                                       can still be ticked.
     Vehicle not found / not printed   choose the car, same as above
-    Labour line without a labour item Accept (or fix the Product master:
-                                      tick Labour involved)
     Totals do not add up              Open file to check, then Accept
     File skipped / could not be read  shown for information; Open file
 

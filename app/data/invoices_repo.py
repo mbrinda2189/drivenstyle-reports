@@ -43,7 +43,8 @@ from v0.6.0) - or, in earlier versions, from the invoice PDFs
                             invoice, or every invoice showing the same
                             printed name)
            set_car          same, for the vehicle
-           acknowledge      accept a totals difference or a labour note
+           acknowledge      accept a totals difference (or, before v0.6.3, a
+                            labour note)
 
     5. apply_zoho_categories()
            Products whose Category was never set by hand take Zoho's Item
@@ -62,11 +63,10 @@ Item      1. a remembered mapping for this item name
           3. the SKU, if the invoice prints one
 Labour    lines named "Labour Charges for ..." or "Labour - ..." (billed at
 marker    Rs. 1) are markers that labour was done, not sales items.
-          ("... + Labour Extra" in the middle of a name is a product.) The
-          labour cost
-          comes from the main product's labour charge in the Product
-          master. A marker on an invoice with no product needing labour is
-          flagged.
+          ("... + Labour Extra" in the middle of a name is a product.) They
+          are stored but IGNORED in the reports (v0.6.3). The labour cost
+          comes only from the product's labour charge in the Product
+          master (Labour involved). Markers are never flagged.
 Sales     "Kumaran - HO" is split into name "Kumaran" and branch "HO"; the
 person    executive with that name AND branch is used. With no branch
           printed ("Nandha Kumar"), the name alone must match exactly one
@@ -567,13 +567,11 @@ class InvoicesRepo:
                 (inv["id"],))]
 
             # --- items ------------------------------------------------------
-            all_matched, needs_labour = True, False
             for line in lines:
                 if line["is_labour_marker"]:
                     continue
                 pid = self._match_product(line, m)
                 if pid is None:
-                    all_matched = False
                     k = name_key(line["description"])
                     issue = unmatched.get(k)
                     if issue is None:
@@ -582,8 +580,6 @@ class InvoicesRepo:
                         out.append(issue)
                     if no not in issue.invoices:
                         issue.invoices.append(no)
-                elif m["product_labour"].get(pid):
-                    needs_labour = True
 
             # --- salesperson ------------------------------------------------
             eid, (why, cands) = self._match_executive(inv, m)
@@ -607,15 +603,10 @@ class InvoicesRepo:
                 self._add_person_issue(out, grouped, "car", why, no, inv, printed,
                                        vehicle_key(printed), text, cands)
 
-            # --- labour markers without a labour item -----------------------
-            markers = [l for l in lines if l["is_labour_marker"]]
-            if markers and all_matched and not needs_labour \
-                    and (no, "labour") not in acks:
-                out.append(Issue(
-                    "labour", no,
-                    f"{len(markers)} labour line{'s' if len(markers) > 1 else ''} "
-                    "but no product on this invoice has labour in the Product master.",
-                    [no], inv["file_name"]))
+            # (Until v0.6.2 an invoice with a Rs. 1 labour line but no product
+            # needing labour was flagged here. The client confirmed the Rs. 1
+            # lines are to be ignored - labour comes from the product only -
+            # so that check was removed in v0.6.3.)
 
             # --- totals checks --------------------------------------------------
             checks = [r["message"] for r in self.conn.execute(

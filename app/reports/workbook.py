@@ -9,7 +9,7 @@ WHAT THIS MODULE DOES
     Cover                      month, when and by whom generated, key
                                figures, contents, notes
     1 Invoice profitability    one row per invoice
-    2 Service vs product       Product / Service / Labour line summary +
+    2 Service vs product       Product / Service summary +
                                item-wise detail
     3 Labour                   labour by product + every line with labour
     4 Trend                    one column per scanned month (up to 12)
@@ -287,6 +287,8 @@ def cover_sheet(ws: Worksheet, d: MonthData, sheets: list[str], user: str) -> No
         ("Invoices not included (open issues)", len(d.left_out), None),
         ("Amount of invoices not included", left_total, MONEY),
         ("Files skipped", len(d.skipped_files), None),
+        ("Rs. 1 labour marker lines ignored", d.marker_lines, None),
+        ("Value of those lines (not in sales)", d.marker_value, MONEY),
     ]
     row = 5
     for label, value, fmt in facts:
@@ -308,6 +310,9 @@ def cover_sheet(ws: Worksheet, d: MonthData, sheets: list[str], user: str) -> No
     notes = [
         "Sales are after discount and exclude GST. Invoices that show no GST count in full as sales.",
         "Product cost and labour come from the Product master, at the rates that applied on each invoice date.",
+        "Labour is taken from the product (Labour involved + labour charge). The Rs. 1 'Labour Charges …' / "
+        "'Labour - …' lines only show that labour was done: they are ignored, and their small value is "
+        "not in sales, so sales are slightly below the invoice totals.",
         "Invoices with open issues on Scan review are left out of every report and listed on 'Not included'.",
     ]
     if "7 Spot incentive" in sheets:
@@ -377,9 +382,9 @@ def _by_product(lines) -> list[dict]:
 
 def category_sheet(ws: Worksheet, d: MonthData) -> None:
     row = title(ws, "Service vs product profitability", d.label,
-                ["Category comes from the Product master. 'Labour line' = the Rs. 1 "
-                 "'Labour Charges for …' lines."])
-    categories = ["Product", "Service", "Labour line"]
+                ["Category comes from the Product master. The Rs. 1 labour marker lines "
+                 "are ignored."])
+    categories = ["Product", "Service"]
     detail = sorted(_by_product(d.lines),
                     key=lambda r: (categories.index(r["category"])
                                    if r["category"] in categories else 9, -r["sales"]))
@@ -425,11 +430,11 @@ def category_sheet(ws: Worksheet, d: MonthData) -> None:
 # ---------------------------------------------------------------------------
 def labour_sheet(ws: Worksheet, d: MonthData) -> None:
     lines = [l for l in d.lines if l.labour > 0]
-    markers = sum(1 for l in d.lines if l.category == "Labour line")
     row = title(ws, "Labour calculation", d.label,
                 ["Labour cost = labour charge in the Product master × quantity, for products "
                  "marked 'Labour involved'.",
-                 f"'Labour Charges for …' lines on the invoices this month: {markers}."])
+                 f"The Rs. 1 labour marker lines on the invoices ({d.marker_lines} this month) "
+                 "are not used: labour comes from the product."])
     products = sorted({l.product for l in lines})
     detail_head = row + len(products) + 5
     first, last = detail_head + 1, detail_head + max(1, len(lines))
@@ -730,7 +735,7 @@ def high_profit_sheet(ws: Worksheet, d: MonthData) -> None:
                 [f"Products with a margin of {th:g}% or more this month (threshold set on "
                  "Monthly inputs), highest gross profit first."])
     rows = []
-    for r in _by_product([l for l in d.lines if l.category != "Labour line"]):
+    for r in _by_product(d.lines):
         gp = r["sales"] - r["cost"] - r["labour"]
         if r["sales"] > 0 and gp / r["sales"] * 100 >= th - 1e-9:
             r["_gp"] = gp
