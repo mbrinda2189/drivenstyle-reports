@@ -27,6 +27,14 @@ pages look and behave the same way:
                              (used on the Scan Review page).
     Toast                  - A short confirmation message that fades in at
                              the bottom-right of the window and fades out.
+    scroll_body(dialog)    - (v0.6.4) Gives a pop-up window a scrolling body
+                             and a fixed button row, so nothing is pushed off
+                             a small or zoomed-in screen.
+    fit_to_screen(w, ...)  - Opens a window at its preferred size, but never
+                             larger than the screen it is on.
+    NoWheelComboBox /      - Drop-downs / date boxes that ignore the mouse
+    NoWheelDateEdit          wheel until clicked, so scrolling a window
+                             cannot change a value by accident.
 """
 
 from __future__ import annotations
@@ -34,13 +42,92 @@ from __future__ import annotations
 from PySide6.QtCore import (
     Property, QEasingCurve, QEvent, QPropertyAnimation, QTimer, Qt, Signal,
 )
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QGuiApplication
 from PySide6.QtWidgets import (
-    QFileDialog, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
-    QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QDateEdit, QFileDialog, QFrame, QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QScrollArea, QVBoxLayout, QWidget,
 )
 
 from app.theme import Colors
+
+
+# ---------------------------------------------------------------------------
+# Pop-up windows that fit any screen (v0.6.4)
+# ---------------------------------------------------------------------------
+def scroll_body(dialog: QWidget, margins=(26, 22, 26, 12)
+                ) -> tuple[QVBoxLayout, QHBoxLayout]:
+    """
+    Lay out `dialog` as a scrolling body above a fixed button row.
+    Returns (body layout, button-row layout). On a laptop screen with
+    Windows zoom at 125-150 %, the Import window was taller than the
+    screen and its Import button could not be reached; with this, the body
+    scrolls and the buttons always stay visible.
+    """
+    outer = QVBoxLayout(dialog)
+    outer.setContentsMargins(0, 0, 0, 0)
+    outer.setSpacing(0)
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    scroll.setStyleSheet("QScrollArea { background: transparent; }")
+    body = QWidget()
+    body.setObjectName("DialogBody")
+    body.setStyleSheet("#DialogBody { background: transparent; }")
+    lay = QVBoxLayout(body)
+    lay.setContentsMargins(*margins)
+    lay.setSpacing(12)
+    scroll.setWidget(body)
+    outer.addWidget(scroll, 1)
+
+    footer = QFrame()
+    footer.setObjectName("DialogFooter")
+    footer.setStyleSheet(f"#DialogFooter {{ border-top: 1px solid {Colors.LINE}; }}")
+    btns = QHBoxLayout(footer)
+    btns.setContentsMargins(margins[0], 12, margins[2], 16)
+    btns.setSpacing(10)
+    outer.addWidget(footer)
+    return lay, btns
+
+
+def fit_to_screen(widget: QWidget, width: int, height: int, margin: int = 80) -> None:
+    """Resize to width x height, but no larger than the available screen."""
+    screen = widget.screen() or QGuiApplication.primaryScreen()
+    if screen is None:
+        widget.resize(width, height)
+        return
+    avail = screen.availableGeometry()
+    widget.resize(min(width, avail.width() - margin),
+                  min(height, avail.height() - margin))
+
+
+class NoWheelComboBox(QComboBox):
+    """A drop-down that only reacts to the mouse wheel once clicked."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.StrongFocus)
+
+    def wheelEvent(self, event):                    # noqa: N802 (Qt name)
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()                          # let the window scroll
+
+
+class NoWheelDateEdit(QDateEdit):
+    """A date box that only reacts to the mouse wheel once clicked."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setFocusPolicy(Qt.StrongFocus)
+
+    def wheelEvent(self, event):                    # noqa: N802 (Qt name)
+        if self.hasFocus():
+            super().wheelEvent(event)
+        else:
+            event.ignore()
 
 
 # ---------------------------------------------------------------------------

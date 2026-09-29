@@ -33,6 +33,12 @@ check, before anything is saved, how the sheet will be read:
   remembers the column matches for next time, and closes. The caller then
   calls `show_summary()` to report what was added, updated and left out.
 
+The window never opens taller than the screen: everything above the Cancel
+/ Import buttons scrolls, and the buttons stay at the bottom (v0.6.4 - on a
+zoomed-in laptop screen the Import button could not be reached). Drop-downs
+ignore the mouse wheel until clicked, so scrolling cannot change a column
+match by accident.
+
 "Amounts apply from" (products and incentives) defaults to 1st April of the
 current financial year when the master is still empty (first load),
 otherwise to the 1st of next month, matching the amount-change dialog.
@@ -56,7 +62,8 @@ from app.data.master_defs import MasterDef
 from app.data.masters_repo import ImportResult, MastersRepo
 from app.theme import Colors
 from app.utils import first_of_next_month, format_inr
-from app.widgets.common import button, label
+from app.widgets.common import (
+    NoWheelComboBox, NoWheelDateEdit, button, fit_to_screen, label, scroll_body)
 
 NOT_IN_SHEET = "— Not in this sheet —"
 PREVIEW_ROWS = 5
@@ -89,17 +96,14 @@ class ImportDialog(QDialog):
 
         self.setWindowTitle(f"Import {mdef.title.lower()}")
         self.setModal(True)
-        self.setMinimumSize(860, 760)
-
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(26, 22, 26, 20)
-        lay.setSpacing(12)
+        self.setMinimumSize(720, 420)
+        lay, btns = scroll_body(self)
         lay.addWidget(label(f"Import {mdef.title.lower()}", "PageTitle"))
         self.file_info = label("", "Muted", wrap=True)
         lay.addWidget(self.file_info)
 
         # --- sheet chooser (only when the workbook has several sheets) ----
-        self.sheet_combo = QComboBox()
+        self.sheet_combo = NoWheelComboBox()
         self.sheet_combo.addItems(sheet.sheet_names)
         self.sheet_combo.setCurrentText(sheet.sheet)
         self.sheet_combo.currentTextChanged.connect(self._change_sheet)
@@ -119,7 +123,7 @@ class ImportDialog(QDialog):
         for i, f in enumerate(mdef.importable_fields):
             grid.addWidget(label(f.label + ("  *" if f.required else "")), i, 0,
                            Qt.AlignVCenter)
-            combo = QComboBox()
+            combo = NoWheelComboBox()
             combo.setMinimumWidth(240)
             combo.setMinimumHeight(34)      # keep full height in a tight dialog
             combo.currentIndexChanged.connect(self._refresh)
@@ -150,7 +154,7 @@ class ImportDialog(QDialog):
             row.addWidget(label("Amounts apply from"))
             empty = not self.repo.list_rows(mdef.key)
             default = financial_year_start() if empty else first_of_next_month()
-            self.date_edit = QDateEdit(QDate(default.year, default.month, default.day))
+            self.date_edit = NoWheelDateEdit(QDate(default.year, default.month, default.day))
             self.date_edit.setCalendarPopup(True)
             self.date_edit.setDisplayFormat("dd-MM-yyyy")
             row.addWidget(self.date_edit)
@@ -166,7 +170,6 @@ class ImportDialog(QDialog):
             "border-radius: 6px; padding: 8px 10px;")
         lay.addWidget(self.problem_note)
 
-        btns = QHBoxLayout()
         btns.addStretch(1)
         cancel = button("Cancel", "Secondary")
         cancel.clicked.connect(self.reject)
@@ -174,7 +177,7 @@ class ImportDialog(QDialog):
         self.import_btn.clicked.connect(self._do_import)
         btns.addWidget(cancel)
         btns.addWidget(self.import_btn)
-        lay.addLayout(btns)
+        fit_to_screen(self, 900, 860)
 
         self._fill_combos()
 

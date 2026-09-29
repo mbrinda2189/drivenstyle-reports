@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.6.3** (tags v0.1.0 … v0.6.3 on GitHub
+Current version: **v0.6.4** (tags v0.1.0 … v0.6.4 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -98,6 +98,11 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   refresh lagged). Use plain items and build controls only for the clicked
   row. Pages hidden behind others are marked stale and rebuilt on show,
   not rebuilt on every master save.
+- Pop-up windows: Brinda's laptop is ~1333×830 logical px (Windows zoom
+  150 %). Build dialogs with `common.scroll_body` (scrolling body, fixed
+  buttons) and size them with `common.fit_to_screen`; use NoWheelComboBox /
+  NoWheelDateEdit inside scrolling areas (v0.6.4: the Import button was
+  unreachable).
 - Qt combo boxes: store item data as strings/ints, never Python tuples
   (`findData` cannot match tuples – this caused a bug in v0.5.0).
 - On Windows `glob("*.pdf")` is case-insensitive; never add a second

@@ -6,6 +6,23 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.4] – 2026-09-29 – Import window fits the screen
+
+### Fixed
+- **Import window taller than the screen**: on a laptop with Windows zoom
+  at 125–150 % the Import button was pushed off the bottom and the window
+  could not scroll, so masters could not be loaded. The column matching,
+  preview and problem list now scroll inside the window; Cancel / Import
+  stay fixed at the bottom; the window never opens taller than the screen.
+- Same for the Edit form (sized to its fields, capped at the screen).
+- Drop-downs and the date box in these windows ignore the mouse wheel until
+  clicked, so scrolling the window cannot change a column match by
+  accident.
+
+### Added
+- `scroll_body`, `fit_to_screen`, `NoWheelComboBox`, `NoWheelDateEdit` in
+  `app/widgets/common.py` for any pop-up window.
+
 ## [0.6.3] – 2026-09-29 – ₹1 labour lines ignored
 
 ### Changed

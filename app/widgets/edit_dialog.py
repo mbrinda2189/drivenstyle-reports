@@ -40,7 +40,8 @@ from PySide6.QtWidgets import (
 from app.data.master_defs import FieldDef, MasterDef
 from app.theme import Colors
 from app.utils import format_inr, parse_inr
-from app.widgets.common import button, label
+from app.widgets.common import (
+    NoWheelComboBox, button, fit_to_screen, label, scroll_body)
 
 NONE_TEXT = "— None —"
 
@@ -63,8 +64,8 @@ class EditDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(480)
 
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(26, 22, 26, 20)
+        # Scrolling body + fixed buttons, never taller than the screen (v0.6.4).
+        lay, btns = scroll_body(self)
         lay.setSpacing(14)
         lay.addWidget(label(title or f"New {mdef.singular}", "SectionTitle"))
 
@@ -90,7 +91,7 @@ class EditDialog(QDialog):
         self.error.hide()
         lay.addWidget(self.error)
 
-        btns = QHBoxLayout()
+        lay.addStretch(1)
         btns.addStretch(1)
         cancel = button("Cancel", "Secondary")
         cancel.clicked.connect(self.reject)
@@ -98,7 +99,8 @@ class EditDialog(QDialog):
         ok.clicked.connect(self._apply)
         btns.addWidget(cancel)
         btns.addWidget(ok)
-        lay.addLayout(btns)
+        # Tall enough for every field (+ the button row), capped at the screen.
+        fit_to_screen(self, 560, lay.parentWidget().sizeHint().height() + 80)
 
     # ------------------------------------------------------------------
     def _make_input(self, f: FieldDef, value, lookup_names) -> QWidget:
@@ -108,7 +110,7 @@ class EditDialog(QDialog):
             box.setChecked(bool(value))
             return box
         if f.kind in ("choice", "lookup"):
-            combo = QComboBox()
+            combo = NoWheelComboBox()
             if f.kind == "lookup":
                 names = list(lookup_names(f.lookup))
                 if value and value not in names:      # e.g. an inactive group
