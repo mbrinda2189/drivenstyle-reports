@@ -8,6 +8,8 @@ app.reports - The 12 monthly reports
     workbook.py  Writes those figures into the Excel workbook: a cover
                  sheet, the 12 report sheets and a "Not included" sheet.
                  Totals, profits and percentages are live Excel formulas.
+    issues_export.py  The open Scan review issues as an Excel question
+                 list for the client (v0.6.2).
     generate.py  One call used by the Generate and History screens:
                  build the data, write the workbook, record the run.
 """

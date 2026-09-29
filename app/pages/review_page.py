@@ -50,6 +50,13 @@ resolve other rows too (e.g. one remembered salesperson name): those rows
 turn "Fixed" at the same time. Adding a missing product or car on the
 Masters screen also clears its issues here immediately.
 
+EXPORT ISSUES (v0.6.2)
+----------------------
+"Export issues" saves the OPEN issues to Excel (sheet "Issues" with "What
+we need" and a blank "Client's reply" column, and sheet "Invoices
+affected") - see app/reports/issues_export.py. It can be sent to the client
+as a question list.
+
 INVOICES READ TAB
 -----------------
 Every invoice read for the month with what the tool understood: date,
@@ -68,10 +75,11 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from PySide6.QtCore import QUrl, Qt, Signal
+from PySide6.QtCore import QStandardPaths, QUrl, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QDesktopServices
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QCompleter, QHBoxLayout,
+    QAbstractItemView, QCheckBox, QComboBox, QCompleter, QFileDialog, QHBoxLayout,
+    QMessageBox,
     QHeaderView, QLabel, QStackedWidget, QTableWidget, QTableWidgetItem,
     QTabWidget, QVBoxLayout, QWidget,
 )
@@ -79,6 +87,7 @@ from PySide6.QtWidgets import (
 from app.data.invoices_repo import InvoicesRepo, Issue, month_label
 from app.data.masters_repo import MastersRepo
 from app.pages.base import ScrollPage
+from app.reports.issues_export import default_file_name, export_issues
 from app.theme import Colors
 from app.utils import format_inr
 from app.widgets.common import Card, StatTile, button, label
@@ -234,6 +243,11 @@ class ReviewPage(ScrollPage):
         foot = QHBoxLayout()
         self.footer_note = label("", "Muted")
         foot.addWidget(self.footer_note, 1)
+        self.export_btn = button("Export issues", "Secondary")
+        self.export_btn.setToolTip("Save the open issues as an Excel file, e.g. to "
+                                   "send to the client as a question list.")
+        self.export_btn.clicked.connect(self._export_issues)
+        foot.addWidget(self.export_btn)
         cont = button("Continue to generate", "Primary")
         cont.clicked.connect(self.backRequested.emit)
         foot.addWidget(cont)
@@ -546,6 +560,34 @@ class ReviewPage(ScrollPage):
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
+    def _export_issues(self) -> None:
+        """Save the open issues to Excel (app/reports/issues_export.py)."""
+        start = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export issues",
+            str(Path(start) / default_file_name(self.year, self.month)),
+            "Excel workbook (*.xlsx)")
+        if not path:
+            return
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+        try:
+            n = export_issues(self.invoices, self.year, self.month, path)
+        except PermissionError:
+            QMessageBox.warning(self, "Export issues",
+                                f"“{Path(path).name}” could not be saved. If it is open "
+                                "in Excel, close it and export again.")
+            return
+        except OSError as exc:
+            QMessageBox.warning(self, "Export issues", f"The file could not be saved: {exc}")
+            return
+        if QMessageBox.question(
+                self, "Export issues",
+                f"{n} open issue{'s' if n != 1 else ''} saved to “{Path(path).name}”.\n\n"
+                "Open it now?", QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes) == QMessageBox.Yes:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+
     def _update_counts(self) -> None:
         files = self.invoices.scan_files(self.year, self.month)
         read = sum(f["status"] == "read" for f in files)
@@ -553,6 +595,7 @@ class ReviewPage(ScrollPage):
         self.tile_read.set_value(str(read))
         self.tile_open.set_value(str(open_n))
         self.tile_skip.set_value(str(len(files) - read))
+        self.export_btn.setEnabled(open_n > 0)
         self.footer_note.setText(
             "All issues resolved." if open_n == 0 else
             f"{open_n} issue{'s' if open_n != 1 else ''} still open. Invoices "

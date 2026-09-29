@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.6.1** (tags v0.1.0 … v0.6.1 on GitHub
+Current version: **v0.6.2** (tags v0.1.0 … v0.6.2 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -181,6 +181,17 @@ Scan review rebuilt on show instead of after every master save; close-app
 error fixed. Brinda reported lag in Scan review scrolling, Masters editing
 / saving and Masters scrolling – ask her whether Masters scrolling is still
 slow (no separate cause found; the Masters table itself is plain items).
+
+## Done: v0.6.2 – Export issues (2026-09-29)
+"Export issues" on Scan review (open issues only, with "What we need" and
+"Client's reply" columns – Brinda's choice); quantity format fix.
+
+## Awaiting Brinda's decision
+- ₹1 labour marker lines in the product reports ("Labour line" rows show
+  e.g. 8.74 sales, 100% margin – the lines' Item Totals after discount and
+  GST). Options given: A hide from product rows (still in invoice totals /
+  P&L), B add to the main product's sales, C one grouped "Labour markers"
+  line. She will confirm – do not change until she does.
 
 ## Next – ideas, NOT confirmed (ask before coding)
 - "Incentive Details" sheet in the pricelist lists incentives actually

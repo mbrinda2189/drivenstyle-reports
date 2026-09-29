@@ -332,6 +332,8 @@ class Issue:
     options: list[int] = field(default_factory=list)
     grouped: bool = False                   # one row for every invoice showing
                                             # this name (fix applies to all)
+    reason: str = ""                        # salesperson / car: not_found /
+                                            # branch / several / missing
 
 
 # ---------------------------------------------------------------------------
@@ -651,12 +653,12 @@ class InvoicesRepo:
         """
         if why in ("several", "missing") or not raw_key:
             out.append(Issue(kind, no, text, [no], inv["file_name"],
-                             printed=printed, options=cands))
+                             printed=printed, options=cands, reason=why))
             return
         issue = grouped.get((kind, raw_key))
         if issue is None:
             issue = Issue(kind, f"name:{raw_key}", text, [], inv["file_name"],
-                          printed=printed, options=cands, grouped=True)
+                          printed=printed, options=cands, grouped=True, reason=why)
             grouped[(kind, raw_key)] = issue
             out.append(issue)
         issue.invoices.append(no)

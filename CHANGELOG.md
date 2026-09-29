@@ -6,6 +6,29 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.2] – 2026-09-29 – Export issues
+
+### Added
+- **Export issues** button on Scan review (`app/reports/issues_export.py`):
+  saves the month's OPEN issues as `DriveNStyle_<Mon>-<YYYY>_Issues.xlsx`,
+  a question list for the client. Sheet "Issues": Type, As printed on the
+  invoice, Issue, Invoices, Invoice numbers, **What we need** (plain request
+  per kind of issue, e.g. "give the contact no and branch") and a blank
+  **Client's reply** column. Sheet "Invoices affected": invoice no, date,
+  customer, salesperson, vehicle, total and its issues. Same look as the
+  reports workbook. Disabled when nothing is open.
+- Issues now carry the reason a salesperson / vehicle was not matched
+  (not found / other branch / several / not printed).
+- Tests for the export (123 tests).
+
+### Fixed
+- Quantities in the reports workbook showed a trailing dot ("9.", "108.");
+  they now show as 9, 108 (and 1.5 where not whole).
+
+### Pending
+- How the ₹1 labour marker lines should appear in the product reports
+  (hide / add to the main product / group) – Brinda to confirm.
+
 ## [0.6.1] – 2026-09-28 – Faster Scan review and Masters
 
 ### Changed

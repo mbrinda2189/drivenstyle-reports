@@ -60,7 +60,9 @@ from app.reports.data import MonthData
 
 FONT = "Arial"
 NAVY, SLATE, AMBER, AMBER_TINT = "0B2545", "5B6B82", "B7791F", "FBF1DE"
-MONEY, PCT, DATE, QTY = "#,##0.00", "0.0%", "DD-MM-YYYY", "#,##0.##"
+# QTY is "General": "#,##0.##" showed whole quantities with a trailing dot
+# ("9.", "108.") - fixed in v0.6.2. General shows 9 and 1.5 as they are.
+MONEY, PCT, DATE, QTY = "#,##0.00", "0.0%", "DD-MM-YYYY", "General"
 thin = Side(style="thin", color="DCE4EF")
 rule = Side(style="thin", color=NAVY)
 

@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.6.1 – Zoho invoice export, faster Scan review.** The tool reads the
+> **Current status: v0.6.2 – Zoho invoice export, Scan review export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -175,6 +175,9 @@ layout), then import them - incentives first.
      invoice; "All invoices" can be ticked.
    Click a row to show its Fix controls (only one row has them at a time,
    which keeps the list fast).
+   **Export issues** saves the open issues to Excel with a "What we need"
+   and a blank "Client's reply" column (plus the invoices affected), to
+   send to the client as a question list.
    - *Labour line without a labour item* / *totals do not add up* - open the
      export to check, then Accept (or correct the master).
    Every fix is recorded in the audit log (master "Scan review").
