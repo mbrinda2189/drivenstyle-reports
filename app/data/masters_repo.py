@@ -77,7 +77,8 @@ import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from app.data.master_defs import MASTERS_BY_KEY, FieldDef, MasterDef
+from app.data.master_defs import (
+    MASTERS_BY_KEY, FieldDef, MasterDef, counter_item_default)
 from app.utils import format_inr
 
 
@@ -157,7 +158,8 @@ class Store:
 
 STORES = {
     "products": Store("products", "name_key",
-                      ("sku", "name", "hsn_sac", "category", "has_labour", "active"),
+                      ("sku", "name", "hsn_sac", "category", "has_labour",
+                       "vehicle_needed", "active"),
                       "t.name COLLATE NOCASE", "product_rates", "product_id"),
     "executives": Store("executives", "phone_key",
                         ("name", "phone", "branch", "active"),
@@ -686,6 +688,8 @@ class MastersRepo:
                         merged["category"] = infer_category(merged.get("hsn_sac"))
                     if "has_labour" not in rec:
                         merged["has_labour"] = float(merged.get("labour_charge") or 0) > 0
+                    if "vehicle_needed" not in rec:
+                        merged["vehicle_needed"] = counter_item_default(merged.get("name"))
                 if master == "products" and merged.get("incentive_group") and \
                         self._incentive_id(merged["incentive_group"]) is None:
                     result.warnings.append(

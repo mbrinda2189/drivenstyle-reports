@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.6.6** (tags v0.1.0 … v0.6.6 on GitHub
+Current version: **v0.6.7** (tags v0.1.0 … v0.6.7 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -131,6 +131,10 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
 - **CODE is not reliable in the client's sheet** (HSN codes typed as CODE,
   shared by several items). A CODE shared by different names in one import
   is dropped for those rows (v0.6.5); items match invoices by name.
+- **Counter sales** (v0.6.7): products have "Vehicle needed" (default Yes;
+  No for counter items – master_defs.COUNTER_ITEM_WORDS). An invoice with no
+  vehicle is fine when every item is No → "Counter sale (no vehicle)" in
+  the reports; otherwise Scan review asks for the car.
 - **Branch** in reports = the executive's branch from the master; the
   invoice's CF.Branch is stored only.
 - **₹1 labour marker lines are IGNORED** (client confirmed, v0.6.3): not in

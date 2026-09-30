@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 6)
+TABLES (schema version 7)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -87,6 +87,10 @@ an older database then upgrades it in place without losing data.
                      products.incentive_id; audit_log (read-only)
     step 3 (v0.4.0)  scanned invoices and Scan review fixes
     step 4 (v0.5.0)  monthly inputs and generated-report history
+    step 7 (v0.6.7)  products.vehicle_needed (1 = the invoice must show a
+                     car). Counter items (perfume, shampoo, microfiber ...,
+                     master_defs.COUNTER_ITEM_WORDS) are set to 0, each
+                     change written to the audit log.
     step 6 (v0.6.5)  products.category_fixed: 1 = the Category was set by
                      the client (their sheet's category column) or on the
                      Masters screen, so Zoho's item type never changes it.
@@ -109,7 +113,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -197,6 +201,27 @@ def _step_2(conn: sqlite3.Connection) -> None:
         UPDATE import_mappings SET field = 'branch'
             WHERE master = 'executives' AND field = 'city';
     """)
+
+
+def _step_7(conn: sqlite3.Connection) -> None:
+    """
+    v0.6.5 -> v0.6.7: "Vehicle needed" on products. Existing counter items
+    are set to No (logged in the audit log, source "Upgrade v0.6.7").
+    """
+    from datetime import datetime
+    from app.data.master_defs import counter_item_default
+    conn.execute("ALTER TABLE products ADD COLUMN vehicle_needed "
+                 "INTEGER NOT NULL DEFAULT 1")
+    now = datetime.now().isoformat(timespec="seconds")
+    for row in conn.execute("SELECT id, name FROM products").fetchall():
+        if not counter_item_default(row["name"]):
+            conn.execute("UPDATE products SET vehicle_needed = 0 WHERE id = ?",
+                         (row["id"],))
+            conn.execute(
+                "INSERT INTO audit_log(at, user, master, record_id, record, action, "
+                "field, old_value, new_value, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (now, "", "products", row["id"], row["name"], "Edited",
+                 "Vehicle needed", "Yes", "No", "Upgrade v0.6.7 (counter item)"))
 
 
 # Each entry upgrades the database from version (index) to (index + 1).
@@ -404,6 +429,8 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
         AND ((field = 'Category' AND source <> 'Invoice export (Zoho item type)')
              OR (action = 'Added' AND source = 'Masters screen')));
     """,
+    # --- 6 -> 7 : vehicle needed ---------------------------------------------
+    _step_7,
 ]
 
 

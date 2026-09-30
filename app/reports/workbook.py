@@ -578,7 +578,9 @@ def package_sheet(ws: Worksheet, d: MonthData) -> None:
 # ---------------------------------------------------------------------------
 def vehicle_sheet(ws: Worksheet, d: MonthData) -> None:
     row = title(ws, "Vehicle-wise average per car", d.label,
-                ["Each invoice is one car. Car and segment come from the Car master."])
+                ["Each invoice is one car. Car and segment come from the Car master.",
+                 "Counter sales (items marked 'Vehicle needed = No', no car on the invoice) "
+                 "are shown as one row, 'Counter sale (no vehicle)'."])
     cars: dict[str, dict] = {}
     for i in d.invoices:
         c = cars.setdefault(i.car, dict(car=i.car, segment=i.segment, cars=0,

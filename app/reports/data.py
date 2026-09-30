@@ -62,6 +62,8 @@ from app.data.inputs_repo import InputsRepo
 from app.data.invoices_repo import InvoicesRepo, month_key, month_label
 from app.data.masters_repo import MastersRepo
 
+COUNTER_SALE = "Counter sale (no vehicle)"
+
 
 @dataclass
 class Line:
@@ -218,7 +220,10 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
                                     raw["total"], open_reasons[raw["invoice_no"]]))
             continue
         ex = execs.get(raw["executive_id"], {})
-        car = cars.get(raw["car_id"], {})
+        # No car on an included invoice = a counter sale (every item marked
+        # "Vehicle needed = No"; otherwise Scan review would have held it).
+        car = cars.get(raw["car_id"]) or dict(make="", model=COUNTER_SALE,
+                                               segment=COUNTER_SALE)
         inv = Invoice(
             raw["invoice_no"], day, raw["customer"], raw["customer_type"],
             ex.get("name", ""), ex.get("branch", ""),

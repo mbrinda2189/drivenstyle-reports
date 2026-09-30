@@ -57,7 +57,8 @@ NEEDS = {
     ("car", "not_found"): "Not in the car list: give make, model and segment, or "
                           "tell us which listed car this is.",
     ("car", "several"): "Matches more than one car: tell us which one.",
-    ("car", "missing"): "No vehicle on the invoice: tell us the car.",
+    ("car", "missing"): "No vehicle on the invoice: tell us the car - or, if it was "
+                        "a counter sale, mark its items 'Vehicle needed = No'.",
     ("totals", ""): "The invoice figures do not add up: please check this invoice "
                     "in Zoho.",
 }

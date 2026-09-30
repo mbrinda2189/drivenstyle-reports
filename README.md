@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.6.5 – Zoho invoice export; client's category column.** The tool reads the
+> **Current status: v0.6.7 – Zoho invoice export; counter sales without a vehicle.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -92,7 +92,7 @@ kept in the tool; the Masters screen is used for occasional changes.
 
 | Master | Fields | Unique by |
 |---|---|---|
-| Product | SKU, Product name, HSN/SAC, Category (Product / Service), Incentive group, Selling price, Cost price, Labour involved, Labour charge, Effective from, Active | Product name, and SKU when given |
+| Product | SKU, Product name, HSN/SAC, Category (Product / Service), Incentive group, Selling price, Cost price, Labour involved, Labour charge, Vehicle needed, Effective from, Active | Product name, and SKU when given |
 | Sales executive | Name, Contact no, Branch, Active | Contact no - a 10-digit mobile (`+91 98765 43210` = `9876543210`) |
 | Car | Make, Model, Segment (Hatchback, Sedan, Compact SUV, SUV, MUV…; other values can be typed), Active | Make + model |
 | Incentive | Product / Service, Incentive amount, Bill value, Effective from, Active | Product / Service |

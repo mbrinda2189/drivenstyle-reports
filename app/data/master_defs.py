@@ -9,7 +9,7 @@ provides:
 
     Product          SKU | Product name | HSN/SAC | Category | Incentive group |
                      Selling price | Cost price | Labour involved |
-                     Labour charge | Effective from | Active
+                     Labour charge | Vehicle needed | Effective from | Active
     Sales executive  Name | Contact no | Branch | Active
     Car              Make | Model | Segment | Active
     Incentive        Product / Service | Incentive amount | Bill value |
@@ -200,12 +200,34 @@ PRODUCTS = MasterDef(
                            "labor charges", "labour cost", "labour amount",
                            "labour rate", "fitting charge",
                            "installation charge", "labour")),
+        # v0.6.7: "No" for counter items (perfume, shampoo, microfiber cloth
+        # ...) that are sold without a car. An invoice with no vehicle is
+        # accepted when every item on it is "No"; otherwise Scan review asks
+        # for the car. Not in the sheet? See counter_item_default().
+        FieldDef("vehicle_needed", "Vehicle needed", kind="bool",
+                 default=True, width=125,
+                 synonyms=("vehicle needed", "vehicle required", "needs vehicle",
+                           "car needed", "car required", "needs car")),
         FieldDef("effective_from", "Effective from", kind="date",
                  importable=False, width=115),
         FieldDef("active", "Active", kind="bool", importable=False,
                  default=True, width=70),
     ),
 )
+
+# Words in a product name that mark a counter item sold without a car
+# (Turtle Wax retail bottles, cloths ...). Used only when a new product is
+# added without a "Vehicle needed" column, and once when upgrading to
+# v0.6.7; the value can always be changed on the Masters screen.
+COUNTER_ITEM_WORDS = ("perfume", "shampoo", "glass cleaner", "microfiber",
+                      "microfibre", "acrylic trim", "flex wax", "glue remover",
+                      "compound", "max power car wash")
+
+
+def counter_item_default(name: str) -> bool:
+    """Vehicle needed? False for counter items (see COUNTER_ITEM_WORDS)."""
+    low = str(name or "").lower()
+    return not any(w in low for w in COUNTER_ITEM_WORDS)
 
 # ---------------------------------------------------------------------------
 # Sales executive master

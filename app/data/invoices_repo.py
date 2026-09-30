@@ -81,6 +81,10 @@ person    executive with that name AND branch is used. With no branch
 Car       the printed Vehicle ("PUNCH.EV", "CRETA") compared with the Car
           master's model (or make + model), ignoring capitals, spaces and
           punctuation. None or several matches -> Scan review.
+          No vehicle at all is accepted for a COUNTER SALE: every item on
+          the invoice is marked "Vehicle needed = No" in the Product master
+          (perfume, shampoo, microfiber cloth ...). Reports show it as
+          "Counter sale (no vehicle)" (v0.6.7).
 
 AMOUNTS PER LINE (for the reports)
 ----------------------------------
@@ -482,6 +486,7 @@ class InvoicesRepo:
             product_sku={p["sku"].lower(): p["id"] for p in products if p["sku"]},
             product_name={p["id"]: p["name"] for p in products},
             product_labour={p["id"]: p["has_labour"] for p in products},
+            product_vehicle={p["id"]: p["vehicle_needed"] for p in products},
             execs=execs, exec_ids={e["id"] for e in execs},
             exec_label={e["id"]: e["name"] + (f" – {e['branch']}" if e["branch"] else "")
                         for e in execs},
@@ -569,10 +574,15 @@ class InvoicesRepo:
                 (inv["id"],))]
 
             # --- items ------------------------------------------------------
+            # counter_sale: every item is known and marked "Vehicle needed =
+            # No" (perfume, shampoo ...), so no car is expected (v0.6.7).
+            counter_sale = any(not l["is_labour_marker"] for l in lines)
             for line in lines:
                 if line["is_labour_marker"]:
                     continue
                 pid = self._match_product(line, m)
+                if pid is None or m["product_vehicle"].get(pid, True):
+                    counter_sale = False
                 if pid is None:
                     k = name_key(line["description"])
                     issue = unmatched.get(k)
@@ -597,7 +607,9 @@ class InvoicesRepo:
 
             # --- car ----------------------------------------------------------
             cid, (why, cands) = self._match_car(inv, m)
-            if cid is None:
+            if cid is None and why == "missing" and counter_sale:
+                pass                        # counter sale: no car needed
+            elif cid is None:
                 printed = inv["vehicle"]
                 text = {"missing": "No vehicle printed on the invoice.",
                         "several": f"Vehicle “{printed}” matches more than one car.",

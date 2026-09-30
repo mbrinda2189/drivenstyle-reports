@@ -6,6 +6,22 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.7] – 2026-09-30 – Counter sales without a vehicle
+
+### Added
+- **"Vehicle needed" (Yes / No) on the Product master.** An invoice with no
+  vehicle is accepted when every item on it is "No" (counter items such as
+  Turtle Wax perfume, shampoo, glass cleaner, microfiber cloth); it shows in
+  the reports as "Counter sale (no vehicle)". A car job billed without a
+  vehicle is still flagged on Scan review.
+- Default "No" for counter items (words: perfume, shampoo, glass cleaner,
+  microfiber, acrylic trim, flex wax, glue remover, compound, Max Power car
+  wash) when a product is added without a "Vehicle needed" column, and once
+  for existing products on upgrade (database schema 7, each change in the
+  audit log, source "Upgrade v0.6.7"). Can be changed on the Masters screen
+  or with a "Vehicle needed" column in the client's sheet.
+- 4 tests (132 tests).
+
 ## [0.6.6] – 2026-09-30 – Spot incentive rule confirmed
 
 ### Changed
