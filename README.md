@@ -10,9 +10,9 @@ prepared each month before the 7th, for the month just ended.
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
 > Monthly inputs (indirect costs, high-profit threshold) and History (Open /
-> Regenerate) are live. Still to come: the client's actual spot incentive
-> rule (a provisional rule is used and marked), package definitions, and
-> packaging as an .exe.
+> Regenerate) are live. The spot incentive rule is confirmed by the client.
+> Still to come: linking products to incentive groups (draft sent),
+> package definitions, and packaging as an .exe.
 
 ## The 12 reports
 
@@ -207,8 +207,8 @@ must equal the invoice Total, within ₹1.
 | 4 Trend | One column per scanned month (up to 12): invoices, sales, product/service sales, costs, gross profit, margin, average bill, change |
 | 5 Packages | Sales of products whose incentive group is a "… Package" |
 | 6 Vehicle-wise | By segment and car model, with average sales and profit per car |
-| 7 Spot incentive | **Provisional** rule: incentive × (amount billed ÷ bill value), capped at the full incentive; by executive and per line |
-| 8 Executive-wise sales | Per executive (name and branch), including provisional incentive |
+| 7 Spot incentive | Client's rule (confirmed 30-09-2026): incentive × (amount billed ÷ bill value), capped at the full incentive; by executive and per line |
+| 8 Executive-wise sales | Per executive (name and branch), including incentive payable |
 | 9 High-profit products | Products at or above the month's threshold margin |
 | 10 Indirect vs direct | Direct and indirect costs as % of sales |
 | 11 Payment modes | Received by mode (payments export or mode printed on the invoice), by account, per invoice, and "Not received" |

@@ -37,14 +37,15 @@ Rs. 0.85 each after discount and GST) is left out of sales, so report sales
 are slightly below the invoice totals; the count and value are kept on the
 invoice (`markers`, `marker_value`) and shown on the cover sheet.
 
-INCENTIVES (report 7 - PROVISIONAL)
------------------------------------
+INCENTIVES (report 7 - rule confirmed by the client on 30-09-2026)
+-----------------------------------------------------------------
 For a product linked to an incentive group, the group's incentive amount
 and bill value that applied on the invoice date are attached to the line,
 with `billed` = the line's value after discount INCLUDING GST (what the
-customer paid for it). The workbook applies the provisional rule
+customer paid for it). The workbook applies the client's rule
     payable = incentive x qty x min(1, billed / (bill value x qty))
-until the client confirms the actual rule.
+i.e. the incentive falls in proportion to any discount below the bill
+value, and is never more than the full incentive.
 
 PACKAGES (report 5)
 -------------------

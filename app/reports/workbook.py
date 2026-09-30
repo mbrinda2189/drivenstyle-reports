@@ -15,7 +15,7 @@ WHAT THIS MODULE DOES
     4 Trend                    one column per scanned month (up to 12)
     5 Packages                 package sales by package + detail
     6 Vehicle-wise             by car model and by segment, average per car
-    7 Spot incentive           PROVISIONAL: by executive + every line
+    7 Spot incentive           by executive + every line (client's rule)
     8 Executive-wise sales     by executive (name and branch)
     9 High-profit products     products at or above the threshold margin
     10 Indirect vs direct      direct and indirect costs as % of sales
@@ -315,8 +315,6 @@ def cover_sheet(ws: Worksheet, d: MonthData, sheets: list[str], user: str) -> No
         "not in sales, so sales are slightly below the invoice totals.",
         "Invoices with open issues on Scan review are left out of every report and listed on 'Not included'.",
     ]
-    if "7 Spot incentive" in sheets:
-        notes.append("Spot incentive uses a PROVISIONAL rule until the client confirms the actual rule.")
     if not d.has_inputs:
         notes.append("No indirect costs were entered for this month (Monthly inputs): they are shown as zero.")
     for n in notes:
@@ -632,7 +630,7 @@ def vehicle_sheet(ws: Worksheet, d: MonthData) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 7 Spot incentive (provisional)
+# 7 Spot incentive (rule confirmed by the client, 30-09-2026)
 # ---------------------------------------------------------------------------
 def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
     lines = [l for l in d.lines if l.incentive_group]
@@ -641,7 +639,6 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
         "never more than the full incentive.",
         "Amount billed = the line after its share of the discount, including GST. "
         "Incentive and bill value: Incentive master, on the invoice date."])
-    row = banner(ws, row, "PROVISIONAL – the incentive rule is awaiting the client's confirmation.", 12)
     execs = sorted({exec_label(l.executive, l.branch) for l in lines})
     detail_head = row + len(execs) + 5
     first, last = detail_head + 1, detail_head + max(1, len(lines))
@@ -720,7 +717,7 @@ def executive_sheet(ws: Worksheet, d: MonthData, incentive_sheet_name: str | Non
     ]
     if incentive_sheet_name:
         ref = f"'{incentive_sheet_name}'"
-        cols.append(Col("Incentive payable (provisional)", "incentive", "money", 16,
+        cols.append(Col("Incentive payable", "incentive", "money", 16,
                         formula=f"=SUMIF({ref}!$A:$A,$A{{r}},{ref}!$L:$L)", total="sum"))
     t = table(ws, row, cols, rows, filters=True)
     _finish(ws, f"B{t['head'] + 1}")

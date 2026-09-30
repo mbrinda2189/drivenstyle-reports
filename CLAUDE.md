@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.6.5** (tags v0.1.0 … v0.6.5 on GitHub
+Current version: **v0.6.6** (tags v0.1.0 … v0.6.6 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -152,9 +152,11 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
 - **Nothing is deleted silently.** Rows can be marked inactive or deleted
   (with confirmation; "Delete all" requires typing DELETE); the audit log
   keeps what was deleted.
-- **Spot incentive (report 7) is PROVISIONAL**: incentive × qty ×
-  min(1, amount billed incl. GST ÷ (bill value × qty)). The client has not
-  confirmed the rule; the sheet says so.
+- **Spot incentive (report 7) – rule CONFIRMED by the client (30-09-2026)**:
+  incentive × qty × min(1, amount billed incl. GST ÷ (bill value × qty)).
+  Needs products linked to incentive groups (the items sheet has no such
+  column; draft links in data/Samples/Incentive_group_links_draft.xlsx,
+  83 of 191 items, awaiting the client).
 - **Packages (report 5)** = products whose incentive group name contains
   "Package".
 - **Payment modes (report 11)** come from Zoho's "Payments Received"
@@ -209,7 +211,7 @@ Client: ignore the ₹1 lines; labour only from the product master.
   Ceramic min price > sale price.
 
 ## Still awaited from the client (not blocking)
-- The actual spot incentive rule (report 7 is provisional).
+- Confirmation of the product → incentive group links (draft sent).
 - Package contents, if they want a package's items analysed.
 - Monthly indirect costs (entered on the Monthly inputs screen).
 - Any report layout they already use.

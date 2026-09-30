@@ -6,6 +6,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.6] – 2026-09-30 – Spot incentive rule confirmed
+
+### Changed
+- The client confirmed the spot incentive rule (incentive × amount billed ÷
+  bill value, capped at the full incentive). Report 7 no longer carries the
+  PROVISIONAL banner, the cover note is removed and report 8's column is
+  "Incentive payable". The calculation is unchanged.
+
+### Pending
+- Products must be linked to incentive groups for report 7 to show
+  anything (the items sheet has no incentive group column). Draft links for
+  83 of 191 items sent to the client for confirmation.
+
 ## [0.6.5] – 2026-09-29 – Client's category column; repeated CODEs
 
 ### Added
