@@ -245,6 +245,11 @@ class GeneratePage(ScrollPage):
         self.output_picker.layout().setContentsMargins(36, 0, 0, 0)
         self.output_picker.pathChanged.connect(self._on_output_chosen)
         card.body.addWidget(self.output_picker)
+        # v0.9.1: one PDF of the whole workbook, made by Excel on this PC.
+        self.pdf_check = QCheckBox("Also save as PDF (one file, every sheet; needs "
+                                   "Microsoft Excel on this PC)")
+        self.pdf_check.setContentsMargins(36, 0, 0, 0)
+        card.body.addWidget(self.pdf_check)
 
         return card
 
@@ -618,7 +623,8 @@ class GeneratePage(ScrollPage):
         try:
             result = generate(self.masters, self.invoices, self.inputs, year, month,
                               self.output_picker.path(), reports,
-                              self.payments_picker.path(), self.rto_picker.path())
+                              self.payments_picker.path(), self.rto_picker.path(),
+                              pdf=self.pdf_check.isChecked())
         except GenerateError as exc:
             QApplication.restoreOverrideCursor()
             self.status.setText("Workbook not created.")
@@ -634,6 +640,10 @@ class GeneratePage(ScrollPage):
         self._add_log(f"✓  {result.path.name}: {result.invoices} invoices, sales "
                       f"₹{format_inr(result.sales)}, gross profit ₹{format_inr(result.gross_profit)}",
                       Colors.GREEN)
+        if result.pdf_path:
+            self._add_log(f"✓  {result.pdf_path.name} saved in the same folder.", Colors.GREEN)
+        elif result.pdf_error:
+            self._add_log(f"✗  PDF not made: {result.pdf_error}", Colors.RED)
         if result.left_out:
             self._add_log(f"–  {result.left_out} invoice{'s' if result.left_out != 1 else ''} "
                           "left out (see the “Not included” sheet).", Colors.AMBER)

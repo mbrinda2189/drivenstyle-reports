@@ -44,6 +44,7 @@ from app.data.invoices_repo import InvoicesRepo, month_label
 from app.data.masters_repo import MastersRepo
 from app.pages.base import ScrollPage
 from app.reports.generate import GenerateError, generate
+from app.reports.pdf_export import PdfError, export_pdf
 from app.utils import format_inr
 from app.widgets.common import Card, button, label
 
@@ -80,7 +81,7 @@ class HistoryPage(ScrollPage):
         hdr = t.horizontalHeader()
         hdr.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, width in ((1, 90), (2, 90), (3, 150), (4, 150), (5, 170), (6, 220)):
+        for col, width in ((1, 90), (2, 90), (3, 150), (4, 150), (5, 170), (6, 280)):
             hdr.setSectionResizeMode(col, QHeaderView.Fixed)
             t.setColumnWidth(col, width)
         card.body.addWidget(t)
@@ -115,13 +116,31 @@ class HistoryPage(ScrollPage):
             open_btn.clicked.connect(lambda _=False, p=run["file_path"]: self._open(p))
             regen = button("Regenerate", "Ghost")
             regen.clicked.connect(lambda _=False, x=run: self._regenerate(x))
+            pdf_btn = button("PDF", "Ghost")
+            pdf_btn.setToolTip("Save this workbook as one PDF beside it and open it "
+                               "(needs Microsoft Excel on this PC).")
+            pdf_btn.clicked.connect(lambda _=False, p=run["file_path"]: self._pdf(p))
             lay.addWidget(open_btn)
+            lay.addWidget(pdf_btn)
             lay.addWidget(regen)
             lay.addStretch(1)
             t.setCellWidget(r, 6, actions)
         t.setFixedHeight(t.horizontalHeader().height() + ROW * max(1, len(runs)) + 6)
         self.note.setText("" if runs else
                           "No workbooks yet. Scan a month and generate it on Generate reports.")
+
+    def _pdf(self, path: str) -> None:
+        """v0.9.1: the saved workbook as one PDF (app/reports/pdf_export.py)."""
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            pdf = export_pdf(path)
+        except PdfError as exc:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "PDF not made", str(exc))
+            return
+        QApplication.restoreOverrideCursor()
+        self.toast(f"{pdf.name} saved.")
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(pdf)))
 
     def _open(self, path: str) -> None:
         if not Path(path).exists():

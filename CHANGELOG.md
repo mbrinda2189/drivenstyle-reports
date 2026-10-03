@@ -6,6 +6,24 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.1] – 2026-10-03 – The workbook as one PDF
+
+### Added
+- **"Also save as PDF"** on Generate reports (under Save to): one PDF with
+  every sheet, saved beside the workbook with the same name. Each sheet
+  starts on a new page, landscape, fitted to the page width; long sheets
+  continue on further pages with their headings repeated.
+- **PDF button on History** for a workbook already generated.
+- The PDF is made by Microsoft Excel on the PC (driven through Windows
+  PowerShell, no extra software), so it shows exactly what the workbook
+  shows. If Excel is missing or the PDF is open elsewhere, the workbook is
+  still saved and a plain message says why the PDF was not made
+  (`app/reports/pdf_export.py`).
+
+### Changed
+- Every sheet is set up for A4 with narrow margins and a footer
+  "sheet name - page x of y"; this also applies when printing from Excel.
+
 ## [0.9.0] – 2026-10-03 – Delivery (RTO) list, new-car reports, executive summary
 
 ### Added

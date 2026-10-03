@@ -214,6 +214,19 @@ def _finish(ws: Worksheet, freeze: str | None = None) -> None:
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
+    # v0.9.1 - printing and the PDF (pdf_export.py): A4, narrow margins,
+    # "sheet name - page x of y" at the foot of every page, and on long
+    # sheets (those with frozen headings) the heading row repeated at the
+    # top of each further page.
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_margins.left = ws.page_margins.right = 0.4
+    ws.page_margins.top = ws.page_margins.bottom = 0.5
+    ws.oddFooter.center.text = "&A  -  page &P of &N"
+    ws.oddFooter.center.size = 8
+    if freeze:
+        head = int("".join(ch for ch in freeze if ch.isdigit())) - 1
+        if head >= 1:
+            ws.print_title_rows = f"{head}:{head}"
 
 
 def exec_label(name: str, branch: str) -> str:

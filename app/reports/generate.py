@@ -32,6 +32,7 @@ from app.data.masters_repo import MastersRepo
 from app.data.payments_io import PaymentsFileError, read_payments
 from app.data.rto_list import RtoFileError, read_rto
 from app.reports.data import build_month, scanned_months, trend_months
+from app.reports.pdf_export import PdfError, export_pdf
 from app.reports.workbook import write_workbook
 
 
@@ -47,6 +48,8 @@ class GenerateResult:
     sales: float
     gross_profit: float
     payments_used: bool
+    pdf_path: Path | None = None      # v0.9.1: the PDF, when asked for and made
+    pdf_error: str = ""               # why the PDF could not be made (workbook is fine)
 
 
 def file_name(year: int, month: int, at: datetime | None = None) -> str:
@@ -61,7 +64,8 @@ def file_name(year: int, month: int, at: datetime | None = None) -> str:
 
 def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
              year: int, month: int, out_dir: str | Path, reports: list[str],
-             payments_path: str = "", rto_path: str = "") -> GenerateResult:
+             payments_path: str = "", rto_path: str = "",
+             pdf: bool = False) -> GenerateResult:
     if invoices.scan_run(year, month) is None:
         raise GenerateError("This month's invoices have not been read yet.")
     out_dir = Path(out_dir)
@@ -105,5 +109,13 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
     inputs.record_run(year, month, str(path), len(data.invoices), len(data.left_out),
                       data.sales, data.gross_profit, payments_path or "", reports,
                       rto_path or "")
-    return GenerateResult(path, len(data.invoices), len(data.left_out), data.sales,
-                          data.gross_profit, payments is not None)
+    result = GenerateResult(path, len(data.invoices), len(data.left_out), data.sales,
+                            data.gross_profit, payments is not None)
+    if pdf:
+        # v0.9.1: also one PDF of the whole workbook. A failure here (no
+        # Excel on the PC ...) must not lose the workbook: it is reported.
+        try:
+            result.pdf_path = export_pdf(path)
+        except PdfError as exc:
+            result.pdf_error = str(exc)
+    return result
