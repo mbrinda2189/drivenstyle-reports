@@ -101,3 +101,25 @@ def test_workbook_package_sheet_and_incentive(tmp_path, masters):
            if row[1] == "DNS-1-2627"]
     assert len(inc) == 1                               # one row: the package
     assert inc[0][3] == "Package (4 items)" and inc[0][6] == 1850 and inc[0][7] == 25000
+
+
+def test_automatic_indirect_costs(tmp_path, masters):
+    """v0.8.1: 4% and 3% of COGS (product cost + labour) every month; a typed
+    head with the same meaning is not counted twice."""
+    full = [(z, p) for z, p, _ in ITEMS.values()]
+    irepo = month(tmp_path, masters, rows("DNS-1-2627", full, 33000))
+    inputs = InputsRepo(masters)
+    inputs.save_costs(2026, 9, [("Rent", 1000.0), ("Breakage and returns", 500.0)])
+    d = build_month(masters, irepo, inputs, 2026, 9)
+    assert d.cogs == 16500                                  # half of 33,000, no labour
+    assert d.auto_indirect == [("Breakage / returns / transport", 0.04, 660.0),
+                               ("Compliance GST", 0.03, 495.0)]
+    assert d.entered_indirect == [("Rent", 1000.0)]
+    out = tmp_path / "out"
+    out.mkdir()
+    r = generate(masters, irepo, inputs, 2026, 9, out, ["Profit & loss"])
+    col = {row[0]: row[1] for row in
+           openpyxl.load_workbook(r.path)["12 Profit & loss"].iter_rows(values_only=True)}
+    assert col["Rent"] == 1000 and "Breakage and returns" not in col
+    assert col["Breakage / returns / transport (4% of COGS)"].endswith("*0.04,2)")
+    assert col["Compliance GST (3% of COGS)"].endswith("*0.03,2)")

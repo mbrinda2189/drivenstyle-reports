@@ -74,6 +74,22 @@ from app.reports import packages as pk
 
 COUNTER_SALE = "Counter sale (no vehicle)"
 
+# AUTOMATIC INDIRECT COSTS (v0.8.1)
+# ---------------------------------
+# Brinda, 03-10-2026: every month two indirect expenses are not entered by
+# hand but worked out from the month's COGS, where
+#     COGS = product cost + labour   (the "Total direct costs" of the P&L)
+#   * Breakage / returns / transport = 4% of COGS
+#   * Compliance GST                 = 3% of COGS
+# They apply to every month (earlier months too, when generated again).
+# (label, share of COGS, word that marks the same head typed on Monthly
+# inputs - a typed head with that word is left out so it is not counted
+# twice.)
+AUTO_INDIRECT = (
+    ("Breakage / returns / transport", 0.04, "breakage"),
+    ("Compliance GST", 0.03, "compliance"),
+)
+
 
 @dataclass
 class Line:
@@ -220,6 +236,24 @@ class MonthData:
     @property
     def sales(self) -> float:
         return round(sum(i.sales for i in self.invoices), 2)
+
+    @property
+    def cogs(self) -> float:
+        """Product cost + labour of the included invoices."""
+        return round(sum(i.cost + i.labour for i in self.invoices), 2)
+
+    @property
+    def auto_indirect(self) -> list[tuple[str, float, float]]:
+        """(head, share of COGS, amount) - see AUTO_INDIRECT."""
+        return [(head, pct, round(self.cogs * pct, 2))
+                for head, pct, _ in AUTO_INDIRECT]
+
+    @property
+    def entered_indirect(self) -> list[tuple[str, float]]:
+        """Heads typed on Monthly inputs, without those now automatic."""
+        words = [w for _, _, w in AUTO_INDIRECT]
+        return [(h, a) for h, a in self.indirect_costs
+                if not any(w in h.lower() for w in words)]
 
     @property
     def marker_lines(self) -> int:

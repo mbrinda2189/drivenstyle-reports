@@ -6,6 +6,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.1] – 2026-10-03 – Automatic indirect costs (4% and 3% of COGS)
+
+### Added
+- **Two indirect costs are calculated automatically every month** (Brinda,
+  03-10-2026): Breakage / returns / transport = 4% of COGS and Compliance
+  GST = 3% of COGS, where COGS = product cost + labour. They appear under
+  Indirect costs in report 10 (Indirect vs direct cost %) and report 12
+  (Profit & loss) as Excel formulas on "Total direct costs", and apply to
+  earlier months too when their reports are generated again.
+- A head typed on Monthly inputs whose name contains "breakage" or
+  "compliance" is left out of the reports, so it is not counted twice.
+- Monthly inputs shows a note about the two automatic heads.
+
 ## [0.8.0] – 2026-10-03 – Package sales recognised from the invoice
 
 ### Added

@@ -114,8 +114,15 @@ class InputsPage(ScrollPage):
         self.table.itemChanged.connect(self._on_changed)
         card.body.addWidget(self.table)
 
+        # v0.8.1: two heads are not typed here - the reports work them out.
+        card.body.addWidget(label(
+            "Added automatically in the reports (do not enter them here): "
+            "Breakage / returns / transport = 4% of COGS, and Compliance GST "
+            "= 3% of COGS. COGS = product cost + labour of the month.",
+            "Muted", wrap=True))
+
         total_row = QHBoxLayout()
-        total_row.addWidget(label("Total indirect costs", "SectionTitle"))
+        total_row.addWidget(label("Total indirect costs entered", "SectionTitle"))
         total_row.addStretch(1)
         self.total_label = label("0.00", "SectionTitle")
         self.total_label.setStyleSheet(f"color: {Colors.BLUE};")

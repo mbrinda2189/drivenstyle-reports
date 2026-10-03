@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.8.0** (tags v0.1.0 … v0.8.0 on GitHub
+Current version: **v0.8.1** (tags v0.1.0 … v0.8.1 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -123,6 +123,10 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `Item Total`, GST = `Item Tax Amount`, used as they are. Check: lines +
   GST + Round Off = Total. Month by `Invoice Date`; other months ignored;
   Void/Draft skipped. Payment made = Total − Balance.
+- **Automatic indirect costs** (Brinda, 03-10-2026, v0.8.1): Breakage /
+  returns / transport = 4% of COGS, Compliance GST = 3% of COGS, COGS =
+  product cost + labour; every month incl. earlier ones
+  (`reports/data.py` AUTO_INDIRECT). Percentages are fixed in code.
 - **Packages** (Brinda, 03-10-2026, v0.8.0): an invoice is a package sale
   only when EVERY item of the package is on it (`app/reports/packages.py`,
   Packages master = `package_items`: package / coupon item / Zoho item).

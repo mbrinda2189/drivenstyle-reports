@@ -867,8 +867,13 @@ def _statement(ws: Worksheet, row: int, d: MonthData, net: bool) -> None:
     gp = put("Gross profit", f"=B{sales_row}-B{direct}", bold=True) if net else None
     row += 1
     ws.cell(row, 1, "Indirect costs").font = _font(True, NAVY)
-    heads = d.indirect_costs or [("(none entered on Monthly inputs)", 0.0)]
+    heads = d.entered_indirect or [("(none entered on Monthly inputs)", 0.0)]
     head_rows = [put(h, a, indent=1) for h, a in heads]
+    # v0.8.1: worked out automatically from COGS (= total direct costs:
+    # product cost + labour) - see AUTO_INDIRECT in reports/data.py.
+    for head, pct, _ in d.auto_indirect:
+        head_rows.append(put(f"{head} ({pct:.0%} of COGS)",
+                             f"=ROUND(B{direct}*{pct:g},2)", indent=1))
     indirect = put("Total indirect costs", f"=SUM(B{head_rows[0]}:B{head_rows[-1]})",
                    bold=True, top=True)
     row += 1
@@ -879,10 +884,15 @@ def _statement(ws: Worksheet, row: int, d: MonthData, net: bool) -> None:
         put("Sales left after all costs", f"=B{sales_row}-B{direct}-B{indirect}", bold=True)
 
 
+AUTO_NOTE = ("Breakage / returns / transport (4%) and Compliance GST (3%) are calculated "
+             "automatically on COGS = product cost + labour (total direct costs).")
+
+
 def cost_split_sheet(ws: Worksheet, d: MonthData) -> None:
     row = title(ws, "Indirect vs direct cost %", d.label,
                 ["Direct costs: product cost and labour on the month's invoices. "
-                 "Indirect costs: entered on Monthly inputs."])
+                 "Indirect costs: entered on Monthly inputs.",
+                 AUTO_NOTE])
     if not d.has_inputs:
         row = banner(ws, row, "No indirect costs were entered for this month.", 3)
     _statement(ws, row, d, net=False)
@@ -892,7 +902,8 @@ def cost_split_sheet(ws: Worksheet, d: MonthData) -> None:
 def pnl_sheet(ws: Worksheet, d: MonthData) -> None:
     row = title(ws, "Profit & loss", d.label,
                 ["Sales exclude GST (GST collected is not income). Invoices not included "
-                 "(open issues) are not in these figures."])
+                 "(open issues) are not in these figures.",
+                 AUTO_NOTE])
     if not d.has_inputs:
         row = banner(ws, row, "No indirect costs were entered for this month.", 3)
     _statement(ws, row, d, net=True)
