@@ -6,6 +6,31 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] – 2026-10-03 – Delivery (RTO) list, new-car reports, executive summary
+
+### Added
+- **Delivery (RTO) list as a third file** on Generate reports (step 4,
+  optional): the dealership's monthly list of cars delivered, with OE and
+  DNS accessories per car (`app/data/rto_list.py`). Each car is linked to
+  its invoices by the last six digits of the VIN.
+- **Five new sheets when the list is given** (`app/reports/rto_reports.py`):
+  - 13 New-car penetration – cars delivered vs cars that took DNS
+    accessories, OE vs DNS value, by location and by model.
+  - 14 Missed opportunity – delivered cars without DNS accessories, with
+    the remark given, and a count by remark.
+  - 15 RTO list vs invoices – the list's DNS value against what was
+    invoiced, car by car; differences first.
+  - 16 New-car vs other – sales and profit from delivered cars against all
+    other business; profit per car by model and by location.
+  - 17 Consultant scorecard – cars delivered, converted, value, profit, and
+    the list's Executive Incentive next to the tool's calculation.
+- **"Summary" sheet (executive summary)**, always written, right after the
+  Cover: headline figures with last month's where available, new-car
+  business, penetration by location, top products / executives / branches,
+  packages, costs, and points needing attention in plain sentences.
+- History's Regenerate uses the same delivery list again (database schema
+  version 9: `report_runs.rto_path`).
+
 ## [0.8.3] – 2026-10-03 – Saved matches: see and undo Scan review choices
 
 ### Added

@@ -30,7 +30,8 @@ from app.data.inputs_repo import InputsRepo
 from app.data.invoices_repo import InvoicesRepo, MONTH_NAMES
 from app.data.masters_repo import MastersRepo
 from app.data.payments_io import PaymentsFileError, read_payments
-from app.reports.data import build_month, trend_months
+from app.data.rto_list import RtoFileError, read_rto
+from app.reports.data import build_month, scanned_months, trend_months
 from app.reports.workbook import write_workbook
 
 
@@ -60,7 +61,7 @@ def file_name(year: int, month: int, at: datetime | None = None) -> str:
 
 def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
              year: int, month: int, out_dir: str | Path, reports: list[str],
-             payments_path: str = "") -> GenerateResult:
+             payments_path: str = "", rto_path: str = "") -> GenerateResult:
     if invoices.scan_run(year, month) is None:
         raise GenerateError("This month's invoices have not been read yet.")
     out_dir = Path(out_dir)
@@ -74,6 +75,14 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
         except PaymentsFileError as exc:
             raise GenerateError(str(exc)) from exc
 
+    # v0.9.0: the dealership's delivery (RTO) list, if given (step 4)
+    rto = None
+    if rto_path:
+        try:
+            rto = read_rto(rto_path)
+        except RtoFileError as exc:
+            raise GenerateError(str(exc)) from exc
+
     # Products added or imported since the invoices were read also take
     # Zoho's item type as their category, unless it was set by hand.
     invoices.apply_zoho_categories()
@@ -82,7 +91,11 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
              if "Trend analysis (month on month)" in reports else [])
     path = out_dir / file_name(year, month, datetime.now())
     try:
-        write_workbook(data, trend, payments, reports, path, masters.user)
+        # the month before (if it has been read), for the executive summary
+        earlier = [m for m in scanned_months(invoices) if m < (year, month)]
+        previous = build_month(masters, invoices, inputs, *earlier[-1]) if earlier else None
+        write_workbook(data, trend, payments, reports, path, masters.user,
+                       rto=rto, previous=previous)
     except PermissionError as exc:
         raise GenerateError(f"“{path.name}” could not be saved. If it is open in "
                             "Excel, close it and generate again.") from exc
@@ -90,6 +103,7 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
         raise GenerateError(f"The workbook could not be saved: {exc}") from exc
 
     inputs.record_run(year, month, str(path), len(data.invoices), len(data.left_out),
-                      data.sales, data.gross_profit, payments_path or "", reports)
+                      data.sales, data.gross_profit, payments_path or "", reports,
+                      rto_path or "")
     return GenerateResult(path, len(data.invoices), len(data.left_out), data.sales,
                           data.gross_profit, payments is not None)

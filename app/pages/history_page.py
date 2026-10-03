@@ -134,11 +134,14 @@ class HistoryPage(ScrollPage):
         payments = run["payments_path"]
         if payments and not Path(payments).exists():
             payments = ""
+        rto = run.get("rto_path") or ""          # delivery list (v0.9.0)
+        if rto and not Path(rto).exists():
+            rto = ""
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             result = generate(self.masters, self.invoices, self.inputs, year, month,
                               str(Path(run["file_path"]).parent),
-                              json.loads(run["reports_json"]), payments)
+                              json.loads(run["reports_json"]), payments, rto)
         except GenerateError as exc:
             QApplication.restoreOverrideCursor()
             QMessageBox.warning(self, "Workbook not created", str(exc))

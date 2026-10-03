@@ -231,8 +231,16 @@ MARGIN_TOTAL = '=IF({sales}{r}=0,"",{gp}{r}/{sales}{r})'
 # ---------------------------------------------------------------------------
 def write_workbook(data: MonthData, trend: list[MonthData],
                    payments: list[Payment] | None, reports: list[str],
-                   path: str | Path, user: str = "") -> Path:
-    """Write the workbook for `data` (see module notes). Returns the path."""
+                   path: str | Path, user: str = "", rto: list | None = None,
+                   previous: MonthData | None = None) -> Path:
+    """
+    Write the workbook for `data` (see module notes). Returns the path.
+    v0.9.0: `rto` = the dealership's delivery list (app/data/rto_list.py);
+    when given, sheets 13-17 are added. A "Summary" sheet (executive
+    summary) is always written, comparing with `previous` (the month
+    before) when there is one. See app/reports/rto_reports.py.
+    """
+    from app.reports import rto_reports as rr      # (it imports this module)
     wb = Workbook()
     cover = wb.active
     cover.title = "Cover"
@@ -258,9 +266,14 @@ def write_workbook(data: MonthData, trend: list[MonthData],
             ws = wb.create_sheet(sheet_name)
             writers[name](ws)
             written.append(sheet_name)
+    link = rr.Linked(data, rto) if rto is not None else None
+    if link is not None:
+        written += rr.write_rto_sheets(wb, data, link)
     left = wb.create_sheet("Not included")
     not_included_sheet(left, data)
-    cover_sheet(cover, data, written, user)
+    summary = wb.create_sheet(rr.SUMMARY_SHEET, 1)          # right after the Cover
+    rr.summary_sheet(summary, data, previous, link, user)
+    cover_sheet(cover, data, [rr.SUMMARY_SHEET] + written, user)
     wb.calculation.fullCalcOnLoad = True       # Excel works out every formula
     path = Path(path)
     wb.save(path)

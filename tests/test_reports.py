@@ -152,7 +152,8 @@ def test_generate_writes_every_sheet(world, tmp_path):
     assert re.fullmatch(r"DriveNStyle_Sep-2026_Reports_\d\d-\d\d-\d{4}_\d{4}\.xlsx",
                         r.path.name)
     wb = load_workbook(r.path)
-    assert len(wb.sheetnames) == 14 and wb.sheetnames[0] == "Cover"
+    # v0.9.0: + the executive summary, right after the cover
+    assert len(wb.sheetnames) == 15 and wb.sheetnames[:2] == ["Cover", "Summary"]
     ws = wb["11 Payment modes"]
     texts = [c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str)]
     assert "Cash" in texts and "UPI" in texts
@@ -165,7 +166,8 @@ def test_generate_writes_every_sheet(world, tmp_path):
 def test_generate_only_ticked_reports(world, tmp_path):
     repo, inv, inp = world
     r = generate(repo, inv, inp, 2026, 9, tmp_path, ["Profit & loss"])
-    assert load_workbook(r.path).sheetnames == ["Cover", "12 Profit & loss", "Not included"]
+    assert load_workbook(r.path).sheetnames == [
+        "Cover", "Summary", "12 Profit & loss", "Not included"]
 
 
 def test_generate_needs_a_scanned_month(world, tmp_path):

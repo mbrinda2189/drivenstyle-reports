@@ -191,16 +191,17 @@ class InputsRepo:
     # ------------------------------------------------------------------
     def record_run(self, year: int, month: int, file_path: str, invoices: int,
                    left_out: int, sales: float, gross_profit: float,
-                   payments_path: str, reports: list[str]) -> None:
+                   payments_path: str, reports: list[str],
+                   rto_path: str = "") -> None:
         with self.conn:
             self.conn.execute(
                 "INSERT INTO report_runs(month, file_path, generated_at, user, "
                 "invoices, left_out, sales, gross_profit, payments_path, "
-                "reports_json) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                "reports_json, rto_path) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (month_key(year, month), file_path,
                  datetime.now().isoformat(timespec="seconds"), self.masters.user,
                  invoices, left_out, sales, gross_profit, payments_path,
-                 json.dumps(reports)))
+                 json.dumps(reports), rto_path))
 
     def runs(self, latest_per_month: bool = True) -> list[dict]:
         """Generated workbooks, newest month first (by default only the

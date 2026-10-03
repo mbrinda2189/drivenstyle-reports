@@ -15,7 +15,11 @@ sequence, so the steps are numbered:
     3  Add the payments export          (optional - Zoho "Payments Received"
                                          export, needed only for the payment
                                          mode report)
-    4  Choose where to save the Excel file
+    4  Add the delivery (RTO) list      (optional - the dealership's list of
+                                         cars delivered in the month; adds
+                                         the new-car sheets 13-17 and the
+                                         new-car part of the Summary, v0.9.0)
+    5  Choose where to save the Excel file
 
 Below the steps, the user ticks which of the 12 reports to include.
 
@@ -219,8 +223,22 @@ class GeneratePage(ScrollPage):
 
         card.body.addWidget(divider())
 
-        # Step 4 - output folder
-        self.step_output = StepHeader(4, "Save to",
+        # Step 4 - delivery (RTO) list (optional, v0.9.0)
+        self.step_rto = StepHeader(
+            4, "Delivery (RTO) list (optional)",
+            "The dealership's list of cars delivered in the month. Adds the new-car "
+            "sheets (penetration, missed opportunity, list vs invoices, scorecard).")
+        card.body.addWidget(self.step_rto)
+        self.rto_picker = PathPicker(
+            "No file chosen", mode="file", file_filter="Excel workbook (*.xlsx)")
+        self.rto_picker.layout().setContentsMargins(36, 0, 0, 0)
+        self.rto_picker.pathChanged.connect(lambda p: self.step_rto.set_done(bool(p)))
+        card.body.addWidget(self.rto_picker)
+
+        card.body.addWidget(divider())
+
+        # Step 5 - output folder
+        self.step_output = StepHeader(5, "Save to",
                                       "Folder where the Excel workbook will be saved.")
         card.body.addWidget(self.step_output)
         self.output_picker = PathPicker("No folder chosen", mode="folder")
@@ -600,7 +618,7 @@ class GeneratePage(ScrollPage):
         try:
             result = generate(self.masters, self.invoices, self.inputs, year, month,
                               self.output_picker.path(), reports,
-                              self.payments_picker.path())
+                              self.payments_picker.path(), self.rto_picker.path())
         except GenerateError as exc:
             QApplication.restoreOverrideCursor()
             self.status.setText("Workbook not created.")

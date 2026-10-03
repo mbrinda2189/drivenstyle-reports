@@ -179,6 +179,8 @@ class Invoice:
     # review - the text printed on the invoice, shown in the Invoice register.
     printed_executive: str = ""
     printed_car: str = ""
+    vin: str = ""                 # Zoho's VIN / registration field (v0.9.0:
+                                  # links the invoice to the delivery list)
     package: PackageSale | None = None      # v0.8.0
     near_package: str = ""                  # "almost a package": its name ...
     near_missing: str = ""                  # ... and the one item missing
@@ -186,6 +188,24 @@ class Invoice:
     @property
     def sales(self) -> float:
         return round(sum(l.sales for l in self.lines), 2)
+
+    @property
+    def incentive_payable(self) -> float:
+        """
+        Spot incentive for this invoice by the confirmed rule (the same
+        figure the Spot incentive sheet works out with Excel formulas):
+        incentive x qty x min(1, billed / (bill value x qty)) per line with
+        an incentive group, plus the package incentive if a package was sold.
+        """
+        total = 0.0
+        for l in self.lines:
+            base = l.bill_value * l.qty
+            if l.incentive_group and base:
+                total += l.incentive_amount * l.qty * min(1.0, l.billed / base)
+        k = self.package
+        if k and k.coupon_value:
+            total += k.incentive * min(1.0, k.billed / k.coupon_value)
+        return round(total, 2)
 
     @property
     def cost(self) -> float:
@@ -330,6 +350,7 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
             inv.printed_executive = (raw.get("salesperson") or "").strip()
         if others_car:
             inv.printed_car = (raw.get("vehicle") or "").strip()
+        inv.vin = (raw.get("vin") or "").strip()
         for ln in raw["lines"]:
             common = dict(invoice_no=inv.invoice_no, invoice_date=day,
                           executive=inv.executive, branch=inv.branch, car=inv.car,
