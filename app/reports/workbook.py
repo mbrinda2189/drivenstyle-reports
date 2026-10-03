@@ -872,8 +872,8 @@ def _statement(ws: Worksheet, row: int, d: MonthData, net: bool) -> None:
     # v0.8.1: worked out automatically from COGS (= total direct costs:
     # product cost + labour) - see AUTO_INDIRECT in reports/data.py.
     for head, pct, _ in d.auto_indirect:
-        head_rows.append(put(f"{head} ({pct:.0%} of COGS)",
-                             f"=ROUND(B{direct}*{pct:g},2)", indent=1))
+        head_rows.append(put(f"{head} ({pct * 100:g}% of COGS)",
+                             f"=ROUND(B{direct}*{pct:.6g},2)", indent=1))
     indirect = put("Total indirect costs", f"=SUM(B{head_rows[0]}:B{head_rows[-1]})",
                    bold=True, top=True)
     row += 1
@@ -884,8 +884,9 @@ def _statement(ws: Worksheet, row: int, d: MonthData, net: bool) -> None:
         put("Sales left after all costs", f"=B{sales_row}-B{direct}-B{indirect}", bold=True)
 
 
-AUTO_NOTE = ("Breakage / returns / transport (4%) and Compliance GST (3%) are calculated "
-             "automatically on COGS = product cost + labour (total direct costs).")
+AUTO_NOTE = ("Breakage / returns / transport and Compliance GST are calculated automatically "
+             "as a percentage of COGS = product cost + labour (total direct costs). The "
+             "percentages are set on Monthly inputs.")
 
 
 def cost_split_sheet(ws: Worksheet, d: MonthData) -> None:

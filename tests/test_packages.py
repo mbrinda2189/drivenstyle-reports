@@ -123,3 +123,22 @@ def test_automatic_indirect_costs(tmp_path, masters):
     assert col["Rent"] == 1000 and "Breakage and returns" not in col
     assert col["Breakage / returns / transport (4% of COGS)"].endswith("*0.04,2)")
     assert col["Compliance GST (3% of COGS)"].endswith("*0.03,2)")
+
+
+def test_automatic_indirect_percentages_can_be_changed(tmp_path, masters):
+    """v0.8.2: one setting for all months, logged in the audit log."""
+    full = [(z, p) for z, p, _ in ITEMS.values()]
+    irepo = month(tmp_path, masters, rows("DNS-1-2627", full, 33000))
+    inputs = InputsRepo(masters)
+    assert inputs.auto_rates() == {"auto_breakage_pct": 4.0, "auto_compliance_pct": 3.0}
+    inputs.save_auto_rates({"auto_breakage_pct": 5.0, "auto_compliance_pct": 3.0})
+    d = build_month(masters, irepo, inputs, 2026, 9)
+    assert d.auto_indirect == [("Breakage / returns / transport", 0.05, 825.0),
+                               ("Compliance GST", 0.03, 495.0)]
+    log = masters.conn.execute(
+        "SELECT field, old_value, new_value FROM audit_log WHERE master = 'inputs'"
+    ).fetchall()
+    assert [tuple(r) for r in log] == [
+        ("Breakage / returns / transport (% of COGS)", "4%", "5%")]
+    with pytest.raises(ValueError):
+        inputs.save_auto_rates({"auto_breakage_pct": 150})

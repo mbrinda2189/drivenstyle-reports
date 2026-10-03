@@ -36,10 +36,10 @@ from __future__ import annotations
 from PySide6.QtCore import QDate, Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QMessageBox,
-    QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QDoubleSpinBox, QSpinBox, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
-from app.data.inputs_repo import DEFAULT_HEADS, InputsRepo
+from app.data.inputs_repo import AUTO_HEADS, DEFAULT_HEADS, InputsRepo
 from app.data.invoices_repo import month_key, month_label
 from app.pages.base import ScrollPage
 from app.theme import Colors
@@ -117,8 +117,9 @@ class InputsPage(ScrollPage):
         # v0.8.1: two heads are not typed here - the reports work them out.
         card.body.addWidget(label(
             "Added automatically in the reports (do not enter them here): "
-            "Breakage / returns / transport = 4% of COGS, and Compliance GST "
-            "= 3% of COGS. COGS = product cost + labour of the month.",
+            "Breakage / returns / transport and Compliance GST, as a "
+            "percentage of COGS (product cost + labour of the month). The "
+            "percentages are under Report settings.",
             "Muted", wrap=True))
 
         total_row = QHBoxLayout()
@@ -163,6 +164,30 @@ class InputsPage(ScrollPage):
             "Products with a margin at or above this are listed in the "
             "high-profit product sales report. Saved with the month's inputs.",
             "Muted", wrap=True))
+
+        # v0.8.2: the two automatic indirect costs, as % of COGS. One
+        # setting for ALL months (not per month like the threshold above).
+        card.body.addWidget(label("Automatic indirect costs (% of COGS)",
+                                  "SectionTitle"))
+        self.auto_spins: dict[str, QDoubleSpinBox] = {}
+        for key, head, _, _ in AUTO_HEADS:
+            card.body.addWidget(label(head))
+            row = QHBoxLayout()
+            spin = QDoubleSpinBox()
+            spin.setRange(0, 100)
+            spin.setDecimals(2)
+            spin.setSuffix(" %")
+            spin.setFixedWidth(110)
+            spin.valueChanged.connect(lambda _: self._mark_dirty())
+            self.auto_spins[key] = spin
+            row.addWidget(spin)
+            row.addStretch(1)
+            card.body.addLayout(row)
+        card.body.addWidget(label(
+            "COGS = product cost + labour. These percentages apply to every "
+            "month, including earlier months when their reports are generated "
+            "again. A change is recorded in the audit log.",
+            "Muted", wrap=True))
         return card
 
     # ------------------------------------------------------------------
@@ -202,6 +227,8 @@ class InputsPage(ScrollPage):
         self._fill(rows)
         self._loading = True
         self.threshold.setValue(int(round(self.inputs.threshold(year, month))))
+        for key, pct in self.inputs.auto_rates().items():
+            self.auto_spins[key].setValue(pct)
         self._loading = False
         prev_label, prev = self.inputs.previous_costs(year, month)
         self.copy_btn.setText(f"Copy from {prev_label}" if prev else "Copy from last month")
@@ -301,6 +328,7 @@ class InputsPage(ScrollPage):
             QMessageBox.warning(self, "Inputs not saved", str(exc))
             return False
         self.inputs.save_threshold(year, mon, float(self.threshold.value()))
+        self.inputs.save_auto_rates({k: s.value() for k, s in self.auto_spins.items()})
         self._set_dirty(False)
         self.toast(f"Inputs for {month_label(year, mon)} saved.")
         self.saved.emit(year, mon)

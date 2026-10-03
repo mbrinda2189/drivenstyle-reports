@@ -38,6 +38,22 @@ from app.data.masters_repo import MastersRepo
 from app.utils import format_inr
 
 DEFAULT_THRESHOLD = 40.0
+
+# AUTOMATIC INDIRECT COSTS (v0.8.1, percentages editable from v0.8.2)
+# -------------------------------------------------------------------
+# Two indirect expenses are worked out from the month's COGS (product cost
+# + labour) instead of being typed in. (setting key, head, default % of
+# COGS, word that marks the same head if typed on Monthly inputs.)
+# The percentages are ONE setting for all months (stored in
+# monthly_settings under the month "all"), because the client's rule is
+# "every month" and Brinda asked for it to apply to earlier months too. A
+# change is logged in the audit log and applies to every report generated
+# afterwards, whichever month it is for.
+AUTO_HEADS = (
+    ("auto_breakage_pct", "Breakage / returns / transport", 4.0, "breakage"),
+    ("auto_compliance_pct", "Compliance GST", 3.0, "compliance"),
+)
+ALL_MONTHS = "all"
 DEFAULT_HEADS = ("Rent", "Salaries", "Electricity", "Internet & phone",
                  "Marketing")
 
@@ -139,6 +155,35 @@ class InputsRepo:
                 self.masters._audit(
                     "inputs", None, f"Report settings – {month_label(year, month)}",
                     "Edited", "High-profit threshold", f"{old:g}%", f"{pct:g}%",
+                    "Monthly inputs")
+
+    # ------------------------------------------------------------------
+    # Automatic indirect costs (% of COGS) - one setting for all months
+    # ------------------------------------------------------------------
+    def auto_rates(self) -> dict[str, float]:
+        """Setting key -> % of COGS (the defaults until changed)."""
+        saved = {r["key"]: float(r["value"]) for r in self.conn.execute(
+            "SELECT key, value FROM monthly_settings WHERE month = ?", (ALL_MONTHS,))}
+        return {key: saved.get(key, default) for key, _, default, _ in AUTO_HEADS}
+
+    def save_auto_rates(self, rates: dict[str, float]) -> None:
+        """Save changed percentages (0-100); each change is logged."""
+        old = self.auto_rates()
+        with self.conn:
+            for key, head, _, _ in AUTO_HEADS:
+                if key not in rates:
+                    continue
+                pct = round(float(rates[key]), 2)
+                if not 0 <= pct <= 100:
+                    raise ValueError(f"{head}: the percentage must be between 0 and 100.")
+                if abs(old[key] - pct) < 1e-9:
+                    continue
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO monthly_settings(month, key, value) "
+                    "VALUES (?, ?, ?)", (ALL_MONTHS, key, str(pct)))
+                self.masters._audit(
+                    "inputs", None, "Report settings – all months", "Edited",
+                    f"{head} (% of COGS)", f"{old[key]:g}%", f"{pct:g}%",
                     "Monthly inputs")
 
     # ------------------------------------------------------------------

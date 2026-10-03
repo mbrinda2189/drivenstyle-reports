@@ -6,6 +6,14 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.2] – 2026-10-03 – Automatic indirect cost percentages can be changed
+
+### Added
+- **Monthly inputs → Report settings** has the two percentages of COGS:
+  Breakage / returns / transport (4%) and Compliance GST (3%). They are
+  one setting for all months; a change is recorded in the audit log and is
+  used by every report generated afterwards, including earlier months.
+
 ## [0.8.1] – 2026-10-03 – Automatic indirect costs (4% and 3% of COGS)
 
 ### Added

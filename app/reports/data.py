@@ -66,7 +66,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
-from app.data.inputs_repo import InputsRepo
+from app.data.inputs_repo import AUTO_HEADS, InputsRepo
 from app.data.invoices_repo import (
     OTHERS, OTHERS_ID, InvoicesRepo, month_key, month_label, split_salesperson)
 from app.data.masters_repo import MastersRepo
@@ -84,11 +84,10 @@ COUNTER_SALE = "Counter sale (no vehicle)"
 # They apply to every month (earlier months too, when generated again).
 # (label, share of COGS, word that marks the same head typed on Monthly
 # inputs - a typed head with that word is left out so it is not counted
-# twice.)
-AUTO_INDIRECT = (
-    ("Breakage / returns / transport", 0.04, "breakage"),
-    ("Compliance GST", 0.03, "compliance"),
-)
+# twice.) These are the defaults; from v0.8.2 the percentages in force are
+# the ones set on Monthly inputs (inputs_repo.auto_rates), put on
+# MonthData.auto_rates by build_month.
+AUTO_INDIRECT = tuple((head, pct / 100, word) for _, head, pct, word in AUTO_HEADS)
 
 
 @dataclass
@@ -224,6 +223,7 @@ class MonthData:
     indirect_costs: list[tuple[str, float]]
     threshold: float                       # high-profit margin %
     has_inputs: bool                       # indirect costs were entered
+    auto_rates: tuple = AUTO_INDIRECT      # (head, share of COGS, word)
 
     @property
     def label(self) -> str:
@@ -246,12 +246,12 @@ class MonthData:
     def auto_indirect(self) -> list[tuple[str, float, float]]:
         """(head, share of COGS, amount) - see AUTO_INDIRECT."""
         return [(head, pct, round(self.cogs * pct, 2))
-                for head, pct, _ in AUTO_INDIRECT]
+                for head, pct, _ in self.auto_rates]
 
     @property
     def entered_indirect(self) -> list[tuple[str, float]]:
         """Heads typed on Monthly inputs, without those now automatic."""
-        words = [w for _, _, w in AUTO_INDIRECT]
+        words = [w for _, _, w in self.auto_rates]
         return [(h, a) for h, a in self.indirect_costs
                 if not any(w in h.lower() for w in words)]
 
@@ -378,9 +378,12 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
         included.append(inv)
 
     skipped = [f for f in invoices.scan_files(year, month) if f["status"] != "read"]
+    rates = inputs.auto_rates()
     return MonthData(year, month, included, left_out, skipped,
                      inputs.costs(year, month), inputs.threshold(year, month),
-                     inputs.has_inputs(year, month))
+                     inputs.has_inputs(year, month),
+                     tuple((head, rates[key] / 100, word)
+                           for key, head, _, word in AUTO_HEADS))
 
 
 def trend_months(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
