@@ -203,6 +203,7 @@ class ImportResult:
     unchanged: int = 0
     skipped: list[str] = field(default_factory=list)   # rows not imported
     warnings: list[str] = field(default_factory=list)  # imported, but note this
+    not_added: int = 0             # new names left out because add_new=False
 
 
 def _windows_user() -> str:
@@ -639,13 +640,18 @@ class MastersRepo:
     # ==================================================================
     def import_records(self, master: str, records: list[dict],
                        effective_from: date | None = None,
-                       source: str = "Import") -> ImportResult:
+                       source: str = "Import", add_new: bool = True) -> ImportResult:
         """
         Add new rows and update existing ones from an imported sheet.
 
         records         dicts produced by excel_io.convert_rows: only the
                         fields the user matched to a column are present,
                         plus "_row" (the row number in the sheet).
+        add_new         False = only update rows already in the master;
+                        rows with a new name are left out and counted
+                        (v0.7.0: the staff sheet then only supplies labour /
+                        incentive for the items of Zoho's list, without
+                        bringing its own item names back).
         effective_from  the date new or changed dated values apply from.
 
         Existing rows are found by their unique key (products: SKU first,
@@ -670,6 +676,9 @@ class MastersRepo:
                     result.skipped.append(f"Row {row_no}: {problem}")
                     continue
 
+                if row_id is None and not add_new:
+                    result.not_added += 1
+                    continue
                 # Start from the stored row (or defaults) and overlay the sheet.
                 if row_id is None:
                     merged = {f.key: f.default for f in mdef.fields}
@@ -686,10 +695,15 @@ class MastersRepo:
                 if master == "products" and row_id is None:
                     if not rec.get("category"):
                         merged["category"] = infer_category(merged.get("hsn_sac"))
-                    if "has_labour" not in rec:
-                        merged["has_labour"] = float(merged.get("labour_charge") or 0) > 0
                     if "vehicle_needed" not in rec:
                         merged["vehicle_needed"] = counter_item_default(merged.get("name"))
+                if master == "products" and "has_labour" not in rec and (
+                        row_id is None or "labour_charge" in rec):
+                    # No "Labour involved" column: Yes when the labour charge
+                    # is above zero. Also for an EXISTING product whose labour
+                    # charge the sheet gives (v0.7.0: the staff sheet adds
+                    # labour to items that came from Zoho's list).
+                    merged["has_labour"] = float(merged.get("labour_charge") or 0) > 0
                 if master == "products" and merged.get("incentive_group") and \
                         self._incentive_id(merged["incentive_group"]) is None:
                     result.warnings.append(
@@ -723,6 +737,32 @@ class MastersRepo:
         for what in outcome_of.values():
             setattr(result, what, getattr(result, what) + 1)
         return result
+
+    # ------------------------------------------------------------------
+    # Zoho's item list as the Product master (v0.7.0)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def split_zoho_items(records: list[dict]) -> tuple[list[dict], list[str]]:
+        """
+        (records to import, names of the Rs. 1 labour items left out).
+        Zoho's item list also holds the labour marker items ("Labour Charges
+        for Sunfilm - Front" ...). They are not products - the reports
+        ignore those invoice lines - so they are not imported.
+        """
+        from app.data.invoices_repo import is_labour_marker   # avoid a cycle
+        keep, markers = [], []
+        for rec in records:
+            if is_labour_marker(str(rec.get("name", ""))):
+                markers.append(str(rec.get("name")))
+            else:
+                keep.append(rec)
+        return keep, markers
+
+    def products_not_in(self, names: list[str]) -> list[dict]:
+        """Products of the master whose name is not in `names` (Zoho's list)."""
+        wanted = {name_key(n) for n in names}
+        return [p for p in self.list_rows("products")
+                if name_key(p["name"]) not in wanted]
 
     @staticmethod
     def _drop_shared_codes(records: list[dict], result: ImportResult) -> list[dict]:

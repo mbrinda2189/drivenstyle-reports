@@ -137,7 +137,11 @@ FIRM_GSTIN = "33AAOFD7793F1Z2"          # Drive N Style
 TOLERANCE = 1.00                        # rupees allowed in the checks
 # "Labour Charges for Sunfilm - Front", "Labour Charges PVC/...",
 # "Labour - Seat Cover - Art Leather". Only at the START of the name.
-LABOUR_MARKER_RE = re.compile(r"^\s*labou?r\s*(charges?\b|-)", re.IGNORECASE)
+# Also "Paint Protection Film -Labour Charges" (Zoho's labour item for PPF,
+# v0.7.0): the name ENDS with "- Labour Charges". A product sold "+ Labour
+# charges" ("Seat Cover - Lavish Mvs - City + Labour charges") is not a marker.
+LABOUR_MARKER_RE = re.compile(
+    r"^\s*labou?r\s*(charges?\b|-)|-\s*labou?r\s+charges?\s*$", re.IGNORECASE)
 # Branch short forms on invoices -> the form used for comparing
 # (compared after branch_key has removed spaces and punctuation).
 BRANCH_ALIASES = {"headoffice": "ho", "ktg": "kothagiri"}
@@ -161,7 +165,7 @@ def month_label(year: int, month: int) -> str:
 
 def is_labour_marker(description: str) -> bool:
     """True for 'Labour Charges for ...' and 'Labour - ...' lines."""
-    return bool(LABOUR_MARKER_RE.match(description or ""))
+    return bool(LABOUR_MARKER_RE.search(description or ""))
 
 
 def split_salesperson(printed: str) -> tuple[str, str]:

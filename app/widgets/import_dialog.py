@@ -33,6 +33,22 @@ check, before anything is saved, how the sheet will be read:
   remembers the column matches for next time, and closes. The caller then
   calls `show_summary()` to report what was added, updated and left out.
 
+ZOHO'S ITEM LIST (v0.7.0)
+------------------------
+Zoho's item export (Items > Export, Item.csv) is recognised by its
+headings and is the source of the Product master's names and prices:
+    Item Name -> Product name, SKU, HSN/SAC, Rate -> Selling price,
+    Purchase Rate -> Cost price, Product Type (goods / service) -> Category
+The columns are pre-set (excel_io.zoho_item_mapping). On Import:
+    * the Rs. 1 labour items in Zoho's list are left out (not products)
+    * labour charge, incentive group and "Vehicle needed" are not in Zoho,
+      so they keep their values in the tool
+    * products in the tool that are NOT in Zoho's list are shown, and
+      removed if the user confirms (each removal is in the audit log)
+"Add items that are not in the Product master" (products only): untick it
+when importing the staff sheet for labour / incentive, so its own item
+names are not added back.
+
 The window never opens taller than the screen: everything above the Cancel
 / Import buttons scrolls, and the buttons stay at the bottom (v0.6.4 - on a
 zoomed-in laptop screen the Import button could not be reached). Drop-downs
@@ -52,12 +68,13 @@ from pathlib import Path
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QDateEdit, QDialog, QGridLayout,
-    QHBoxLayout, QHeaderView, QMessageBox, QTableWidget, QTableWidgetItem,
+    QCheckBox, QHBoxLayout, QHeaderView, QMessageBox, QTableWidget, QTableWidgetItem,
     QVBoxLayout,
 )
 
 from app.data.excel_io import (
-    ImportFileError, SheetData, convert_rows, read_sheet, suggest_mapping)
+    ImportFileError, SheetData, convert_rows, is_zoho_item_export, read_sheet,
+    suggest_mapping, zoho_item_mapping)
 from app.data.master_defs import MasterDef
 from app.data.masters_repo import ImportResult, MastersRepo
 from app.theme import Colors
@@ -163,6 +180,23 @@ class ImportDialog(QDialog):
                                 wrap=True), 1)
             lay.addLayout(row)
 
+        # --- Zoho item list / add new items (products only) -------------------
+        self.is_zoho = False
+        self.zoho_note = label("", wrap=True)
+        self.zoho_note.setStyleSheet(
+            f"background: {Colors.BLUE_TINT}; color: {Colors.INK};"
+            "border-radius: 6px; padding: 8px 10px;")
+        self.zoho_note.hide()
+        lay.addWidget(self.zoho_note)
+        self.add_new = QCheckBox("Add items that are not in the Product master")
+        self.add_new.setChecked(True)
+        self.add_new.setToolTip(
+            "Untick when the sheet only supplies labour / incentive for items "
+            "already in the master (e.g. the staff sheet after Zoho's item list "
+            "was imported): rows with a new name are then left out.")
+        self.add_new.setVisible(mdef.key == "products")
+        lay.addWidget(self.add_new)
+
         # --- problems + buttons ----------------------------------------------
         self.problem_note = label("", wrap=True)
         self.problem_note.setStyleSheet(
@@ -191,8 +225,21 @@ class ImportDialog(QDialog):
         self.file_info.setText(
             f"{Path(self.path).name}  ·  headings found on row {s.header_row}"
             f"  ·  {len(s.rows)} data row{'s' if len(s.rows) != 1 else ''}")
-        suggestion = suggest_mapping(self.mdef, s.headers,
-                                     self.repo.get_mapping(self.mdef.key))
+        self.is_zoho = self.mdef.key == "products" and is_zoho_item_export(s.headers)
+        if self.is_zoho:
+            suggestion = zoho_item_mapping(s.headers)
+            self.zoho_note.setText(
+                "Zoho item list recognised. Names, SKU, HSN/SAC, prices and "
+                "category (goods / service) come from Zoho. Labour, incentive "
+                "group and “Vehicle needed” stay as they are in the tool. "
+                "The ₹1 labour items are left out. After the import you are "
+                "asked about products that are not in Zoho's list.")
+            self.add_new.setChecked(True)
+        else:
+            suggestion = suggest_mapping(self.mdef, s.headers,
+                                         self.repo.get_mapping(self.mdef.key))
+        self.zoho_note.setVisible(self.is_zoho)
+        self.add_new.setEnabled(not self.is_zoho)
         for key, combo in self.combos.items():
             combo.blockSignals(True)
             combo.clear()
@@ -269,6 +316,8 @@ class ImportDialog(QDialog):
         self.problem_note.setText("\n\n".join(notes))
         self.problem_note.setVisible(bool(notes))
         n = len(self.records)
+        if self.is_zoho:                    # the Rs. 1 labour items are left out
+            n = len(MastersRepo.split_zoho_items(self.records)[0])
         self.import_btn.setText(f"Import {n} row{'s' if n != 1 else ''}")
         self.import_btn.setEnabled(not missing and n > 0)
 
@@ -280,18 +329,66 @@ class ImportDialog(QDialog):
         if self.date_edit is not None:
             q = self.date_edit.date()
             day = date(q.year(), q.month(), q.day())
+        source = f"Import: {Path(self.path).name}"
+        records, markers = self.records, []
+        if self.is_zoho:
+            records, markers = MastersRepo.split_zoho_items(records)
         try:
             result = self.repo.import_records(
-                self.mdef.key, self.records, day,
-                source=f"Import: {Path(self.path).name}")
+                self.mdef.key, records, day, source=source,
+                add_new=self.add_new.isChecked() or self.is_zoho)
         except Exception as exc:                      # unexpected: nothing saved
             QMessageBox.critical(self, "Import failed",
                                  f"Nothing was imported.\n\n{exc}")
             return
         result.skipped = self.problems + result.skipped
+        if markers:
+            result.warnings.append(
+                f"{len(markers)} ₹1 labour item{'s' if len(markers) != 1 else ''} "
+                "in Zoho's list left out (not products): " + "; ".join(markers) + ".")
+        if result.not_added:
+            result.warnings.append(
+                f"{result.not_added} row{'s' if result.not_added != 1 else ''} with "
+                "a name that is not in the master left out (“Add items…” is unticked).")
+        if self.is_zoho:
+            self._remove_not_in_zoho(result, source)
         self.repo.set_mapping(self.mdef.key, self.mapping())
         self.result_summary = result
         self.accept()
+
+    def _remove_not_in_zoho(self, result: ImportResult, source: str) -> None:
+        """Products that are not in Zoho's list: show them, remove if confirmed."""
+        mapping = self.mapping()
+        col = self.sheet.headers.index(mapping["name"])
+        names = [str(cells[col]).strip() for _, cells in self.sheet.rows
+                 if cells[col] not in (None, "")]
+        missing = self.repo.products_not_in(names)
+        if not missing:
+            return
+        shown = "\n".join("  • " + p["name"] for p in missing[:12])
+        more = f"\n  … and {len(missing) - 12} more" if len(missing) > 12 else ""
+        box = QMessageBox(self)
+        box.setWindowTitle("Products not in Zoho's list")
+        box.setIcon(QMessageBox.Question)
+        box.setText(f"{len(missing)} product{'s' if len(missing) != 1 else ''} in the "
+                    "tool are not in Zoho's item list.")
+        box.setInformativeText(
+            f"{shown}{more}\n\nRemove them from the Product master? Their labour "
+            "and incentive settings go with them. Each removal is kept in the "
+            "audit log.")
+        remove = box.addButton("Remove them", QMessageBox.DestructiveRole)
+        box.addButton("Keep them", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is remove:
+            n = self.repo.delete("products", [p["id"] for p in missing],
+                                 source=f"{source} (not in Zoho's item list)")
+            result.warnings.append(
+                f"{n} product{'s' if n != 1 else ''} not in Zoho's item list removed: "
+                + "; ".join(p["name"] for p in missing) + ".")
+        else:
+            result.warnings.append(
+                f"{len(missing)} product{'s' if len(missing) != 1 else ''} not in "
+                "Zoho's item list kept: " + "; ".join(p["name"] for p in missing) + ".")
 
     def show_summary(self, parent) -> None:
         """Tell the user what the import did (called after the dialog closes)."""

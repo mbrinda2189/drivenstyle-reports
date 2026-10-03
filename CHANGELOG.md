@@ -6,6 +6,29 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] – 2026-10-03 – Zoho's item list is the Product master
+
+### Added
+- **Zoho's item export (`Item.csv`) is imported as the Product master**
+  (Masters → Products → Import Excel). It is recognised by its headings and
+  the columns are pre-set: Item Name → Product name, SKU, HSN/SAC, Rate →
+  Selling price, Purchase Rate → Cost price, Product Type (goods / service)
+  → Category. "INR 14000.00" is read as an amount.
+- Zoho decides **names, prices and category**. Labour charge, incentive
+  group and "Vehicle needed" are not in Zoho and keep their values.
+- The **₹1 labour items** in Zoho's list are left out (not products), now
+  including "Paint Protection Film -Labour Charges".
+- **Products not in Zoho's list** are shown after the import and removed on
+  confirmation (each removal in the audit log).
+- **"Add items that are not in the Product master"** tick box in the Import
+  window (products): untick it when importing the staff sheet for labour /
+  incentive, so its own item names are not added back.
+- Tests for the Zoho import (139 tests).
+
+### Fixed
+- A labour charge imported for an EXISTING product did not switch on
+  "Labour involved", so that labour was not counted.
+
 ## [0.6.7] – 2026-09-30 – Counter sales without a vehicle
 
 ### Added

@@ -79,6 +79,35 @@ _CATEGORY_WORDS = {
 }
 
 
+# Headings that only Zoho Books' ITEM export has (header_key form). When all
+# are present the file is treated as Zoho's item list (v0.7.0).
+ZOHO_ITEM_HEADERS = ("itemid", "itemname", "rate", "purchaserate")
+
+
+def is_zoho_item_export(headers: list[str]) -> bool:
+    """True for Zoho Books' item export (Items > Export > Item.csv)."""
+    keys = {header_key(h) for h in headers}
+    return all(h in keys for h in ZOHO_ITEM_HEADERS)
+
+
+def zoho_item_mapping(headers: list[str]) -> dict[str, str | None]:
+    """
+    Field -> column for Zoho's item export. Fixed, not guessed, because the
+    file has look-alike columns ("Product Name", "Description", "Item
+    Type"):
+        Item Name -> Product name      SKU -> SKU      HSN/SAC -> HSN/SAC
+        Rate -> Selling price (GST inclusive, as billed)
+        Purchase Rate -> Cost price    Product Type (goods/service) -> Category
+    Labour, incentive group and "Vehicle needed" are not in Zoho and are
+    left as they are in the tool.
+    """
+    by_key = {header_key(h): h for h in headers}
+    want = {"name": "itemname", "sku": "sku", "hsn_sac": "hsnsac",
+            "selling_price": "rate", "cost_price": "purchaserate",
+            "category": "producttype"}
+    return {field: by_key.get(key) for field, key in want.items()}
+
+
 class ImportFileError(Exception):
     """The file cannot be used (wrong type, empty, unreadable)."""
 

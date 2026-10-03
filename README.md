@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.6.7 – Zoho invoice export; counter sales without a vehicle.** The tool reads the
+> **Current status: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -122,6 +122,16 @@ From v0.6.5 the sheet's own "category" column is read (SALES = Product,
 SERVICE = Service) and is final - Zoho's item type never overrides it. A
 CODE used for several different items in the sheet is ignored for those
 rows (each imported by name, with a warning) so no item is overwritten.
+
+**Zoho's item list is the Product master (v0.7.0).** In Zoho Books: Items →
+Export (Item.csv). Import it on Masters → Products → Import Excel: names,
+SKU, HSN/SAC, selling price (Rate), cost price (Purchase Rate) and category
+(goods / service) come from Zoho; the ₹1 labour items are left out;
+products not in Zoho's list are listed and removed if you confirm. Labour
+charge, incentive group and "Vehicle needed" are not in Zoho: import the
+staff sheet (or a two-column sheet "Item Name | Incentive group" / "Item
+Name | Labour") with **"Add items that are not in the Product master"
+unticked**, or edit them on the screen.
 
 **Finding rows.** Each tab has a search box, a filter (Products: category,
 Sales executives: branch, Cars: segment) and a status filter (active /

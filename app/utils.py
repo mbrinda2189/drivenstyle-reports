@@ -48,10 +48,18 @@ def format_inr(value: float, decimals: int = 2) -> str:
 
 
 def parse_inr(text: str) -> float | None:
-    """Convert an Indian-formatted amount string back to float (or None)."""
+    """
+    Convert an Indian-formatted amount string back to float (or None).
+    Also accepts Zoho's export form "INR 14000.00" and "Rs. 1,200".
+    """
     cleaned = (
         text.replace("₹", "").replace(",", "").replace(" ", "").strip()
     )
+    low = cleaned.lower()
+    for prefix in ("inr", "rs.", "rs"):
+        if low.startswith(prefix):
+            cleaned = cleaned[len(prefix):]
+            break
     if not cleaned:
         return None
     try:

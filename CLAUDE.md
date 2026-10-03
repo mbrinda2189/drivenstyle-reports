@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.6.7** (tags v0.1.0 … v0.6.7 on GitHub
+Current version: **v0.7.0** (tags v0.1.0 … v0.7.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -123,11 +123,15 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `Item Total`, GST = `Item Tax Amount`, used as they are. Check: lines +
   GST + Round Off = Total. Month by `Invoice Date`; other months ignored;
   Void/Draft skipped. Payment made = Total − Balance.
-- **Category**: the client's sheet now has a "category" column – SALES =
-  Product, SERVICE = Service – and that (or a choice on the Masters screen)
-  is final (`products.category_fixed`). Products without it take Zoho's
-  Item Type (goods → Product, service → Service) via
-  `invoices_repo.apply_zoho_categories`.
+- **Zoho's item list is the Product master** (Brinda, 03-10-2026, v0.7.0):
+  "Zoho's item names and price are the final". Item.csv gives name, SKU,
+  HSN, selling price (Rate, GST-inclusive), cost price (Purchase Rate) and
+  **category always from Zoho's Product Type** (goods → Product, service →
+  Service). Products not in Zoho's list are removed (with confirmation).
+  Labour charge, incentive group and Vehicle needed come from the staff
+  sheet / Masters screen, imported with "Add items…" unticked. Zoho's ₹1
+  labour items are not products. (Earlier: the staff sheet's SALES/SERVICE
+  column decided the category – superseded.)
 - **CODE is not reliable in the client's sheet** (HSN codes typed as CODE,
   shared by several items). A CODE shared by different names in one import
   is dropped for those rows (v0.6.5); items match invoices by name.
