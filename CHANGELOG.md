@@ -6,6 +6,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.3] – 2026-10-03 – Saved matches: see and undo Scan review choices
+
+### Added
+- **Scan review → "Saved matches" tab.** Lists every choice saved on the
+  Issues tab - item, salesperson or vehicle matched to a master row or to
+  Others, single-invoice choices, and totals differences accepted - with
+  what it was matched to, whether it applies to all invoices or one, how
+  many of the month's invoices it touches, and when it was saved.
+- **Remove selected match** undoes one choice after a confirmation. The
+  invoices are matched again from the masters and return to the Issues tab
+  if they still do not match. Each removal is in the audit log.
+- **Export matches** saves the list to Excel for checking.
+
 ## [0.8.2] – 2026-10-03 – Automatic indirect cost percentages can be changed
 
 ### Added

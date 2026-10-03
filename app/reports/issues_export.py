@@ -134,6 +134,41 @@ def export_issues(invoices: InvoicesRepo, year: int, month: int,
     return len(issues)
 
 
+def matches_file_name() -> str:
+    return f"DriveNStyle_Saved_matches_{datetime.now():%d-%m-%Y_%H%M}.xlsx"
+
+
+def export_matches(invoices: InvoicesRepo, year: int, month: int,
+                   path: str | Path) -> int:
+    """
+    v0.8.3: the "Saved matches" tab as an Excel file - every choice saved on
+    Scan review (item / salesperson / vehicle matched to a master row or to
+    Others, and totals differences accepted), for checking. Returns the
+    number of rows written.
+    """
+    matches = invoices.saved_matches(year, month)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Saved matches"
+    row = title(ws, "Scan review - saved matches", month_label(year, month), [
+        "Choices saved on Scan review. They are remembered for later months. "
+        "Remove a wrong one on Scan review > Saved matches.",
+        f"As at {datetime.now():%d-%m-%Y %H:%M}."])
+    table(ws, row, [
+        Col("Type", "type", width=14),
+        Col("As on the invoice", "printed", width=44),
+        Col("Matched to", "target", width=44),
+        Col("Applies to", "scope", width=30),
+        Col("Invoices this month", "invoices", "qty", 12),
+        Col("Saved on", "saved", width=18),
+    ], [dict(type=m.type_label, printed=m.printed, target=m.target, scope=m.scope,
+             invoices=m.invoices, saved=m.saved_on.replace("T", " "))
+        for m in matches], filters=True, empty_text="No saved matches.")
+    _finish(ws)
+    wb.save(Path(path))
+    return len(matches)
+
+
 def _wrap(ws, t: dict) -> None:
     """Long texts wrap inside their cell; everything aligned to the top."""
     for r in range(t["first"], t["last"] + 1):

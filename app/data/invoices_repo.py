@@ -362,6 +362,36 @@ class Issue:
                                             # branch / several / missing
 
 
+@dataclass
+class SavedMatch:
+    """
+    One choice saved on Scan review (v0.8.3), as listed on the "Saved
+    matches" tab so it can be checked and, if wrong, removed.
+
+    store    where it is kept: "alias" (every invoice showing the name),
+             "override" (one invoice) or "ack" (a totals difference accepted)
+    kind     product / executive / car / totals / labour
+    key      the stored key: the name in standard form, or the invoice no
+    printed  the name as printed on an invoice (the key if no invoice in
+             the tool shows it any more)
+    target   what it was matched to, in words
+    invoices invoices of the month shown that the match applies to
+    """
+    store: str
+    kind: str
+    key: str
+    printed: str
+    target: str
+    scope: str
+    invoices: int
+    saved_on: str
+
+    @property
+    def type_label(self) -> str:
+        return {"product": "Item", "executive": "Salesperson", "car": "Vehicle",
+                "totals": "Totals check", "labour": "Labour check"}.get(self.kind, self.kind)
+
+
 # ---------------------------------------------------------------------------
 # The repository
 # ---------------------------------------------------------------------------
@@ -742,6 +772,92 @@ class InvoicesRepo:
                     (invoice_no, kind, target, now))
                 record = f"Invoice {invoice_no}"
             self._log(record, field_label, label)
+
+    # ==================================================================
+    # Saved matches: see and undo the choices made on Scan review (v0.8.3)
+    # ==================================================================
+    # WHY: a choice on Scan review is remembered for every later month
+    # ("Pravin - CMP" means Pravin - HO). A wrong choice - or one made only
+    # for a trial - silently sends sales and incentive to the wrong person
+    # or product, and until v0.8.3 there was no way to see or undo it.
+    def saved_matches(self, year: int, month: int) -> list[SavedMatch]:
+        """Every saved choice, with the number of the month's invoices it
+        applies to. Matches for all invoices first, then single invoices."""
+        m = self._masters_snapshot()
+        mk = month_key(year, month)
+        # name in standard form -> (as printed, invoices of this month)
+        printed: dict[tuple[str, str], str] = {}
+        used: dict[tuple[str, str], set] = {}
+        for r in self.conn.execute(
+                "SELECT invoice_no, month, salesperson, vehicle FROM invoices"):
+            for kind, text, key in (("executive", r["salesperson"], name_key(r["salesperson"] or "")),
+                                    ("car", r["vehicle"], vehicle_key(r["vehicle"] or ""))):
+                if key:
+                    printed.setdefault((kind, key), text.strip())
+                    if r["month"] == mk:
+                        used.setdefault((kind, key), set()).add(r["invoice_no"])
+        for r in self.conn.execute(
+                "SELECT l.description, i.invoice_no, i.month FROM invoice_lines l "
+                "JOIN invoices i ON i.id = l.invoice_id WHERE l.is_labour_marker = 0"):
+            key = name_key(r["description"])
+            printed.setdefault(("product", key), r["description"].strip())
+            if r["month"] == mk:
+                used.setdefault(("product", key), set()).add(r["invoice_no"])
+        month_invoices = {r["invoice_no"] for r in self.conn.execute(
+            "SELECT invoice_no FROM invoices WHERE month = ?", (mk,))}
+
+        def target(kind: str, tid: int) -> str:
+            if kind != "product" and tid == OTHERS_ID:
+                return OTHERS_CHOICE
+            names = {"product": m["product_name"], "executive": m["exec_label"],
+                     "car": m["car_label"]}[kind]
+            return names.get(tid, "(no longer in the master - the match is not used)")
+
+        out: list[SavedMatch] = []
+        for r in self.conn.execute(
+                "SELECT * FROM match_aliases ORDER BY kind, raw_key").fetchall():
+            k = (r["kind"], r["raw_key"])
+            out.append(SavedMatch("alias", r["kind"], r["raw_key"],
+                                  printed.get(k, r["raw_key"]),
+                                  target(r["kind"], r["target_id"]),
+                                  "All invoices showing this name",
+                                  len(used.get(k, ())), r["created_at"]))
+        for r in self.conn.execute(
+                "SELECT * FROM invoice_overrides ORDER BY invoice_no, kind").fetchall():
+            out.append(SavedMatch("override", r["kind"], r["invoice_no"], r["invoice_no"],
+                                  target(r["kind"], r["target_id"]), "This invoice only",
+                                  int(r["invoice_no"] in month_invoices), r["created_at"]))
+        for r in self.conn.execute(
+                "SELECT * FROM issue_acks ORDER BY invoice_no, kind").fetchall():
+            out.append(SavedMatch("ack", r["kind"], r["invoice_no"], r["invoice_no"],
+                                  "Accepted as correct", "This invoice only",
+                                  int(r["invoice_no"] in month_invoices), r["at"]))
+        return out
+
+    def remove_match(self, match: SavedMatch) -> None:
+        """
+        Undo one saved choice (logged in the audit log). The invoices it
+        applied to are matched again from the masters; if they still do not
+        match, they come back on the Issues tab.
+        """
+        with self.conn:
+            if match.store == "alias":
+                self.conn.execute(
+                    "DELETE FROM match_aliases WHERE kind = ? AND raw_key = ?",
+                    (match.kind, match.key))
+                record = f"All invoices showing “{match.printed}”"
+            elif match.store == "override":
+                self.conn.execute(
+                    "DELETE FROM invoice_overrides WHERE invoice_no = ? AND kind = ?",
+                    (match.key, match.kind))
+                record = f"Invoice {match.key}"
+            else:
+                self.conn.execute(
+                    "DELETE FROM issue_acks WHERE invoice_no = ? AND kind = ?",
+                    (match.key, match.kind))
+                record = f"Invoice {match.key}"
+            self.masters._audit("scan", None, record, "Edited", match.type_label,
+                                match.target, "(saved match removed)", "Scan review")
 
     def apply_zoho_categories(self) -> int:
         """

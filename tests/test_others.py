@@ -84,3 +84,42 @@ def test_zoho_prices_replace_later_dated_amounts():
         assert (rate["selling_price"], rate["cost_price"]) == (2100, 1200)
         assert rate["labour_charge"] == 600           # labour is kept
     assert len(masters.rate_history("products", pid)) == 1
+
+
+def test_saved_matches_can_be_listed_and_removed(tmp_path):
+    """v0.8.3: a wrong Scan review choice can be seen and undone."""
+    from app.data.masters_repo import RowChange
+    masters = MastersRepo(connect(":memory:"))
+    product(masters, "Horn")
+    masters.save("executives", [RowChange(None, dict(
+        name="Pravin", phone="9876543210", branch="HO", active=True))])
+    masters.save("cars", [RowChange(None, dict(make="Hyundai", model="Creta",
+                                               segment="SUV", active=True))])
+    pravin = masters.list_rows("executives")[0]["id"]
+    horn = masters.list_rows("products")[0]["id"]
+    irepo = month(tmp_path, masters, [
+        line("DNS-1-2627", "2026-09-06", "Pravin - CMP", "Creta", "Horn Loud",
+             "", "", "goods", 1, 2100, 2100, inv_total=2100, branch="CMP"),
+        line("DNS-2-2627", "2026-09-07", "Pravin - CMP", "Creta", "Horn",
+             "", "", "goods", 1, 2100, 2100, inv_total=2100, branch="CMP"),
+    ])
+    assert len(irepo.issues(2026, 9)) == 2             # salesperson + item
+    irepo.set_salesperson("name:x", "Pravin - CMP", pravin, True)
+    irepo.map_product("Horn Loud", horn)
+    assert irepo.issues(2026, 9) == []
+
+    got = {(m.type_label, m.printed, m.target, m.invoices)
+           for m in irepo.saved_matches(2026, 9)}
+    assert got == {("Salesperson", "Pravin - CMP", "Pravin – HO", 2),
+                   ("Item", "Horn Loud", "Horn", 1)}
+
+    sp = next(m for m in irepo.saved_matches(2026, 9) if m.kind == "executive")
+    irepo.remove_match(sp)
+    assert [m.kind for m in irepo.saved_matches(2026, 9)] == ["product"]
+    assert [i.kind for i in irepo.issues(2026, 9)] == ["salesperson"]   # back as an issue
+    last = masters.conn.execute(
+        "SELECT old_value, new_value FROM audit_log ORDER BY id DESC LIMIT 1").fetchone()
+    assert tuple(last) == ("Pravin – HO", "(saved match removed)")
+
+    from app.reports.issues_export import export_matches
+    assert export_matches(irepo, 2026, 9, tmp_path / "m.xlsx") == 1

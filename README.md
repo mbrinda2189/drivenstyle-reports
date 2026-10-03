@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
+> **Current status: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -122,6 +122,11 @@ From v0.6.5 the sheet's own "category" column is read (SALES = Product,
 SERVICE = Service) and is final - Zoho's item type never overrides it. A
 CODE used for several different items in the sheet is ignored for those
 rows (each imported by name, with a warning) so no item is overwritten.
+
+**Saved matches (v0.8.3).** Scan review → Saved matches shows every choice
+remembered from the Issues tab. Select a wrong one and press **Remove
+selected match**; the invoices return to the Issues tab if they still do not
+match the masters. **Export matches** saves the list to Excel.
 
 **Automatic indirect costs (v0.8.1).** Breakage / returns / transport (4%
 of COGS) and Compliance GST (3% of COGS) are worked out by the tool every

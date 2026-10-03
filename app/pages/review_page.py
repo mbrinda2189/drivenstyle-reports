@@ -55,6 +55,19 @@ we need" and a blank "Client's reply" column, and sheet "Invoices
 affected") - see app/reports/issues_export.py. It can be sent to the client
 as a question list.
 
+SAVED MATCHES TAB (v0.8.3)
+--------------------------
+Every choice saved on the Issues tab is remembered for later months, so a
+wrong one (or one made only for a trial) keeps sending sales to the wrong
+executive or product. This tab lists them all - item / salesperson /
+vehicle, what each was matched to, whether it applies to every invoice
+showing the name or to one invoice, how many of the month's invoices it
+touches, and when it was saved - plus the totals differences accepted.
+"Remove selected match" undoes one (after a confirmation; logged in the
+audit log); the invoices are then matched again from the masters and come
+back on the Issues tab if they still do not match. "Export matches" saves
+the list to Excel.
+
 INVOICES READ TAB
 -----------------
 Every invoice read for the month with what the tool understood: date,
@@ -86,7 +99,8 @@ from app.data.invoices_repo import (
     OTHERS_CHOICE, OTHERS_ID, InvoicesRepo, Issue, month_label)
 from app.data.masters_repo import MastersRepo
 from app.pages.base import ScrollPage
-from app.reports.issues_export import default_file_name, export_issues
+from app.reports.issues_export import (
+    default_file_name, export_issues, export_matches, matches_file_name)
 from app.theme import Colors
 from app.utils import format_inr
 from app.widgets.common import Card, StatTile, button, label
@@ -239,6 +253,7 @@ class ReviewPage(ScrollPage):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_issues_tab(), "Issues")
         self.tabs.addTab(self._build_invoices_tab(), "Invoices read")
+        self.tabs.addTab(self._build_matches_tab(), "Saved matches")
         card.body.addWidget(self.tabs)
 
         foot = QHBoxLayout()
@@ -287,6 +302,106 @@ class ReviewPage(ScrollPage):
                          + ROW_HEIGHT * VISIBLE_ROWS + 4)
         lay.addWidget(t)
         return page
+
+    def _build_matches_tab(self) -> QWidget:
+        """Saved matches (v0.8.3): see and undo choices made on the Issues tab."""
+        page = QWidget()
+        lay = QVBoxLayout(page)
+        lay.setContentsMargins(0, 12, 0, 0)
+        lay.setSpacing(10)
+        lay.addWidget(label(
+            "Choices saved on the Issues tab. They are remembered for later months. "
+            "If one is wrong, select it and remove it: the invoices are matched again "
+            "from the masters, and come back on the Issues tab if they still do not match.",
+            "Muted", wrap=True))
+        heads = ["Type", "As on the invoice", "Matched to", "Applies to",
+                 "Invoices this month", "Saved on"]
+        self.match_table = QTableWidget(0, len(heads))
+        t = self.match_table
+        t.setHorizontalHeaderLabels(heads)
+        t.verticalHeader().hide()
+        t.setAlternatingRowColors(True)
+        t.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        t.setSelectionBehavior(QAbstractItemView.SelectRows)
+        t.setSelectionMode(QAbstractItemView.SingleSelection)
+        t.verticalHeader().setDefaultSectionSize(36)
+        t.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        hdr = t.horizontalHeader()
+        hdr.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        for i, w in enumerate((110, 300, 300, 210, 140, 150)):
+            hdr.setSectionResizeMode(i, QHeaderView.Interactive)
+            t.setColumnWidth(i, w)
+        hdr.setStretchLastSection(True)
+        t.setMinimumHeight(330)
+        t.itemSelectionChanged.connect(
+            lambda: self.remove_match_btn.setEnabled(t.currentRow() >= 0))
+        lay.addWidget(t)
+        row = QHBoxLayout()
+        self.match_count = label("", "Muted")
+        row.addWidget(self.match_count, 1)
+        export = button("Export matches", "Secondary")
+        export.clicked.connect(self._export_matches)
+        row.addWidget(export)
+        self.remove_match_btn = button("Remove selected match", "Danger")
+        self.remove_match_btn.setEnabled(False)
+        self.remove_match_btn.clicked.connect(self._remove_match)
+        row.addWidget(self.remove_match_btn)
+        lay.addLayout(row)
+        return page
+
+    def _fill_matches(self) -> None:
+        self._matches = self.invoices.saved_matches(self.year, self.month)
+        t = self.match_table
+        t.setRowCount(len(self._matches))
+        for r, m in enumerate(self._matches):
+            for c, text in enumerate((m.type_label, m.printed, m.target, m.scope,
+                                      str(m.invoices), m.saved_on.replace("T", " "))):
+                item = QTableWidgetItem(text)
+                if c == 4:
+                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                t.setItem(r, c, item)
+        t.clearSelection()
+        t.setCurrentCell(-1, -1)
+        self.remove_match_btn.setEnabled(False)
+        n = len(self._matches)
+        self.match_count.setText(f"{n} saved match{'es' if n != 1 else ''}.")
+
+    def _remove_match(self) -> None:
+        r = self.match_table.currentRow()
+        if not 0 <= r < len(self._matches):
+            self.toast("Select a match to remove.")
+            return
+        m = self._matches[r]
+        if QMessageBox.question(
+                self, "Remove saved match",
+                f"Remove this match?\n\n{m.type_label}: “{m.printed}”\n"
+                f"Matched to: {m.target}\n{m.scope}"
+                + (f" ({m.invoices} invoice{'s' if m.invoices != 1 else ''} this month)"
+                   if m.store == "alias" else "")
+                + "\n\nThe invoices will be matched again from the masters. If they "
+                  "still do not match, they come back on the Issues tab.",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        self.invoices.remove_match(m)
+        self.refresh()
+        self.toast(f"Match for “{m.printed}” removed.")
+
+    def _export_matches(self) -> None:
+        start = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation)
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export matches", str(Path(start) / matches_file_name()),
+            "Excel workbook (*.xlsx)")
+        if not path:
+            return
+        if not path.lower().endswith(".xlsx"):
+            path += ".xlsx"
+        try:
+            n = export_matches(self.invoices, self.year, self.month, path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export matches",
+                                f"The file could not be saved (is it open in Excel?): {exc}")
+            return
+        self.toast(f"{n} saved match{'es' if n != 1 else ''} exported.")
 
     def _build_invoices_tab(self) -> QWidget:
         page = QWidget()
@@ -357,6 +472,7 @@ class ReviewPage(ScrollPage):
         self._rows = [(i, i.status) for i in issues]
         self._fill_issues()
         self._fill_invoices()
+        self._fill_matches()
         self._update_counts()
 
     def _fill_issues(self) -> None:
@@ -548,6 +664,7 @@ class ReviewPage(ScrollPage):
                 self.issues_table.setItem(row, self.COL_FIX,
                                           self._fix_hint(issue, "fixed"))
         self._fill_invoices()
+        self._fill_matches()
         self._update_counts()
         self.toast(message)
 
