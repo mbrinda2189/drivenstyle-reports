@@ -6,6 +6,36 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] – 2026-10-03 – Package sales recognised from the invoice
+
+### Added
+- **Packages master** (Masters → Packages; replaces the sample tab). One
+  row = a Zoho item that counts as an item of a package (Package, Package
+  item, Zoho item name). It can be typed in or imported from Excel; the
+  Zoho item must exist in the Product master. Changes are in the audit log.
+- **Package recognition**: an invoice is a package sale when every item of
+  a package is on it (rule given by Brinda). If two packages fit, the one
+  with the higher coupon value is taken. One package per invoice; other
+  items on the invoice stay normal sales.
+- **Report 5 "Basic package analysis" rewritten**: by package; one row per
+  package invoice (list value, coupon value, amount billed, discount given
+  against the coupon discount, cost, labour, profit, package incentive and
+  incentive payable); the package items as billed; and "Almost a package"
+  (exactly one item missing) for checking with the client. The sheet
+  carries the date and time of the result.
+- **Report file name carries date and time**, e.g.
+  `DriveNStyle_Sep-2026_Reports_03-10-2026_2122.xlsx`, so every result is
+  kept and none is overwritten.
+
+### Changed
+- **Spot incentive**: on a package invoice the package's items earn no
+  separate incentive; the invoice gets one row with the package incentive
+  (Incentive master row of the same name; its Bill value is the coupon's
+  final value). The confirmed discount rule applies to it as to any line.
+- A product linked to a "… Package" incentive group is no longer treated
+  as a package sale by itself.
+- Database schema version 8 (`package_items` table).
+
 ## [0.7.1] – 2026-10-03 – "Others" for salesperson and car; Zoho prices from 1 April
 
 ### Added

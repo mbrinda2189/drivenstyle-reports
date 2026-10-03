@@ -169,6 +169,11 @@ STORES = {
     "incentives": Store("incentives", "name_key", ("name", "active"),
                         "t.name COLLATE NOCASE", "incentive_rates",
                         "incentive_id"),
+    # v0.8.0: which Zoho items make up each package (see master_defs)
+    "package_items": Store("package_items", "item_key",
+                           ("package", "item", "product", "active"),
+                           "t.package COLLATE NOCASE, t.item COLLATE NOCASE, "
+                           "t.product COLLATE NOCASE"),
 }
 
 
@@ -350,6 +355,9 @@ class MastersRepo:
             return car_key(v.get("make", ""), v.get("model", ""))
         if master == "executives":
             return phone_key(v.get("phone", ""))
+        if master == "package_items":       # package + item + Zoho item
+            return "|".join(name_key(v.get(k, ""))
+                            for k in ("package", "item", "product"))
         return name_key(v.get("name", ""))
 
     @staticmethod
@@ -358,6 +366,9 @@ class MastersRepo:
         if master == "cars":
             return " ".join(p for p in (str(v.get("make", "")).strip(),
                                         str(v.get("model", "")).strip()) if p)
+        if master == "package_items":
+            return " – ".join(str(v.get(k, "")).strip()
+                              for k in ("package", "item", "product"))
         name = str(v.get("name", "")).strip()
         if master == "executives" and str(v.get("phone", "")).strip():
             return f"{name} ({str(v['phone']).strip()})"
@@ -400,6 +411,11 @@ class MastersRepo:
                 and not valid_mobile(v["phone"]):
             problems.append(f"{label}: contact number “{v['phone']}” must have "
                             "10 digits (+91 or a leading 0 may be added).")
+
+        if master == "package_items" and str(v.get("product", "")).strip() \
+                and self._find_id("products", name_key(v["product"])) is None:
+            problems.append(f"{label}: “{v['product']}” is not in the Product "
+                            "master (use the item name exactly as in Zoho).")
 
         clash = self._find_id(master, self.key_of(master, v))
         if clash is not None and clash != row_id:

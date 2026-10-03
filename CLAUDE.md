@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.7.1** (tags v0.1.0 … v0.7.1 on GitHub
+Current version: **v0.8.0** (tags v0.1.0 … v0.8.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -123,6 +123,14 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `Item Total`, GST = `Item Tax Amount`, used as they are. Check: lines +
   GST + Round Off = Total. Month by `Invoice Date`; other months ignored;
   Void/Draft skipped. Payment made = Total − Balance.
+- **Packages** (Brinda, 03-10-2026, v0.8.0): an invoice is a package sale
+  only when EVERY item of the package is on it (`app/reports/packages.py`,
+  Packages master = `package_items`: package / coupon item / Zoho item).
+  Higher coupon value wins if two fit; one package per invoice. Package
+  incentive (Incentive master row with the package's name; bill value =
+  coupon final value) replaces the items' own incentives, same discount
+  rule. Report file names carry date and time. Draft links:
+  `data\Samples\Package_items_draft.xlsx` (yellow rows awaiting client).
 - **"Others" for salesperson / car** (Brinda, 03-10-2026, v0.7.1): Scan
   review offers "Others (not in master)" (stored as target id 0,
   `invoices_repo.OTHERS_ID`). Reports show "Others", branch from the

@@ -115,8 +115,9 @@ def test_month_figures(world):
     assert i226.cost == 9000 and i226.labour == 950
     assert i226.markers == 3 and not any(l.category == "Labour line" for l in d.lines)
     assert i226.labour == 950                                  # from the products
-    package = [l for l in d.lines if l.is_package]
-    assert [l.incentive_group for l in package] == ["Basic Package"]
+    # v0.8.0: a product linked to a "... Package" incentive group is no
+    # longer a package sale by itself (see tests/test_packages.py)
+    assert not any(l.is_package for l in d.lines)
 
 
 def test_open_issue_leaves_invoice_out(world):
@@ -145,7 +146,11 @@ def test_generate_writes_every_sheet(world, tmp_path):
                    "UPI,20000,DNS-226-2627,HDFC\nCash,5000,DNS26-GST-0753,Undeposited\n",
                    encoding="utf-8")
     r = generate(repo, inv, inp, 2026, 9, tmp_path, REPORTS, str(pay))
-    assert r.path.name == file_name(2026, 9) == "DriveNStyle_Sep-2026_Reports.xlsx"
+    assert file_name(2026, 9) == "DriveNStyle_Sep-2026_Reports.xlsx"
+    # v0.8.0: the file name carries the date and time it was generated
+    import re
+    assert re.fullmatch(r"DriveNStyle_Sep-2026_Reports_\d\d-\d\d-\d{4}_\d{4}\.xlsx",
+                        r.path.name)
     wb = load_workbook(r.path)
     assert len(wb.sheetnames) == 14 and wb.sheetnames[0] == "Cover"
     ws = wb["11 Payment modes"]

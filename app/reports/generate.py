@@ -23,6 +23,7 @@ payments file is not a Zoho export, or the month has not been scanned.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from app.data.inputs_repo import InputsRepo
@@ -47,8 +48,14 @@ class GenerateResult:
     payments_used: bool
 
 
-def file_name(year: int, month: int) -> str:
-    return f"DriveNStyle_{MONTH_NAMES[month - 1][:3]}-{year}_Reports.xlsx"
+def file_name(year: int, month: int, at: datetime | None = None) -> str:
+    """
+    v0.8.0: the name carries the date and time the workbook was generated
+    (e.g. DriveNStyle_Sep-2026_Reports_03-10-2026_2122.xlsx), so every
+    result is kept and an earlier one is never overwritten.
+    """
+    stamp = f"_{at:%d-%m-%Y_%H%M}" if at else ""
+    return f"DriveNStyle_{MONTH_NAMES[month - 1][:3]}-{year}_Reports{stamp}.xlsx"
 
 
 def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
@@ -73,7 +80,7 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
     data = build_month(masters, invoices, inputs, year, month)
     trend = (trend_months(masters, invoices, inputs, year, month)
              if "Trend analysis (month on month)" in reports else [])
-    path = out_dir / file_name(year, month)
+    path = out_dir / file_name(year, month, datetime.now())
     try:
         write_workbook(data, trend, payments, reports, path, masters.user)
     except PermissionError as exc:

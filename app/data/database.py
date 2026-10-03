@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 7)
+TABLES (schema version 8)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -113,7 +113,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -431,6 +431,18 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
     """,
     # --- 6 -> 7 : vehicle needed ---------------------------------------------
     _step_7,
+    # --- 7 -> 8 : packages (v0.8.0) ------------------------------------------
+    # One row = this Zoho item counts as this item of this package.
+    """
+    CREATE TABLE IF NOT EXISTS package_items (
+        id        INTEGER PRIMARY KEY,
+        package   TEXT    NOT NULL,                 -- as in the Incentive master
+        item      TEXT    NOT NULL,                 -- item as on the coupon
+        product   TEXT    NOT NULL,                 -- Zoho item name
+        item_key  TEXT    NOT NULL UNIQUE,          -- package|item|product
+        active    INTEGER NOT NULL DEFAULT 1
+    );
+    """,
 ]
 
 

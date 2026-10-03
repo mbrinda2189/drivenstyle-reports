@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
+> **Current status: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -122,6 +122,15 @@ From v0.6.5 the sheet's own "category" column is read (SALES = Product,
 SERVICE = Service) and is final - Zoho's item type never overrides it. A
 CODE used for several different items in the sheet is ignored for those
 rows (each imported by name, with a warning) so no item is overwritten.
+
+**Packages (v0.8.0).** Masters → Packages lists, for each package on the
+coupon, every Zoho item that counts for each of its items (import it from
+Excel: columns Package, Package item, Zoho item name). An invoice is a
+package sale when **every** item of a package is on it. The package's final
+value and incentive come from the row with the same name in the Incentive
+master. Report 5 shows the package invoices and the "almost a package"
+invoices (one item missing). Each generated workbook has the date and time
+in its file name, so earlier results are kept.
 
 **"Others" (v0.7.1).** If a salesperson or vehicle on an invoice is not in
 the masters and you do not want to add it, choose **Others (not in master)**

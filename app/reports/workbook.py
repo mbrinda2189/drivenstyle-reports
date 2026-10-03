@@ -529,51 +529,106 @@ def trend_sheet(ws: Worksheet, d: MonthData, months: list[MonthData]) -> None:
 # 5 Packages
 # ---------------------------------------------------------------------------
 def package_sheet(ws: Worksheet, d: MonthData) -> None:
-    lines = [l for l in d.lines if l.is_package]
-    row = title(ws, "Basic package analysis", d.label,
-                ["A package sale is a product whose Incentive group is a '… Package' row "
-                 "of the Incentive master."])
+    """
+    v0.8.0: a package sale = an invoice carrying EVERY item of a package
+    (Packages master; see app/reports/packages.py). Values:
+      list value    the package items at Zoho's selling price
+      coupon value  the package's final value (Incentive master, Bill value)
+      amount billed what the customer paid for the package items, with GST
+    """
+    sold = [i for i in d.invoices if i.package]
+    near = [i for i in d.invoices if i.near_package]
+    row = title(ws, "Basic package analysis", d.label, [
+        "A package sale is an invoice that has every item of a package (Packages master). "
+        "Other items on the same invoice are normal sales and are not counted here.",
+        "List value = the package items at the Product master's selling price. Coupon value = "
+        "the package's final value (Bill value in the Incentive master). Amount billed "
+        "includes GST.",
+        f"Result as at {datetime.now():%d-%m-%Y %H:%M}."])
+
     groups: dict[str, dict] = {}
-    for l in lines:
-        g = groups.setdefault(l.incentive_group, dict(package=l.incentive_group, qty=0.0,
-                                                      invoices=set(), sales=0.0, cost=0.0,
-                                                      labour=0.0))
-        g["qty"] += l.qty
-        g["invoices"].add(l.invoice_no)
-        g["sales"] += l.sales
-        g["cost"] += l.cost
-        g["labour"] += l.labour
-    summary = [dict(package=g["package"], qty=g["qty"], invoices=len(g["invoices"]),
-                    sales=round(g["sales"], 2), cost=round(g["cost"], 2),
-                    labour=round(g["labour"], 2))
-               for g in sorted(groups.values(), key=lambda g: -g["sales"])]
+    for i in sold:
+        k = i.package
+        g = groups.setdefault(k.package, dict(package=k.package, qty=0, list=0.0,
+                                              coupon=0.0, billed=0.0, sales=0.0,
+                                              cost=0.0, labour=0.0))
+        g["qty"] += 1
+        for key, value in (("list", k.list_value), ("coupon", k.coupon_value),
+                           ("billed", k.billed), ("sales", k.sales), ("cost", k.cost),
+                           ("labour", k.labour)):
+            g[key] = round(g[key] + value, 2)
     row = section(ws, row, "By package")
     t = table(ws, row, [
-        Col("Package", "package", width=32),
+        Col("Package", "package", width=30),
         Col("Times sold", "qty", "qty", 10, total="sum"),
-        Col("Invoices", "invoices", "qty", 10, total="sum"),
-        Col("Sales", "sales", "money", 14, total="sum"),
+        Col("List value", "list", "money", 14, total="sum"),
+        Col("Coupon value", "coupon", "money", 14, total="sum"),
+        Col("Amount billed", "billed", "money", 14, total="sum"),
+        Col("Sales (excl. GST)", "sales", "money", 14, total="sum"),
         Col("Product cost", "cost", "money", 14, total="sum"),
         Col("Labour", "labour", "money", 12, total="sum"),
         Col("Gross profit", "gp", "money", 14, formula=GP, total="sum"),
         Col("Margin %", "margin", "pct", 10, formula=MARGIN, total=MARGIN_TOTAL),
-        Col("Average sale", "avg", "money", 14,
-            formula='=IF({qty}{r}=0,"",{sales}{r}/{qty}{r})',
-            total='=IF({qty}{r}=0,"",{sales}{r}/{qty}{r})'),
-    ], summary, empty_text="No package sales this month.")
-    row = section(ws, t["next"], "Package lines")
+    ], sorted(groups.values(), key=lambda g: -g["sales"]),
+        empty_text="No package sales this month.")
+
+    row = section(ws, t["next"], "Package invoices")
+    payable = ('=IF({coupon}{r}=0,0,{inc}{r}*MIN(1,{billed}{r}/{coupon}{r}))')
+    t = table(ws, row, [
+        Col("Invoice no", "invoice_no", width=17),
+        Col("Date", "date", "date", 11),
+        Col("Salesperson", "executive", width=24),
+        Col("Car", "car", width=18),
+        Col("Package", "package", width=30),
+        Col("Items", "items", "qty", 7),
+        Col("List value", "list", "money", 13, total="sum"),
+        Col("Coupon value", "coupon", "money", 13, total="sum"),
+        Col("Amount billed", "billed", "money", 13, total="sum"),
+        Col("Discount given", "given", "money", 13,
+            formula="={list}{r}-{billed}{r}", total="sum"),
+        Col("Coupon discount", "allowed", "money", 13,
+            formula="={list}{r}-{coupon}{r}", total="sum"),
+        Col("Sales (excl. GST)", "sales", "money", 14, total="sum"),
+        Col("Product cost", "cost", "money", 13, total="sum"),
+        Col("Labour", "labour", "money", 11, total="sum"),
+        Col("Gross profit", "gp", "money", 13, formula=GP, total="sum"),
+        Col("Margin %", "margin", "pct", 9, formula=MARGIN, total=MARGIN_TOTAL),
+        Col("Package incentive", "inc", "money", 13, total="sum"),
+        Col("Incentive payable", "payable", "money", 14, formula=payable, total="sum"),
+    ], [dict(invoice_no=i.invoice_no, date=i.invoice_date,
+             executive=exec_label(i.executive, i.branch), car=i.car,
+             package=i.package.package, items=len(i.package.lines),
+             list=i.package.list_value, coupon=i.package.coupon_value,
+             billed=i.package.billed, sales=i.package.sales, cost=i.package.cost,
+             labour=i.package.labour, inc=i.package.incentive) for i in sold],
+        filters=True, empty_text="No package sales this month.")
+
+    row = section(ws, t["next"], "Package items as billed")
+    t = table(ws, row, [
+        Col("Invoice no", "invoice_no", width=17),
+        Col("Package", "package", width=30),
+        Col("Product as billed", "product", width=40),
+        Col("Qty", "qty", "qty", 8),
+        Col("List price", "list", "money", 13),
+        Col("Sales (excl. GST)", "sales", "money", 14, total="sum"),
+    ], [dict(invoice_no=i.invoice_no, package=i.package.package, product=l.product,
+             qty=l.qty, list=l.list_price, sales=l.sales)
+        for i in sold for l in i.package.lines],
+        empty_text="No package sales this month.")
+
+    row = section(ws, t["next"], "Almost a package (one item missing) - check with the client")
     table(ws, row, [
         Col("Invoice no", "invoice_no", width=17),
         Col("Date", "date", "date", 11),
-        Col("Salesperson", "executive", width=22),
-        Col("Package", "package", width=32),
-        Col("Product as billed", "product", width=36),
-        Col("Qty", "qty", "qty", 8, total="sum"),
-        Col("Sales", "sales", "money", 14, total="sum"),
-    ], [dict(invoice_no=l.invoice_no, date=l.invoice_date,
-             executive=exec_label(l.executive, l.branch), package=l.incentive_group,
-             product=l.product, qty=l.qty, sales=l.sales) for l in lines],
-        filters=True, empty_text="No package sales this month.")
+        Col("Salesperson", "executive", width=24),
+        Col("Car", "car", width=18),
+        Col("Package", "package", width=30),
+        Col("Item missing", "missing", width=30),
+        Col("Invoice total", "total", "money", 13),
+    ], [dict(invoice_no=i.invoice_no, date=i.invoice_date,
+             executive=exec_label(i.executive, i.branch), car=i.car,
+             package=i.near_package, missing=i.near_missing, total=i.total)
+        for i in near], empty_text="None this month.")
     _finish(ws)
 
 
@@ -639,13 +694,29 @@ def vehicle_sheet(ws: Worksheet, d: MonthData) -> None:
 # 7 Spot incentive (rule confirmed by the client, 30-09-2026)
 # ---------------------------------------------------------------------------
 def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
-    lines = [l for l in d.lines if l.incentive_group]
+    # v0.8.0: the items of a package carry no incentive of their own; the
+    # invoice gets one row with the package incentive instead. Its bill
+    # value is the coupon's final value and the amount billed is what the
+    # customer paid for the package items - the same confirmed rule applies.
+    lines = [dict(executive=exec_label(l.executive, l.branch), invoice_no=l.invoice_no,
+                  date=l.invoice_date, product=l.product, group=l.incentive_group,
+                  qty=l.qty, inc=l.incentive_amount, bill=l.bill_value, billed=l.billed)
+             for l in d.lines if l.incentive_group]
+    lines += [dict(executive=exec_label(i.executive, i.branch), invoice_no=i.invoice_no,
+                   date=i.invoice_date,
+                   product=f"Package ({len(i.package.lines)} items)",
+                   group=i.package.package, qty=1, inc=i.package.incentive,
+                   bill=i.package.coupon_value, billed=i.package.billed)
+              for i in d.invoices if i.package]
+    lines.sort(key=lambda r: (r["executive"], r["date"], r["invoice_no"]))
     row = title(ws, "Spot incentive calculation", d.label, [
         "Rule used: payable = incentive × qty × (amount billed ÷ (bill value × qty)), "
         "never more than the full incentive.",
         "Amount billed = the line after its share of the discount, including GST. "
-        "Incentive and bill value: Incentive master, on the invoice date."])
-    execs = sorted({exec_label(l.executive, l.branch) for l in lines})
+        "Incentive and bill value: Incentive master, on the invoice date.",
+        "Package sales: one row per invoice with the package incentive; the package's items "
+        "earn no separate incentive."])
+    execs = sorted({r["executive"] for r in lines})
     detail_head = row + len(execs) + 5
     first, last = detail_head + 1, detail_head + max(1, len(lines))
     sumif = lambda col: f"=SUMIF($A${first}:$A${last},$A{{r}},{col}${first}:{col}${last})"
@@ -679,11 +750,7 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
         Col("Incentive payable", "payable", "money", 14,    # L
             formula='=IF({bill}{r}*{qty}{r}=0,0,{full}{r}*MIN(1,{billed}{r}/({bill}{r}*{qty}{r})))',
             total="sum"),
-    ], [dict(executive=exec_label(l.executive, l.branch), invoice_no=l.invoice_no,
-             date=l.invoice_date, product=l.product, group=l.incentive_group, qty=l.qty,
-             inc=l.incentive_amount, bill=l.bill_value, billed=l.billed)
-        for l in sorted(lines, key=lambda l: (exec_label(l.executive, l.branch), l.invoice_date))],
-        filters=True, empty_text="No lines with an incentive group this month.")
+    ], lines, filters=True, empty_text="No lines with an incentive group this month.")
     _finish(ws)
 
 

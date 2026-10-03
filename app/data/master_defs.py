@@ -311,5 +311,31 @@ INCENTIVES = MasterDef(
     ),
 )
 
-ALL_MASTERS = (PRODUCTS, EXECUTIVES, CARS, INCENTIVES)
+# ---------------------------------------------------------------------------
+# Packages master (v0.8.0)
+# ---------------------------------------------------------------------------
+# One row = "this Zoho item counts as this item of this package". The
+# coupon says "PVC Full Mat"; Zoho has one item per car, so a package item
+# usually has several rows. An invoice is a package sale when every item of
+# the package is on it (app/reports/packages.py). The package's final value
+# and incentive are the Bill value and Incentive amount of the row with the
+# same name in the Incentive master.
+PACKAGE_ITEMS = MasterDef(
+    key="package_items", title="Packages", singular="package item",
+    filter_field="package",
+    fields=(
+        FieldDef("package", "Package", required=True, width=230,
+                 synonyms=("package name", "package", "pack")),
+        FieldDef("item", "Package item", required=True, width=260,
+                 synonyms=("package item", "coupon item", "item on coupon",
+                           "item in package")),
+        FieldDef("product", "Zoho item name", required=True,
+                 synonyms=("zoho item name", "zoho item", "item name",
+                           "product name", "product")),
+        FieldDef("active", "Active", kind="bool", importable=False,
+                 default=True, width=70),
+    ),
+)
+
+ALL_MASTERS = (PRODUCTS, EXECUTIVES, CARS, INCENTIVES, PACKAGE_ITEMS)
 MASTERS_BY_KEY = {m.key: m for m in ALL_MASTERS}

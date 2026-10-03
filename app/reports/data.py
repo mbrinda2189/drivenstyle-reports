@@ -49,8 +49,16 @@ value, and is never more than the full incentive.
 
 PACKAGES (report 5)
 -------------------
-A line is a package sale when its product's incentive group name contains
-"Package" (Basic Package, Essential Package, Premium Package, ...).
+From v0.8.0 a package is recognised from the invoice: every item of the
+package (Packages master) must be on it - see app/reports/packages.py.
+The lines that make up the package are marked `is_package`, lose their own
+item incentive, and the invoice gets ONE package incentive instead
+(Incentive master row with the package's name: incentive amount and bill
+value = the coupon's final value). The confirmed discount rule applies to
+it the same way: incentive x min(1, amount billed for the package items /
+coupon final value). Lines outside the package keep their own incentive.
+(Until v0.7.1 a line was a package when its product's incentive group name
+contained "Package"; no product is billed like that.)
 """
 
 from __future__ import annotations
@@ -62,6 +70,7 @@ from app.data.inputs_repo import InputsRepo
 from app.data.invoices_repo import (
     OTHERS, OTHERS_ID, InvoicesRepo, month_key, month_label, split_salesperson)
 from app.data.masters_repo import MastersRepo
+from app.reports import packages as pk
 
 COUNTER_SALE = "Counter sale (no vehicle)"
 
@@ -87,7 +96,8 @@ class Line:
     incentive_group: str = ""
     incentive_amount: float = 0.0   # per unit
     bill_value: float = 0.0         # per unit
-    is_package: bool = False
+    is_package: bool = False        # part of a package sale (v0.8.0)
+    list_price: float = 0.0         # per unit, Product master (Zoho's rate)
 
     @property
     def billed(self) -> float:
@@ -97,6 +107,38 @@ class Line:
     @property
     def gross_profit(self) -> float:
         return round(self.sales - self.cost - self.labour, 2)
+
+
+@dataclass
+class PackageSale:
+    """A package recognised on one invoice (v0.8.0)."""
+    package: str
+    incentive: float              # Incentive master, on the invoice date
+    coupon_value: float           # its Bill value = the coupon's final value
+    lines: list[Line] = field(default_factory=list)
+
+    def _sum(self, attr: str) -> float:
+        return round(sum(getattr(l, attr) for l in self.lines), 2)
+
+    @property
+    def list_value(self) -> float:
+        return round(sum(l.list_price * l.qty for l in self.lines), 2)
+
+    @property
+    def sales(self) -> float:
+        return self._sum("sales")
+
+    @property
+    def billed(self) -> float:
+        return self._sum("billed")
+
+    @property
+    def cost(self) -> float:
+        return self._sum("cost")
+
+    @property
+    def labour(self) -> float:
+        return self._sum("labour")
 
 
 @dataclass
@@ -122,6 +164,9 @@ class Invoice:
     # review - the text printed on the invoice, shown in the Invoice register.
     printed_executive: str = ""
     printed_car: str = ""
+    package: PackageSale | None = None      # v0.8.0
+    near_package: str = ""                  # "almost a package": its name ...
+    near_missing: str = ""                  # ... and the one item missing
 
     @property
     def sales(self) -> float:
@@ -209,6 +254,8 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
     execs = {e["id"]: e for e in masters.list_rows("executives")}
     cars = {c["id"]: c for c in masters.list_rows("cars")}
     incentive_ids = {i["name"]: i["id"] for i in masters.list_rows("incentives")}
+    package_defs = pk.build_defs(masters.list_rows("package_items"))
+    incentive_by_key = {pk.name_key(n): i for n, i in incentive_ids.items()}
     rate_cache: dict[tuple, dict | None] = {}
 
     def rate(master: str, row_id: int, day: date) -> dict:
@@ -266,15 +313,34 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
             line = Line(product=p["name"], category=p["category"],
                         cost=round(r.get("cost_price", 0.0) * qty, 2),
                         labour=round(labour_rate * qty, 2), labour_rate=labour_rate,
-                        **common)
+                        list_price=r.get("selling_price", 0.0), **common)
             group = p["incentive_group"]
             if group and group in incentive_ids:
                 ir = rate("incentives", incentive_ids[group], day)
                 line.incentive_group = group
                 line.incentive_amount = ir.get("incentive_amount", 0.0)
                 line.bill_value = ir.get("bill_value", 0.0)
-                line.is_package = "package" in group.lower()
             inv.lines.append(line)
+
+        # --- package (v0.8.0): every item of a package is on the invoice -----
+        def package_rate(name: str) -> dict:
+            iid = incentive_by_key.get(pk.name_key(name))
+            return rate("incentives", iid, day) if iid else {}
+        sold, near = pk.detect(package_defs, inv.lines,
+                               lambda n: package_rate(n).get("bill_value", 0.0))
+        if sold:
+            pr = package_rate(sold.package.name)
+            inv.package = PackageSale(sold.package.name,
+                                      pr.get("incentive_amount", 0.0),
+                                      pr.get("bill_value", 0.0), sold.lines)
+            for line in sold.lines:
+                # the package incentive replaces the items' own incentives
+                line.is_package = True
+                line.incentive_group, line.incentive_amount = "", 0.0
+                line.bill_value = 0.0
+        elif near:
+            inv.near_package = near.package.name
+            inv.near_missing = near.missing[0]
         included.append(inv)
 
     skipped = [f for f in invoices.scan_files(year, month) if f["status"] != "read"]

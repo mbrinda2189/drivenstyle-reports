@@ -49,7 +49,8 @@ from PySide6.QtWidgets import (
     QTabWidget, QVBoxLayout, QWidget,
 )
 
-from app.data.master_defs import CARS, EXECUTIVES, INCENTIVES, PRODUCTS
+from app.data.master_defs import (
+    CARS, EXECUTIVES, INCENTIVES, PACKAGE_ITEMS, PRODUCTS)
 from app.data.masters_repo import MastersRepo
 from app.pages.base import ScrollPage
 from app.sample_data import PACKAGES
@@ -91,7 +92,7 @@ class MastersPage(ScrollPage):
 
         # --- Database-backed masters ---------------------------------------
         self.tables: dict[str, MasterTable] = {}
-        for mdef in (PRODUCTS, EXECUTIVES, CARS, INCENTIVES):
+        for mdef in (PRODUCTS, EXECUTIVES, CARS, INCENTIVES, PACKAGE_ITEMS):
             table = MasterTable(mdef, repo, self.toast)
             table.saved.connect(lambda key=mdef.key: self._on_master_saved(key))
             self.tables[mdef.key] = table
@@ -102,11 +103,16 @@ class MastersPage(ScrollPage):
                     "incentive calculation (incentive reduced when a discount "
                     "is given) will be added once the client confirms the "
                     "rules.")), mdef.title)
+            elif mdef is PACKAGE_ITEMS:
+                # v0.8.0: the real Packages master replaces the sample tab.
+                self.tabs.addTab(self._with_notice(table, (
+                    "One row = a Zoho item that counts as an item of a "
+                    "package. An invoice is a package sale when every item "
+                    "of the package is on it. The package's final value and "
+                    "incentive come from the row with the same name in the "
+                    "Incentive master.")), mdef.title)
             else:
                 self.tabs.addTab(table, mdef.title)
-
-        # --- Packages (sample, read-only) ------------------------------------
-        self.tabs.addTab(self._build_packages_tab(), "Packages")
 
         # --- Audit log ----------------------------------------------------------
         self.audit_view = AuditLogView(repo, self.toast)
