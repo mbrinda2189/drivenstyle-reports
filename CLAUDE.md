@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.7.0** (tags v0.1.0 … v0.7.0 on GitHub
+Current version: **v0.7.1** (tags v0.1.0 … v0.7.1 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -123,6 +123,12 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `Item Total`, GST = `Item Tax Amount`, used as they are. Check: lines +
   GST + Round Off = Total. Month by `Invoice Date`; other months ignored;
   Void/Draft skipped. Payment made = Total − Balance.
+- **"Others" for salesperson / car** (Brinda, 03-10-2026, v0.7.1): Scan
+  review offers "Others (not in master)" (stored as target id 0,
+  `invoices_repo.OTHERS_ID`). Reports show "Others", branch from the
+  invoice, incentive still calculated. No "Others" for items.
+- **Zoho item import is dated 1 April and replaces later dated amounts**
+  (v0.7.1, `import_records(replace_later=True)`).
 - **Zoho's item list is the Product master** (Brinda, 03-10-2026, v0.7.0):
   "Zoho's item names and price are the final". Item.csv gives name, SKU,
   HSN, selling price (Rate, GST-inclusive), cost price (Purchase Rate) and

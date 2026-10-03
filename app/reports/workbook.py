@@ -350,8 +350,12 @@ def invoice_sheet(ws: Worksheet, d: MonthData) -> None:
         Col("Margin %", "margin", "pct", 9, formula=MARGIN, total=MARGIN_TOTAL),
     ]
     rows = [dict(invoice_no=i.invoice_no, date=i.invoice_date, customer=i.customer,
-                 customer_type=i.customer_type, executive=exec_label(i.executive, i.branch),
-                 car=i.car, items=i.items, sales=i.sales, discount=i.discount, gst=i.gst,
+                 customer_type=i.customer_type,
+                 # "Others" (v0.7.1) also shows the name printed on the invoice
+                 executive=exec_label(i.executive, i.branch)
+                 + (f" ({i.printed_executive})" if i.printed_executive else ""),
+                 car=i.car + (f" ({i.printed_car})" if i.printed_car else ""),
+                 items=i.items, sales=i.sales, discount=i.discount, gst=i.gst,
                  rounding=i.rounding, total=i.total, cost=i.cost, labour=i.labour)
             for i in sorted(d.invoices, key=lambda x: (x.invoice_date, x.invoice_no))]
     t = table(ws, row, cols, rows, filters=True)

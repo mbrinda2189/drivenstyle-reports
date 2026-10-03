@@ -82,7 +82,8 @@ from PySide6.QtWidgets import (
     QTabWidget, QVBoxLayout, QWidget,
 )
 
-from app.data.invoices_repo import InvoicesRepo, Issue, month_label
+from app.data.invoices_repo import (
+    OTHERS_CHOICE, OTHERS_ID, InvoicesRepo, Issue, month_label)
 from app.data.masters_repo import MastersRepo
 from app.pages.base import ScrollPage
 from app.reports.issues_export import default_file_name, export_issues
@@ -142,7 +143,9 @@ def search_combo(placeholder: str, items: list[tuple[str, int]],
     combo.setInsertPolicy(QComboBox.NoInsert)
     combo.lineEdit().setPlaceholderText(placeholder)
     first_ids = first_ids or []
-    ordered = sorted(items, key=lambda t: (t[1] not in first_ids, t[0].lower()))
+    # Suggestions first, then "Others (not in master)" (id 0, v0.7.1), then A-Z.
+    ordered = sorted(items, key=lambda t: (t[1] not in first_ids, t[1] != 0,
+                                           t[0].lower()))
     for text, item_id in ordered:
         combo.addItem(text, item_id)
     combo.setCurrentIndex(-1)
@@ -465,6 +468,9 @@ class ReviewPage(ScrollPage):
                 items = [(MastersRepo.display_name("cars", c), c["id"])
                          for c in self.masters.list_rows("cars")]
                 placeholder = "Type to find the car…"
+            # "Others": the invoice goes into the reports under Others
+            # instead of waiting for the name to be added to the master.
+            items.append((OTHERS_CHOICE, OTHERS_ID))
             combo = search_combo(placeholder, items, issue.options)
             every = QCheckBox("All invoices")
             if issue.grouped:

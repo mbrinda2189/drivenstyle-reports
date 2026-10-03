@@ -134,6 +134,22 @@ from app.data.invoice_reader import (
 from app.data.masters_repo import MastersRepo, name_key
 
 FIRM_GSTIN = "33AAOFD7793F1Z2"          # Drive N Style
+
+# "OTHERS" (v0.7.1)
+# -----------------
+# A salesperson or vehicle printed on an invoice that is not in the masters
+# used to keep the whole invoice out of the reports until someone added the
+# name. Brinda asked for an "Others" choice so such invoices are not left
+# out. On Scan review the Fix list now starts with "Others (not in
+# master)". The choice is stored exactly like any other fix (match_aliases
+# for every invoice showing that name, invoice_overrides for one invoice)
+# with the target id 0 - no master row ever has id 0. In the reports the
+# salesperson / car then reads "Others" (branch as printed on the invoice;
+# incentive is still calculated and shown under Others).
+# Items have NO "Others": without a product there is no cost or labour.
+OTHERS_ID = 0
+OTHERS = "Others"
+OTHERS_CHOICE = "Others (not in master)"
 TOLERANCE = 1.00                        # rupees allowed in the checks
 # "Labour Charges for Sunfilm - Front", "Labour Charges PVC/...",
 # "Labour - Seat Cover - Art Leather". Only at the START of the name.
@@ -492,10 +508,12 @@ class InvoicesRepo:
             product_labour={p["id"]: p["has_labour"] for p in products},
             product_vehicle={p["id"]: p["vehicle_needed"] for p in products},
             execs=execs, exec_ids={e["id"] for e in execs},
-            exec_label={e["id"]: e["name"] + (f" – {e['branch']}" if e["branch"] else "")
-                        for e in execs},
+            exec_label={OTHERS_ID: OTHERS,
+                        **{e["id"]: e["name"] + (f" – {e['branch']}" if e["branch"] else "")
+                           for e in execs}},
             cars=cars, car_ids={c["id"] for c in cars},
-            car_label={c["id"]: MastersRepo.display_name("cars", c) for c in cars},
+            car_label={OTHERS_ID: OTHERS,
+                       **{c["id"]: MastersRepo.display_name("cars", c) for c in cars}},
             aliases=aliases, overrides=overrides)
 
     def _match_product(self, line: dict, m: dict) -> int | None:
@@ -511,13 +529,13 @@ class InvoicesRepo:
     def _match_executive(self, inv: dict, m: dict) -> tuple[int | None, tuple]:
         """(executive id or None, (reason, candidate ids))."""
         eid = m["overrides"].get((inv["invoice_no"], "executive"))
-        if eid in m["exec_ids"]:
+        if eid == OTHERS_ID or eid in m["exec_ids"]:
             return eid, ("", [])
         printed = (inv.get("salesperson") or "").strip()
         if not printed:
             return None, ("missing", [])
         eid = m["aliases"].get(("executive", name_key(printed)))
-        if eid in m["exec_ids"]:
+        if eid == OTHERS_ID or eid in m["exec_ids"]:
             return eid, ("", [])
         name, branch = split_salesperson(printed)
         by_name = [e for e in m["execs"] if person_key(e["name"]) == person_key(name)]
@@ -540,13 +558,13 @@ class InvoicesRepo:
 
     def _match_car(self, inv: dict, m: dict) -> tuple[int | None, tuple]:
         cid = m["overrides"].get((inv["invoice_no"], "car"))
-        if cid in m["car_ids"]:
+        if cid == OTHERS_ID or cid in m["car_ids"]:
             return cid, ("", [])
         printed = (inv.get("vehicle") or "").strip()
         if not printed:
             return None, ("missing", [])
         cid = m["aliases"].get(("car", vehicle_key(printed)))
-        if cid in m["car_ids"]:
+        if cid == OTHERS_ID or cid in m["car_ids"]:
             return cid, ("", [])
         key = vehicle_key(printed)
         found = [c for c in m["cars"] if key in (vehicle_key(c["model"]),
@@ -695,14 +713,15 @@ class InvoicesRepo:
                         all_invoices: bool) -> None:
         """Choose the executive for one invoice, or for every invoice
         printing the same salesperson text."""
-        label = MastersRepo.display_name(
+        label = OTHERS_CHOICE if executive_id == OTHERS_ID else MastersRepo.display_name(
             "executives", self.masters.get("executives", executive_id))
         self._set_target("executive", invoice_no, name_key(printed), executive_id,
                          all_invoices, "Salesperson", printed, label)
 
     def set_car(self, invoice_no: str, printed: str, car_id: int,
                 all_invoices: bool) -> None:
-        label = MastersRepo.display_name("cars", self.masters.get("cars", car_id))
+        label = OTHERS_CHOICE if car_id == OTHERS_ID else \
+            MastersRepo.display_name("cars", self.masters.get("cars", car_id))
         self._set_target("car", invoice_no, vehicle_key(printed), car_id,
                          all_invoices, "Car", printed, label)
 

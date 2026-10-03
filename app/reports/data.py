@@ -59,7 +59,8 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from app.data.inputs_repo import InputsRepo
-from app.data.invoices_repo import InvoicesRepo, month_key, month_label
+from app.data.invoices_repo import (
+    OTHERS, OTHERS_ID, InvoicesRepo, month_key, month_label, split_salesperson)
 from app.data.masters_repo import MastersRepo
 
 COUNTER_SALE = "Counter sale (no vehicle)"
@@ -117,6 +118,10 @@ class Invoice:
     lines: list[Line] = field(default_factory=list)
     markers: int = 0              # Rs. 1 labour marker lines ignored
     marker_value: float = 0.0     # their value (after discount, before GST)
+    # v0.7.1: set when the salesperson / car was fixed as "Others" on Scan
+    # review - the text printed on the invoice, shown in the Invoice register.
+    printed_executive: str = ""
+    printed_car: str = ""
 
     @property
     def sales(self) -> float:
@@ -220,16 +225,30 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
                                     raw["total"], open_reasons[raw["invoice_no"]]))
             continue
         ex = execs.get(raw["executive_id"], {})
+        others_exec = raw["executive_id"] == OTHERS_ID
+        others_car = raw["car_id"] == OTHERS_ID
+        if others_exec:
+            # "Others" (v0.7.1): not in the Sales executive master. The
+            # branch is the one on the invoice; incentive is still worked
+            # out and shown under Others.
+            ex = dict(name=OTHERS, branch=(raw.get("branch") or "").strip()
+                      or split_salesperson(raw.get("salesperson") or "")[1])
         # No car on an included invoice = a counter sale (every item marked
         # "Vehicle needed = No"; otherwise Scan review would have held it).
         car = cars.get(raw["car_id"]) or dict(make="", model=COUNTER_SALE,
                                                segment=COUNTER_SALE)
+        if others_car:
+            car = dict(make="", model=OTHERS, segment=OTHERS)
         inv = Invoice(
             raw["invoice_no"], day, raw["customer"], raw["customer_type"],
             ex.get("name", ""), ex.get("branch", ""),
             " ".join(p for p in (car.get("make", ""), car.get("model", "")) if p),
             car.get("segment", ""), raw["discount"], raw["tax_total"],
             raw["rounding"], raw["total"], raw["payment_mode"], raw["payment_made"])
+        if others_exec:
+            inv.printed_executive = (raw.get("salesperson") or "").strip()
+        if others_car:
+            inv.printed_car = (raw.get("vehicle") or "").strip()
         for ln in raw["lines"]:
             common = dict(invoice_no=inv.invoice_no, invoice_date=day,
                           executive=inv.executive, branch=inv.branch, car=inv.car,

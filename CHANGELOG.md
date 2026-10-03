@@ -6,6 +6,26 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.1] – 2026-10-03 – "Others" for salesperson and car; Zoho prices from 1 April
+
+### Added
+- **"Others (not in master)" on Scan review** for a salesperson or vehicle
+  that is not in the masters. Choosing it closes the issue, so the invoice
+  goes into the reports instead of being left out. In the reports the
+  salesperson / car reads "Others"; the branch is the one on the invoice;
+  incentive is still calculated and shown under Others. The Invoice
+  register also shows the name printed on the invoice, e.g.
+  "Others (DOST - AUTO)". Every such choice is in the audit log.
+  Items have no "Others" (without a product there is no cost or labour).
+
+### Changed
+- **A Zoho item list import now applies from the start of the financial
+  year** (1 April) by default, not from next month, and Zoho's prices are
+  final from that date onwards: later dated amounts for the same product
+  are removed. Labour charges are kept. (In v0.7.0 the import was dated
+  1 November, so September still used the staff sheet's prices for items
+  that were already in the tool.)
+
 ## [0.7.0] – 2026-10-03 – Zoho's item list is the Product master
 
 ### Added

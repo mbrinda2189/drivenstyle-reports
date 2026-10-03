@@ -235,6 +235,12 @@ class ImportDialog(QDialog):
                 "The ₹1 labour items are left out. After the import you are "
                 "asked about products that are not in Zoho's list.")
             self.add_new.setChecked(True)
+            if self.date_edit is not None:
+                # v0.7.1: Zoho's prices are final for the whole year, so
+                # they apply from the start of the financial year (not from
+                # next month, which left earlier months on the old prices).
+                d = financial_year_start()
+                self.date_edit.setDate(QDate(d.year, d.month, d.day))
         else:
             suggestion = suggest_mapping(self.mdef, s.headers,
                                          self.repo.get_mapping(self.mdef.key))
@@ -336,7 +342,8 @@ class ImportDialog(QDialog):
         try:
             result = self.repo.import_records(
                 self.mdef.key, records, day, source=source,
-                add_new=self.add_new.isChecked() or self.is_zoho)
+                add_new=self.add_new.isChecked() or self.is_zoho,
+                replace_later=self.is_zoho)
         except Exception as exc:                      # unexpected: nothing saved
             QMessageBox.critical(self, "Import failed",
                                  f"Nothing was imported.\n\n{exc}")

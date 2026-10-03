@@ -477,7 +477,8 @@ class MastersRepo:
             (row_id, _iso(day), *[round(float(v.get(k) or 0), 2) for k in keys]))
 
     def _write_row(self, master: str, row_id: int | None, v: dict,
-                   rate_date: date | None, source: str) -> tuple[int, str, bool]:
+                   rate_date: date | None, source: str,
+                   replace_later: bool = False) -> tuple[int, str, bool]:
         """
         Insert or update one row and log what changed.
         Returns (id, "added" / "updated" / "unchanged", dated values changed).
@@ -527,9 +528,29 @@ class MastersRepo:
 
         rate_changed = False
         if st.rate_table:
+            # replace_later (v0.7.1, Zoho item list): Zoho's prices are
+            # final FROM `day` ONWARDS. So the amounts are compared with
+            # those in force on `day` (not the latest ones), and dated rows
+            # after `day` are removed - otherwise a later row holding the
+            # staff sheet's old price would still win for later months.
+            base = (self.rate_on(master, row_id, day) or old) if replace_later else old
             diffs = [f for f in mdef.dated_fields
                      if abs(float(v.get(f.key) or 0)
-                            - float(old.get(f.key) or 0)) > 0.004]
+                            - float(base.get(f.key) or 0)) > 0.004]
+            old = base
+            if replace_later:
+                later = self.conn.execute(
+                    f"DELETE FROM {st.rate_table} WHERE {st.rate_fk} = ? "
+                    "AND effective_from > ?", (row_id, _iso(day))).rowcount
+                if later and not diffs:
+                    # the day's amounts are right but later rows were dropped:
+                    # keep a row on the day so the values stay dated correctly
+                    self._put_rate(master, row_id, day, v)
+                    rate_changed = True
+                    self._audit(master, row_id, label, "Edited",
+                                "Amounts apply from", "",
+                                f"{day:%d-%m-%Y} (later dated amounts removed)",
+                                source)
             if diffs:
                 self._put_rate(master, row_id, day, v)
                 rate_changed = True
@@ -640,13 +661,16 @@ class MastersRepo:
     # ==================================================================
     def import_records(self, master: str, records: list[dict],
                        effective_from: date | None = None,
-                       source: str = "Import", add_new: bool = True) -> ImportResult:
+                       source: str = "Import", add_new: bool = True,
+                       replace_later: bool = False) -> ImportResult:
         """
         Add new rows and update existing ones from an imported sheet.
 
         records         dicts produced by excel_io.convert_rows: only the
                         fields the user matched to a column are present,
                         plus "_row" (the row number in the sheet).
+        replace_later   True (Zoho item list): the amounts are final from
+                        `effective_from` onwards - see _write_row.
         add_new         False = only update rows already in the master;
                         rows with a new name are left out and counted
                         (v0.7.0: the staff sheet then only supplies labour /
@@ -719,7 +743,8 @@ class MastersRepo:
                     continue
 
                 new_id, what, rate_changed = self._write_row(
-                    master, row_id, merged, effective_from, source)
+                    master, row_id, merged, effective_from, source,
+                    replace_later=replace_later)
                 if master == "products" and rec.get("category"):
                     # The sheet gave a category: it is the client's choice
                     # and Zoho's item type must not change it (v0.6.5).

@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
+> **Current status: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -122,6 +122,12 @@ From v0.6.5 the sheet's own "category" column is read (SALES = Product,
 SERVICE = Service) and is final - Zoho's item type never overrides it. A
 CODE used for several different items in the sheet is ignored for those
 rows (each imported by name, with a warning) so no item is overwritten.
+
+**"Others" (v0.7.1).** If a salesperson or vehicle on an invoice is not in
+the masters and you do not want to add it, choose **Others (not in master)**
+in the Fix list on Scan review. The invoice then goes into the reports under
+"Others" (branch as on the invoice; incentive still calculated). Zoho's item
+list is imported with prices applying from 1 April.
 
 **Zoho's item list is the Product master (v0.7.0).** In Zoho Books: Items →
 Export (Item.csv). Import it on Masters → Products → Import Excel: names,
