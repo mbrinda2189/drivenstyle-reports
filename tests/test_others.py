@@ -151,3 +151,43 @@ def test_a_month_can_be_removed(tmp_path):
     actions = [r["action"] for r in masters.conn.execute(
         "SELECT action FROM audit_log WHERE action = 'Deleted'")]
     assert len(actions) == 2
+
+
+def test_change_a_saved_match_and_delete_a_dated_price(tmp_path):
+    """v0.10.2: a saved match can be changed in one step; one dated set of
+    amounts can be removed from the rate history (but never the last one)."""
+    import pytest
+    from datetime import date as day
+    from app.data.masters_repo import MasterError, RowChange
+    masters = MastersRepo(connect(":memory:"))
+    product(masters, "Horn")
+    for name, phone in (("Pravin", "9876543210"), ("Karthick", "9876543211")):
+        masters.save("executives", [RowChange(None, dict(
+            name=name, phone=phone, branch="HO", active=True))])
+    ids = {e["name"]: e["id"] for e in masters.list_rows("executives")}
+    irepo = month(tmp_path, masters, [
+        line("DNS-1-2627", "2026-09-06", "Someone - CMP", "", "Horn", "", "", "goods",
+             1, 2100, 2100, inv_total=2100)])
+    irepo.set_salesperson("name:x", "Someone - CMP", ids["Pravin"], True)
+    m = next(x for x in irepo.saved_matches(2026, 9) if x.kind == "executive")
+    assert m.target == "Pravin – HO"
+    assert ("Others (not in master)", OTHERS_ID) in irepo.match_choices("executive")
+    irepo.change_match(m, ids["Karthick"])
+    m = next(x for x in irepo.saved_matches(2026, 9) if x.kind == "executive")
+    assert m.target == "Karthick – HO"
+    last = masters.conn.execute(
+        "SELECT old_value, new_value FROM audit_log ORDER BY id DESC LIMIT 1").fetchone()
+    assert tuple(last) == ("Pravin – HO", "Karthick – HO")
+    with pytest.raises(ValueError):
+        irepo.change_match(m, 99999)
+
+    pid = masters.list_rows("products")[0]["id"]
+    masters.import_records("products", [dict(name="Horn", selling_price=300, cost_price=150,
+                                             _row=2)], day(2026, 11, 1))
+    dates = [h["effective_from"] for h in masters.rate_history("products", pid)]
+    assert len(dates) == 2 and dates[0] == day(2026, 11, 1)
+    masters.delete_rate("products", pid, day(2026, 11, 1))
+    assert len(masters.rate_history("products", pid)) == 1
+    assert masters.get("products", pid)["cost_price"] == 100        # earlier amounts again
+    with pytest.raises(MasterError):                                # never the last one
+        masters.delete_rate("products", pid, dates[1])

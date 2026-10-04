@@ -6,6 +6,21 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.2] – 2026-10-04 – Change a saved match; delete a dated price; History columns
+
+### Added
+- **Scan review → Saved matches → "Change selected match"**: point a saved
+  match at a different product / executive / car (or Others) in one step.
+  Logged with the old and new target.
+- **Masters → Rate history → "Delete selected date"**: remove one dated set
+  of amounts (e.g. a price saved with a wrong date); the earlier amounts
+  apply again. The last remaining date cannot be removed. Logged. Not
+  offered while the tab has unsaved edits.
+
+### Fixed
+- **History**: the Month column was cut to "S…" and "Generated on" was
+  truncated; every column now fits its contents.
+
 ## [0.10.1] – 2026-10-04 – Remove a month; remove a History entry
 
 ### Added

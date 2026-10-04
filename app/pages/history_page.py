@@ -81,10 +81,18 @@ class HistoryPage(ScrollPage):
         t.verticalHeader().setDefaultSectionSize(ROW)
         hdr = t.horizontalHeader()
         hdr.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, width in ((1, 90), (2, 90), (3, 150), (4, 150), (5, 170), (6, 360)):
+        # v0.10.2: every column wide enough for its contents (the month
+        # was cut to "S..." when the action buttons took the room). "Generated
+        # on" fits the date, time and user; the action buttons take the
+        # spare width (at least 340). On a narrow window the table scrolls
+        # sideways instead of squeezing columns.
+        for col, width in ((0, 150), (1, 80), (2, 80), (3, 140), (4, 150), (5, 230)):
             hdr.setSectionResizeMode(col, QHeaderView.Fixed)
             t.setColumnWidth(col, width)
+        hdr.setSectionResizeMode(6, QHeaderView.Stretch)
+        hdr.setMinimumSectionSize(80)
+        t.setColumnWidth(6, 340)
+        t.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
         card.body.addWidget(t)
         self.note = label("", "Muted")
         card.body.addWidget(self.note)

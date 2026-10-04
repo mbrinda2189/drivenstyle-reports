@@ -297,6 +297,33 @@ class MastersRepo:
             "ORDER BY effective_from DESC", (row_id,)).fetchall()
         return [self._rate_dict(mdef, r) for r in rows]
 
+    def delete_rate(self, master: str, row_id: int, day: date,
+                    source: str = "Masters screen") -> None:
+        """
+        v0.10.2: remove ONE dated set of amounts (e.g. a price entered with a
+        wrong date) from a product / incentive. The earlier amounts then
+        apply again from their own date. The last remaining date cannot be
+        removed - a row must always have amounts. Logged in the audit log.
+        """
+        st, mdef = STORES[master], self.definition(master)
+        history = self.rate_history(master, row_id)
+        hit = next((h for h in history if h["effective_from"] == day), None)
+        row = self.get(master, row_id)
+        if hit is None or row is None:
+            raise MasterError(["That date is no longer in the history."])
+        if len(history) == 1:
+            raise MasterError([
+                "This is the only set of amounts for the row, so it cannot be removed. "
+                "Change the amounts on the Masters screen instead."])
+        with self.conn:
+            self.conn.execute(
+                f"DELETE FROM {st.rate_table} WHERE {st.rate_fk} = ? AND effective_from = ?",
+                (row_id, _iso(day)))
+            was = "; ".join(f"{f.label}: {self._show(f, hit.get(f.key))}"
+                            for f in mdef.dated_fields)
+            self._audit(master, row_id, self.display_name(master, row), "Edited",
+                        f"Amounts from {day:%d-%m-%Y}", was, "(removed)", source)
+
     def rate_on(self, master: str, row_id: int, day: date) -> dict | None:
         """
         The dated values that applied on `day`: the latest change on or

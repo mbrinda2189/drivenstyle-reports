@@ -63,7 +63,8 @@ executive or product. This tab lists them all - item / salesperson /
 vehicle, what each was matched to, whether it applies to every invoice
 showing the name or to one invoice, how many of the month's invoices it
 touches, and when it was saved - plus the totals differences accepted.
-"Remove selected match" undoes one (after a confirmation; logged in the
+"Change selected match" (v0.10.2) points one at a different product /
+executive / car in one step. "Remove selected match" undoes one (after a confirmation; logged in the
 audit log); the invoices are then matched again from the masters and come
 back on the Issues tab if they still do not match. "Export matches" saves
 the list to Excel.
@@ -89,7 +90,8 @@ from pathlib import Path
 from PySide6.QtCore import QStandardPaths, QUrl, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QDesktopServices
 from PySide6.QtWidgets import (
-    QAbstractItemView, QCheckBox, QComboBox, QCompleter, QFileDialog, QHBoxLayout,
+    QAbstractItemView, QCheckBox, QComboBox, QCompleter, QDialog, QFileDialog,
+    QHBoxLayout,
     QMessageBox,
     QHeaderView, QLabel, QStackedWidget, QTableWidget, QTableWidgetItem,
     QTabWidget, QVBoxLayout, QWidget,
@@ -333,8 +335,7 @@ class ReviewPage(ScrollPage):
             t.setColumnWidth(i, w)
         hdr.setStretchLastSection(True)
         t.setMinimumHeight(330)
-        t.itemSelectionChanged.connect(
-            lambda: self.remove_match_btn.setEnabled(t.currentRow() >= 0))
+        t.itemSelectionChanged.connect(self._match_selected)
         lay.addWidget(t)
         row = QHBoxLayout()
         self.match_count = label("", "Muted")
@@ -342,6 +343,10 @@ class ReviewPage(ScrollPage):
         export = button("Export matches", "Secondary")
         export.clicked.connect(self._export_matches)
         row.addWidget(export)
+        self.change_match_btn = button("Change selected match", "Secondary")
+        self.change_match_btn.setEnabled(False)
+        self.change_match_btn.clicked.connect(self._change_match)
+        row.addWidget(self.change_match_btn)
         self.remove_match_btn = button("Remove selected match", "Danger")
         self.remove_match_btn.setEnabled(False)
         self.remove_match_btn.clicked.connect(self._remove_match)
@@ -363,8 +368,58 @@ class ReviewPage(ScrollPage):
         t.clearSelection()
         t.setCurrentCell(-1, -1)
         self.remove_match_btn.setEnabled(False)
+        self.change_match_btn.setEnabled(False)
         n = len(self._matches)
         self.match_count.setText(f"{n} saved match{'es' if n != 1 else ''}.")
+
+    def _match_selected(self) -> None:
+        r = self.match_table.currentRow()
+        ok = 0 <= r < len(self._matches)
+        self.remove_match_btn.setEnabled(ok)
+        # an accepted totals difference has nothing to change, only to remove
+        self.change_match_btn.setEnabled(ok and self._matches[r].store != "ack")
+
+    def _change_match(self) -> None:
+        """v0.10.2: choose a different target for the selected match."""
+        r = self.match_table.currentRow()
+        if not 0 <= r < len(self._matches):
+            self.toast("Select a match to change.")
+            return
+        m = self._matches[r]
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Change saved match")
+        dlg.setMinimumWidth(460)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(24, 22, 24, 20)
+        lay.setSpacing(12)
+        lay.addWidget(label(f"{m.type_label}: “{m.printed}”", "SectionTitle"))
+        lay.addWidget(label(f"Now matched to: {m.target}\n{m.scope}", "Muted", wrap=True))
+        combo = search_combo("Type to find the new match…",
+                             self.invoices.match_choices(m.kind))
+        combo.setFixedWidth(400)
+        lay.addWidget(combo)
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        cancel = button("Cancel", "Secondary")
+        cancel.clicked.connect(dlg.reject)
+        save = button("Save", "Primary")
+        save.clicked.connect(dlg.accept)
+        buttons.addWidget(cancel)
+        buttons.addWidget(save)
+        lay.addLayout(buttons)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        target = chosen_id(combo)
+        if target is None:
+            self.toast("Nothing changed: choose an entry from the list.")
+            return
+        try:
+            self.invoices.change_match(m, target)
+        except ValueError as exc:
+            QMessageBox.warning(self, "Change saved match", str(exc))
+            return
+        self.refresh()
+        self.toast(f"“{m.printed}” is now matched to {combo.currentText()}.")
 
     def _remove_match(self) -> None:
         r = self.match_table.currentRow()

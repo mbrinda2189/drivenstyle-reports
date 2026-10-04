@@ -877,6 +877,43 @@ class InvoicesRepo:
                                   int(r["invoice_no"] in month_invoices), r["at"]))
         return out
 
+    def match_choices(self, kind: str) -> list[tuple[str, int]]:
+        """What a saved match of this kind can point to: (text, id) pairs.
+        Salesperson and vehicle also offer "Others (not in master)"."""
+        if kind == "product":
+            return [(p["name"] + ("" if p["active"] else "  (inactive)"), p["id"])
+                    for p in self.masters.list_rows("products")]
+        m = self._masters_snapshot()
+        labels = m["exec_label"] if kind == "executive" else m["car_label"]
+        return [(OTHERS_CHOICE if i == OTHERS_ID else text, i) for i, text in labels.items()]
+
+    def change_match(self, match: SavedMatch, target_id: int) -> None:
+        """
+        v0.10.2: point a saved match at a different product / executive /
+        car (or Others) in one step, instead of removing it and choosing
+        again on the Issues tab. Logged with the old and the new target.
+        """
+        if match.store == "ack":
+            raise ValueError("An accepted totals difference can only be removed.")
+        new = {i: text for text, i in self.match_choices(match.kind)}.get(target_id)
+        if new is None:
+            raise ValueError("That choice is no longer in the master.")
+        with self.conn:
+            if match.store == "alias":
+                self.conn.execute(
+                    "UPDATE match_aliases SET target_id = ? WHERE kind = ? AND raw_key = ?",
+                    (target_id, match.kind, match.key))
+                record = f"All invoices showing “{match.printed}”"
+            else:
+                self.conn.execute(
+                    "UPDATE invoice_overrides SET target_id = ? WHERE invoice_no = ? "
+                    "AND kind = ?", (target_id, match.key, match.kind))
+                record = f"Invoice {match.key}"
+            self.masters._audit("scan", None, record, "Edited", match.type_label,
+                                match.target, new, "Scan review")
+        if match.kind == "product":
+            self.apply_zoho_categories()
+
     def remove_match(self, match: SavedMatch) -> None:
         """
         Undo one saved choice (logged in the audit log). The invoices it

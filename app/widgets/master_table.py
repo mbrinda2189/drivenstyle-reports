@@ -201,11 +201,22 @@ class EffectiveDateDialog(QDialog):
 
 
 class RateHistoryDialog(QDialog):
-    """Read-only list of every dated change of one row, newest first."""
+    """
+    Every dated change of one row, newest first.
+
+    v0.10.2: when `repo` and `row_id` are given, a wrong date can be removed
+    ("Delete selected date", after a confirmation, logged in the audit
+    log). The last remaining date cannot be removed. `changed` tells the
+    caller to reload the master. Without them the list is read-only (used
+    while the Masters tab has unsaved edits, which a reload would lose).
+    """
 
     def __init__(self, mdef: MasterDef, row_name: str, history: list[dict],
-                 parent=None):
+                 parent=None, repo: MastersRepo | None = None,
+                 row_id: int | None = None):
         super().__init__(parent)
+        self.mdef, self.repo, self.row_id = mdef, repo, row_id
+        self.history, self.changed = history, False
         self.setWindowTitle("Rate history")
         self.setMinimumWidth(620)
         lay = QVBoxLayout(self)
@@ -221,10 +232,13 @@ class RateHistoryDialog(QDialog):
         table.setHorizontalHeaderLabels(["Effective from", *[f.label for f in dated]])
         table.verticalHeader().hide()
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        table.setSelectionMode(QAbstractItemView.NoSelection)
+        table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setSelectionMode(QAbstractItemView.SingleSelection if repo
+                               else QAbstractItemView.NoSelection)
         table.setAlternatingRowColors(True)
         table.verticalHeader().setDefaultSectionSize(36)
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table = table
         for r, h in enumerate(history):
             table.setItem(r, 0, QTableWidgetItem(h["effective_from"].strftime("%d-%m-%Y")))
             for c, f in enumerate(dated, start=1):
@@ -239,9 +253,37 @@ class RateHistoryDialog(QDialog):
         close = button("Close", "Secondary")
         close.clicked.connect(self.accept)
         row = QHBoxLayout()
+        if repo is not None and row_id is not None:
+            delete = button("Delete selected date", "Danger")
+            delete.setToolTip("Remove the amounts entered for the selected date, e.g. a "
+                              "price saved with a wrong date.")
+            delete.clicked.connect(self._delete)
+            row.addWidget(delete)
         row.addStretch(1)
         row.addWidget(close)
         lay.addLayout(row)
+
+    def _delete(self) -> None:
+        r = self.table.currentRow()
+        if not 0 <= r < len(self.history):
+            QMessageBox.information(self, "Rate history", "Select a date first.")
+            return
+        day = self.history[r]["effective_from"]
+        if QMessageBox.question(
+                self, "Delete dated amounts",
+                f"Remove the amounts that apply from {day:%d-%m-%Y}?\n\nThe earlier "
+                "amounts will apply again from their own date. Reports for the months "
+                "affected change the next time they are generated.",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        try:
+            self.repo.delete_rate(self.mdef.key, self.row_id, day)
+        except MasterError as exc:
+            QMessageBox.warning(self, "Rate history", str(exc))
+            return
+        self.changed = True
+        self.history.pop(r)
+        self.table.removeRow(r)
 
 
 # ---------------------------------------------------------------------------
@@ -837,9 +879,17 @@ class MasterTable(QWidget):
         if row < 0 or self._state(row).is_new:
             self.toast(f"Select a saved {self.mdef.singular} to see its history.")
             return
-        RateHistoryDialog(self.mdef, self._row_name(row),
-                          self.repo.rate_history(self.mdef.key, self._state(row).id),
-                          self).exec()
+        # Deleting a date reloads the tab, which would lose unsaved edits:
+        # with unsaved edits the history is shown read-only.
+        can_delete = not self.has_unsaved_changes()
+        row_id = self._state(row).id
+        dlg = RateHistoryDialog(self.mdef, self._row_name(row),
+                                self.repo.rate_history(self.mdef.key, row_id), self,
+                                repo=self.repo if can_delete else None, row_id=row_id)
+        dlg.exec()
+        if dlg.changed:
+            self.reload()
+            self.saved.emit()
 
     def _export(self) -> None:
         """Write the saved master to an Excel file the user chooses."""
