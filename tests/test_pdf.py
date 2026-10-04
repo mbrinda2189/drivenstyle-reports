@@ -172,3 +172,22 @@ def test_trend_sheet_and_saved_delivery_totals(world):  # noqa: F811
     assert col["Cars delivered (delivery list)"] == 4 and col["DNS penetration %"] == 0.75
     assert "Sales by branch" in col and "Top 10 products by sales" in col
     assert len(ws._charts) == 2                      # lines + penetration bars
+
+
+def test_pdf_top_lists_are_ranked_by_margin(world):  # noqa: F811
+    """v0.11.1: in the PDF the top lists are ranked by profit margin %."""
+    from app.reports.data import build_month
+    from app.reports.pdf_book import write_pdf_workbook
+    masters, irepo, tmp_path = world
+    d = build_month(masters, irepo, InputsRepo(masters), 2026, 9)
+    ws = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "p.xlsx"))["Report"]
+    text = [r[0] for r in ws.iter_rows(values_only=True) if isinstance(r[0], str)]
+    for heading in ("Top 5 products by profit margin %",
+                    "Top 5 sales executives by profit margin %",
+                    "Branches by profit margin %", "Top 10 products by profit margin %"):
+        assert heading in text
+    assert not any("by gross profit" in t for t in text)
+    r = generate(masters, irepo, InputsRepo(masters), 2026, 9, tmp_path, ["Profit & loss"])
+    excel = [c[0] for c in openpyxl.load_workbook(r.path)["Summary"].iter_rows(
+        values_only=True) if c[0]]
+    assert "Top 5 products by gross profit" in excel          # the workbook is unchanged

@@ -6,6 +6,16 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.1] – 2026-10-04 – PDF: top lists ranked by profit margin %
+
+### Changed (PDF only)
+- At the client's request the Summary's top 5 products, top 5 sales
+  executives and branches, and the High-profit top 10 products / services,
+  are now **ranked by profit margin %** (not chosen by gross profit and
+  then re-ordered). Headings read "… by profit margin %". Equal margins
+  are ordered by gross profit. The Excel workbook still ranks by gross
+  profit.
+
 ## [0.11.0] – 2026-10-04 – "Gets incentive" flag; PDF margin % highest first
 
 ### Added

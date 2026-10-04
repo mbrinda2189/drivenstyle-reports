@@ -65,8 +65,9 @@ other), % of sales of the indirect cost heads (Indirect vs direct, Profit &
 loss), % of invoice total (Payment modes) and penetration % (Summary and
 New-car penetration, DNS tables), and - from v0.11.0 - margin %: the
 Summary's top products / executives / branches and the High-profit top 10s
-are still CHOSEN by gross profit but LISTED highest margin % first; New-car
-vs other and the Summary's Costs table likewise. Tables without a
+are RANKED by profit margin % (v0.11.1, the client's request: the items
+shown are the highest margins, ties broken by gross profit); New-car vs
+other and the Summary's Costs table run highest first too. Tables without a
 percentage keep their ranking by amount: spot incentive by incentive
 payable, labour by labour cost, segments by sales.
 The Excel workbook keeps its own order.
@@ -247,16 +248,17 @@ def _incentive(ws, d):
 def _high_profit(ws, d):
     th = d.threshold
     row = title(ws, "High-profit product sales", d.label,
-                [f"Items with a margin of {th:g}% or more this month, highest gross profit "
-                 "first: the top 10 products and the top 10 services."])
+                [f"Items with a margin of {th:g}% or more this month: the 10 products and "
+                 "the 10 services with the highest profit margin %."])
     good = []
     for r in _by_product(d.lines):
         r["_gp"] = round(r["sales"] - r["cost"] - r["labour"], 2)
         if r["sales"] > 0 and r["_gp"] / r["sales"] * 100 >= th - 1e-9:
             good.append(r)
-    good.sort(key=lambda r: -r["_gp"])
-    # the ten are chosen by gross profit, then listed highest margin % first (v0.11.0)
+    # v0.11.1 (the client's request): ranked by profit margin % - the ten
+    # shown are the ten highest margins (ties: the larger gross profit first)
     by_margin = lambda r: (-(r["_gp"] / r["sales"]), -r["_gp"])
+    good.sort(key=by_margin)
     cols = lambda first: [
         Col(first, "product", width=46),
         Col("Qty", "qty", "qty", 8, total="sum"),
@@ -267,8 +269,9 @@ def _high_profit(ws, d):
         Col("Margin %", "margin", "pct", 10, formula=MARGIN, total=MARGIN),
     ]
     p = Page(ws, row)
-    for category, heading in (("Product", "Top 10 products"), ("Service", "Top 10 services")):
-        rows = sorted([r for r in good if r["category"] == category][:10], key=by_margin)
+    for category, heading in (("Product", "Top 10 products by profit margin %"),
+                              ("Service", "Top 10 services by profit margin %")):
+        rows = [r for r in good if r["category"] == category][:10]
         r0 = section(ws, p.row, heading)
         t = table(ws, r0, cols("Product" if category == "Product" else "Service"), rows,
                   empty_text=f"No {category.lower()} reached a {th:g}% margin this month.")

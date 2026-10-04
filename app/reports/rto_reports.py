@@ -499,10 +499,18 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
             attention.append(f"{nowhere} car(s) in the delivery list have no location.")
 
     def top(title_text: str, groups: dict[str, list[float]], n: int = 5) -> None:
+        # Workbook: ranked by gross profit. PDF (v0.11.1, the client's
+        # request): ranked by profit margin % - the top n ARE the highest
+        # margins (ties: the larger gross profit first), and the heading
+        # says so. Items with no sales are left out of that ranking.
+        if highest_first:
+            title_text = title_text.replace("by gross profit", "by profit margin %")
+            margin = lambda g: g[1][1] / g[1][0] if g[1][0] else 0
+            ranked = sorted((g for g in groups.items() if g[1][0] > 0),
+                            key=lambda g: (-margin(g), -g[1][1]))[:n]
+        else:
+            ranked = sorted(groups.items(), key=lambda g: -g[1][1])[:n]
         head(title_text, "Sales", "Gross profit", "Margin %")
-        ranked = sorted(groups.items(), key=lambda g: -g[1][1])[:n]
-        if highest_first:     # PDF (v0.11.0): the same top list, highest margin % first
-            ranked.sort(key=lambda g: -(g[1][1] / g[1][0] if g[1][0] else 0))
         for name, (sales, gp) in ranked:
             put(name, round(sales, 2), round(gp, 2), _ratio(gp, sales),
                 fmt=(MONEY, MONEY, PCT))
