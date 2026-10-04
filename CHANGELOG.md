@@ -6,6 +6,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.4] – 2026-10-04 – PDF: wrong "% of sales" fixed
+
+### Fixed
+- **PDF only**: in Profit & loss and Indirect vs direct, the "% of sales"
+  column divided by the wrong figure (sales showed 189.2%, product cost
+  79.5%). When the sections were joined into one document in v0.10.3, the
+  formulas' fixed references to the Sales row were not moved with the
+  table. They now move with it; the percentages match the Excel workbook
+  (100.0%, 42.0% ...). All amounts were always correct; the Excel workbook
+  was never affected.
+
 ## [0.10.3] – 2026-10-04 – PDF without graphs, no empty space, page numbers, readable print
 
 ### Changed (PDF only; the Excel workbook is unchanged)

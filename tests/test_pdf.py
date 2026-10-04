@@ -111,6 +111,18 @@ def test_pdf_version_is_one_flowing_sheet_without_graphs(world):  # noqa: F811
     row = next(r for r in ws.iter_rows() if r[0].value == "Gross profit"
                and isinstance(r[1].value, str))
     assert row[1].value.startswith("=B") and str(row[0].row - 1) in row[1].value
+    # v0.10.4: "% of sales" must divide by the SALES row of its own table (a fixed
+    # $B$n reference) - it pointed at another row and showed 189.2% for sales
+    for r in ws.iter_rows():
+        if r[0].value == "Sales (excluding GST)" and isinstance(r[2].value, str):
+            n = r[0].row
+            assert r[2].value == f'=IF($B${n}=0,"",B{n}/$B${n})'
+            below = ws.cell(n + 2, 3).value                   # Product cost
+            assert below == f'=IF($B${n}=0,"",B{n + 2}/$B${n})'
+    from app.reports.pdf_book import shift_formula
+    assert shift_formula('=IF($B$7=0,"",B9/$B$7)', 100) == '=IF($B$107=0,"",B109/$B$107)'
+    assert shift_formula("=ROUND(B11*0.04,2)", 5) == "=ROUND(B16*0.04,2)"
+    assert shift_formula("=SUM(C8:C11)", 10) == "=SUM(C18:C21)"
 
     # the Excel workbook keeps its attention points and every sheet
     r = generate(masters, irepo, InputsRepo(masters), 2026, 9, tmp_path, ["Profit & loss"])

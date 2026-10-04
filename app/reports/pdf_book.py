@@ -62,11 +62,12 @@ No Qt and no database code here.
 from __future__ import annotations
 
 from collections import defaultdict
+import re
 from copy import copy
 from pathlib import Path
 
 from openpyxl import Workbook
-from openpyxl.formula.translate import Translator
+from openpyxl.formula.tokenizer import Tokenizer
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -375,6 +376,29 @@ def _used(ws: Worksheet) -> tuple[int, int]:
     return (max(c.row for c in cells), max(c.column for c in cells)) if cells else (0, 0)
 
 
+_CELL = re.compile(r"(\$?[A-Z]{1,3}\$?)(\d+)")
+
+
+def shift_formula(formula: str, rows: int) -> str:
+    """
+    Move every cell reference in a formula down by `rows`, INCLUDING the
+    fixed ones such as $B$7. A section is copied as one block, so everything
+    it refers to moves with it. (v0.10.3 used a helper that leaves $-fixed
+    references alone: "% of sales" in the PDF then divided by whatever cell
+    happened to sit at the old row - e.g. sales showed 189.2% - fixed in
+    v0.10.4.) Only cell references are touched, never text or numbers.
+    """
+    if not rows:
+        return formula
+    out = ["="]
+    for token in Tokenizer(formula).items:
+        value = token.value
+        if token.type == "OPERAND" and token.subtype == "RANGE":
+            value = _CELL.sub(lambda m: m.group(1) + str(int(m.group(2)) + rows), value)
+        out.append(value)
+    return "".join(out)
+
+
 def _append(report: Worksheet, part: Worksheet, at: int) -> int:
     """
     Copy a section's sheet onto the report sheet starting at row `at`;
@@ -391,8 +415,7 @@ def _append(report: Worksheet, part: Worksheet, at: int) -> int:
             target = report.cell(cell.row + shift, cell.column)
             value = cell.value
             if isinstance(value, str) and value.startswith("="):
-                value = Translator(value, origin=cell.coordinate).translate_formula(
-                    target.coordinate)
+                value = shift_formula(value, shift)
             target.value = value
             if cell.has_style:
                 target._style = copy(cell._style)
