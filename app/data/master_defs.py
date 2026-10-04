@@ -200,6 +200,17 @@ PRODUCTS = MasterDef(
                            "labor charges", "labour cost", "labour amount",
                            "labour rate", "fitting charge",
                            "installation charge", "labour")),
+        # v0.12.0 - INTERNAL TEAM INCENTIVE. Besides the salesperson's spot
+        # incentive, the internal team earns a fixed amount per unit of
+        # certain items - at present Rs. 3,000 for every car PPF (paint
+        # protection film) sold; the two-wheeler PPF earns nothing. The
+        # amount is per unit, paid in full whatever the discount, counted
+        # also when the item is part of a package, and shown as ONE line
+        # "Internal team" (not split by person). 0 = no internal incentive.
+        FieldDef("internal_incentive", "Internal incentive (₹)", kind="money",
+                 default=0.0, width=160,
+                 synonyms=("internal incentive", "internal team incentive",
+                           "team incentive")),
         # v0.6.7: "No" for counter items (perfume, shampoo, microfiber cloth
         # ...) that are sold without a car. An invoice with no vehicle is
         # accepted when every item on it is "No"; otherwise Scan review asks

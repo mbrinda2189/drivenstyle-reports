@@ -222,13 +222,20 @@ def incentive_by_executive(d: MonthData) -> list[dict]:
                 if k.coupon_value else 0.0)
     for g in groups.values():
         g["full"], g["payable"] = round(g["full"], 2), round(g["payable"], 2)
-    return sorted(groups.values(), key=lambda g: (-g["payable"], g["executive"]))
+    ranked = sorted(groups.values(), key=lambda g: (-g["payable"], g["executive"]))
+    # v0.12.0: the internal team incentive as ONE separate last line
+    internal = [l for l in d.lines if l.internal_incentive and l.qty]
+    if internal:
+        ranked.append(dict(executive="Internal team", n=len(internal),
+                           full=d.internal_incentive, payable=d.internal_incentive))
+    return ranked
 
 
 def _incentive(ws, d):
     row = title(ws, "Spot incentive calculation", d.label, [
         "Rule: payable = incentive × qty × (amount billed ÷ (bill value × qty)), never more "
-        "than the full incentive. Highest incentive payable first."]
+        "than the full incentive. Highest incentive payable first. 'Internal team' (last "
+        "line) = the internal incentive per item sold, paid in full."]
         + (["No incentive for executives marked 'Gets incentive = No': "
             + ", ".join(d.no_incentive) + "."] if d.no_incentive else []))
     rows = incentive_by_executive(d)

@@ -170,3 +170,56 @@ def test_executive_marked_no_incentive(tmp_path, masters):
     log = masters.conn.execute("SELECT field, old_value, new_value FROM audit_log "
                                "WHERE field = 'Gets incentive'").fetchone()
     assert tuple(log) == ("Gets incentive", "Yes", "No")
+
+
+def test_internal_team_incentive(tmp_path, masters):
+    """v0.12.0: Rs. 3,000 per car PPF to the internal team, on top of the
+    salesperson's incentive; nothing at all for a two-wheeler PPF."""
+    from app.data.database import apply_internal_ppf_rule
+    masters.save("incentives", [RowChange(None, dict(
+        name="PPF", incentive_amount=3000, bill_value=70000, active=True), date(2026, 4, 1))])
+    for name, price in (("Paint Protection Film - 8 Year - Blaupunkt", 85000),
+                        ("Paint Protection Film-5years-Turtle wax-twowheeler", 2000),
+                        ("Paint Protection Film -Labour Charges", 1)):
+        masters.save("products", [RowChange(None, dict(
+            sku="", name=name, hsn_sac="", category="Product", incentive_group="PPF",
+            selling_price=price, cost_price=price / 2, has_labour=False, labour_charge=0,
+            active=True, vehicle_needed=True), date(2026, 4, 1))])
+    apply_internal_ppf_rule(masters.conn)
+    masters.conn.commit()
+    got = {p["name"]: (p["internal_incentive"], p["incentive_group"])
+           for p in masters.list_rows("products") if "Paint" in p["name"]}
+    assert got["Paint Protection Film - 8 Year - Blaupunkt"] == (3000, "PPF")
+    assert got["Paint Protection Film-5years-Turtle wax-twowheeler"] == (0, "")   # nothing
+    assert got["Paint Protection Film -Labour Charges"][0] == 0                   # Rs. 1 item
+
+    irepo = month(tmp_path, masters,
+                  rows("DNS-1-2627", [("Paint Protection Film - 8 Year - Blaupunkt", 85000)],
+                       85000)
+                  + rows("DNS-2-2627", [("Paint Protection Film-5years-Turtle wax-twowheeler",
+                                         2000)], 2000))
+    inputs = InputsRepo(masters)
+    d = build_month(masters, irepo, inputs, 2026, 9)
+    assert d.internal_incentive == 3000
+    car = next(i for i in d.invoices if i.invoice_no == "DNS-1-2627")
+    assert car.internal_incentive == 3000 and car.incentive_payable == 3000   # both are paid
+    bike = next(i for i in d.invoices if i.invoice_no == "DNS-2-2627")
+    assert bike.internal_incentive == 0 and bike.incentive_payable == 0
+
+    # the internal incentive does not depend on the salesperson getting incentive
+    ex = masters.list_rows("executives")[0]
+    masters.save("executives", [RowChange(ex["id"], {**ex, "gets_incentive": False})])
+    d = build_month(masters, irepo, inputs, 2026, 9)
+    assert d.internal_incentive == 3000 and sum(i.incentive_payable for i in d.invoices) == 0
+
+    out = tmp_path / "out"
+    out.mkdir()
+    r = generate(masters, irepo, inputs, 2026, 9, out, ["Spot incentive calculation"])
+    sheet = list(openpyxl.load_workbook(r.path)["7 Spot incentive"].iter_rows(values_only=True))
+    team = [row for row in sheet if row[0] == "Internal team"]
+    assert len(team) == 2                              # the summary line + one detail row
+    detail = next(row for row in team if row[1] == "DNS-1-2627")
+    assert detail[6] == 3000 and detail[7] == detail[8]            # paid in full
+    from app.reports.pdf_book import incentive_by_executive
+    last = incentive_by_executive(d)[-1]
+    assert (last["executive"], last["payable"]) == ("Internal team", 3000)

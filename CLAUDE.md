@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.11.1** (tags v0.1.0 … v0.11.1 on GitHub
+Current version: **v0.12.0** (tags v0.1.0 … v0.12.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -134,6 +134,12 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `InvoicesRepo.months_read` / `remove_month`, `InputsRepo.remove_runs`.
   Brinda wants add / view / change / delete available wherever data is
   kept; the audit log stays read-only by design.
+- **Internal team incentive** (client via Brinda, 04-10-2026, v0.12.0):
+  Rs. 3,000 per car PPF to the internal team, IN ADDITION to the sales
+  executive's incentive; no incentive of any kind for two-wheeler PPF; one
+  line "Internal team", not split by person. `products.internal_incentive`
+  (per unit, paid in full). Zoho booked 15,000 for September (5 PPF incl.
+  the two-wheeler); the tool gives 12,000 (4 car PPF).
 - **Gets incentive flag** (client via Brinda, 04-10-2026, v0.11.0):
   executives.gets_incentive; Mano Vikram and Nandha Kumar do not get spot
   incentive. `Invoice.incentive_allowed`, `MonthData.no_incentive`.

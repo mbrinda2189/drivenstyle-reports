@@ -6,6 +6,23 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] – 2026-10-04 – Internal team incentive (₹3,000 per car PPF)
+
+### Added
+- **Product master: "Internal incentive (₹)"** – an amount per unit that
+  goes to the internal team when the item is sold, in addition to the
+  salesperson's spot incentive. Paid in full whatever the discount, also
+  when the item is part of a package, and whoever the salesperson is.
+- **Spot incentive sheet**: a separate line **"Internal team"** in "By
+  executive" (not split by person), with one detail row per qualifying
+  item. The PDF shows it as the last line of the by-executive table.
+  The Summary's Costs table and the Trend sheet show "Internal team
+  incentive" separately.
+- **Upgrade (schema 12)**: car PPF items already in the tool are set to
+  ₹3,000; two-wheeler PPF items get no internal incentive and their
+  Incentive group is cleared, so they earn no incentive at all (client's
+  rule). Each change is in the audit log.
+
 ## [0.11.1] – 2026-10-04 – PDF: top lists ranked by profit margin %
 
 ### Changed (PDF only)

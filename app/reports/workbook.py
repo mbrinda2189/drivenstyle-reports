@@ -671,6 +671,7 @@ def vehicle_sheet(ws: Worksheet, d: MonthData) -> None:
 # ---------------------------------------------------------------------------
 # 7 Spot incentive (rule confirmed by the client, 30-09-2026)
 # ---------------------------------------------------------------------------
+INTERNAL_TEAM = "Internal team"
 NO_INCENTIVE_NOTE = ("No incentive for executives marked 'Gets incentive = No' in the Sales "
                      "executive master: ")
 
@@ -690,7 +691,17 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
                    group=i.package.package, qty=1, inc=i.package.incentive,
                    bill=i.package.coupon_value, billed=i.package.billed)
               for i in d.invoices if i.package and i.incentive_allowed]
-    lines.sort(key=lambda r: (r["executive"], r["date"], r["invoice_no"]))
+    # v0.12.0 - internal team incentive: one row per qualifying line under
+    # the name "Internal team" (one line in "By executive", not split by
+    # person). It is paid in full, so its bill value is set to what was
+    # billed and the rule's ratio is exactly 1.
+    lines += [dict(executive=INTERNAL_TEAM, invoice_no=l.invoice_no, date=l.invoice_date,
+                   product=l.product, group="Internal team incentive", qty=l.qty,
+                   inc=l.internal_incentive, bill=round(l.billed / l.qty, 2) if l.qty else 0,
+                   billed=l.billed)
+              for l in d.lines if l.internal_incentive and l.qty]
+    lines.sort(key=lambda r: (r["executive"] == INTERNAL_TEAM, r["executive"], r["date"],
+                              r["invoice_no"]))
     row = title(ws, "Spot incentive calculation", d.label, [
         "Rule used: payable = incentive × qty × (amount billed ÷ (bill value × qty)), "
         "never more than the full incentive.",
@@ -698,8 +709,11 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
         "Incentive and bill value: Incentive master, on the invoice date.",
         "Package sales: one row per invoice with the package incentive; the package's items "
         "earn no separate incentive."]
-        + ([NO_INCENTIVE_NOTE + ", ".join(d.no_incentive) + "."] if d.no_incentive else []))
-    execs = sorted({r["executive"] for r in lines})
+        + ([NO_INCENTIVE_NOTE + ", ".join(d.no_incentive) + "."] if d.no_incentive else [])
+        + (["'Internal team': the product's Internal incentive (Product master) × quantity, "
+            "paid in full in addition to the salesperson's incentive."]
+           if d.internal_incentive else []))
+    execs = sorted({r["executive"] for r in lines}, key=lambda e: (e == INTERNAL_TEAM, e))
     detail_head = row + len(execs) + 5
     first, last = detail_head + 1, detail_head + max(1, len(lines))
     sumif = lambda col: f"=SUMIF($A${first}:$A${last},$A{{r}},{col}${first}:{col}${last})"

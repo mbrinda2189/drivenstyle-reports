@@ -159,7 +159,7 @@ class Store:
 STORES = {
     "products": Store("products", "name_key",
                       ("sku", "name", "hsn_sac", "category", "has_labour",
-                       "vehicle_needed", "active"),
+                       "internal_incentive", "vehicle_needed", "active"),
                       "t.name COLLATE NOCASE", "product_rates", "product_id"),
     "executives": Store("executives", "phone_key",
                         ("name", "phone", "branch", "gets_incentive", "active"),

@@ -545,6 +545,8 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
     costs = [("Direct costs (product cost + labour)", now["cogs"]),
              ("Indirect costs", now["indirect"]),
              ("Spot incentive payable (tool)", incentive)]
+    if d.internal_incentive:
+        costs.append(("Internal team incentive", d.internal_incentive))
     if highest_first:
         costs.sort(key=lambda c: -c[1])
     for label, amount in costs:

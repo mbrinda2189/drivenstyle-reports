@@ -79,6 +79,7 @@ def month_figures(m: MonthData, rto: dict | None) -> dict:
         indirect=indirect, net=round(m.gross_profit - indirect, 2),
         packages=sum(1 for i in m.invoices if i.package),
         incentive=round(sum(i.incentive_payable for i in m.invoices), 2),
+        internal=m.internal_incentive,
         cars=rto.get("cars"), took=rto.get("took_dns"))
 
 
@@ -98,13 +99,14 @@ ROWS = (  # (label, key or function of the figures, number format, bold)
      lambda f: round(f["sales"] / f["invoices"], 2) if f["invoices"] else "", MONEY, False),
     ("Packages sold", "packages", COUNT, False),
     ("Spot incentive payable", "incentive", MONEY, False),
+    ("Internal team incentive", "internal", MONEY, False),
     ("Cars delivered (delivery list)", "cars", COUNT, False),
     ("Cars that took DNS accessories", "took", COUNT, False),
     ("DNS penetration %", lambda f: _ratio(f["took"], f["cars"])
      if f["cars"] else "", PCT, False),
 )
 ADDED = ("invoices", "sales", "product", "service", "cost", "labour", "gp", "indirect",
-         "net", "packages", "incentive", "cars", "took")
+         "net", "packages", "incentive", "internal", "cars", "took")
 
 
 def _ratio(a, b):

@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 11)
+TABLES (schema version 12)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -113,7 +113,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -222,6 +222,59 @@ def _step_7(conn: sqlite3.Connection) -> None:
                 "field, old_value, new_value, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (now, "", "products", row["id"], row["name"], "Edited",
                  "Vehicle needed", "Yes", "No", "Upgrade v0.6.7 (counter item)"))
+
+
+INTERNAL_PPF_INCENTIVE = 3000.0
+TWO_WHEELER_WORDS = ("twowheeler", "two wheeler", "two-wheeler", "bike", "2 wheeler")
+
+
+def _step_12(conn: sqlite3.Connection) -> None:
+    """
+    v0.11.1 -> v0.12.0: internal team incentive per product.
+    Client's rule (via Brinda, 04-10-2026): Rs. 3,000 to the internal team
+    for every PPF sold, in addition to the salesperson's incentive; a
+    two-wheeler PPF earns NO incentive at all. So, for the products already
+    in the tool (each change is in the audit log, source "Upgrade v0.12.0"):
+      * car PPF items (name has "paint protection film" or "ppf", price
+        above zero) get Internal incentive = 3,000;
+      * two-wheeler PPF items get none, and their Incentive group is cleared
+        so the salesperson earns nothing on them either.
+    Items added later are set on the Masters screen.
+    """
+    conn.execute("ALTER TABLE products ADD COLUMN internal_incentive "
+                 "REAL NOT NULL DEFAULT 0")
+    apply_internal_ppf_rule(conn)
+
+
+def apply_internal_ppf_rule(conn: sqlite3.Connection) -> None:
+    """The data part of _step_12 (separate so it can be tested)."""
+    from datetime import datetime
+    now = datetime.now().isoformat(timespec="seconds")
+
+    def log(row, field, old, new):
+        conn.execute(
+            "INSERT INTO audit_log(at, user, master, record_id, record, action, "
+            "field, old_value, new_value, source) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (now, "", "products", row["id"], row["name"], "Edited", field, old, new,
+             "Upgrade v0.12.0 (internal PPF incentive)"))
+
+    for row in conn.execute(
+            "SELECT p.id, p.name, p.incentive_id, i.name AS grp, "
+            "(SELECT selling_price FROM product_rates r WHERE r.product_id = p.id "
+            " ORDER BY effective_from DESC LIMIT 1) AS price "
+            "FROM products p LEFT JOIN incentives i ON i.id = p.incentive_id").fetchall():
+        low = row["name"].lower()
+        if "paint protection film" not in low and "ppf" not in low:
+            continue
+        if any(w in low for w in TWO_WHEELER_WORDS):
+            if row["incentive_id"] is not None:
+                conn.execute("UPDATE products SET incentive_id = NULL WHERE id = ?",
+                             (row["id"],))
+                log(row, "Incentive group", row["grp"] or "", "")
+        elif "labour" not in low.replace("labour extra", "") and (row["price"] or 0) > 1:
+            conn.execute("UPDATE products SET internal_incentive = ? WHERE id = ?",
+                         (INTERNAL_PPF_INCENTIVE, row["id"]))
+            log(row, "Internal incentive (₹)", "0.00", "3,000.00")
 
 
 # Each entry upgrades the database from version (index) to (index + 1).
@@ -465,6 +518,8 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
     """
     ALTER TABLE executives ADD COLUMN gets_incentive INTEGER NOT NULL DEFAULT 1;
     """,
+    # --- 11 -> 12 : internal team incentive per product (v0.12.0) --------------
+    _step_12,
 ]
 
 

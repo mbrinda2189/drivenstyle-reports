@@ -113,6 +113,7 @@ class Line:
     bill_value: float = 0.0         # per unit
     is_package: bool = False        # part of a package sale (v0.8.0)
     list_price: float = 0.0         # per unit, Product master (Zoho's rate)
+    internal_incentive: float = 0.0  # per unit, to the internal team (v0.12.0)
 
     @property
     def billed(self) -> float:
@@ -209,6 +210,16 @@ class Invoice:
         return round(total, 2)
 
     @property
+    def internal_incentive(self) -> float:
+        """
+        Internal team incentive on this invoice (v0.12.0): the product's
+        "Internal incentive" x quantity - in full whatever the discount, in
+        addition to the salesperson's incentive, also for items inside a
+        package, and whoever the salesperson is.
+        """
+        return round(sum(l.internal_incentive * l.qty for l in self.lines), 2)
+
+    @property
     def cost(self) -> float:
         return round(sum(l.cost for l in self.lines), 2)
 
@@ -275,6 +286,11 @@ class MonthData:
         words = [w for _, _, w in self.auto_rates]
         return [(h, a) for h, a in self.indirect_costs
                 if not any(w in h.lower() for w in words)]
+
+    @property
+    def internal_incentive(self) -> float:
+        """The month's internal team incentive (see Invoice.internal_incentive)."""
+        return round(sum(i.internal_incentive for i in self.invoices), 2)
 
     @property
     def no_incentive(self) -> list[str]:
@@ -376,7 +392,8 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
             line = Line(product=p["name"], category=p["category"],
                         cost=round(r.get("cost_price", 0.0) * qty, 2),
                         labour=round(labour_rate * qty, 2), labour_rate=labour_rate,
-                        list_price=r.get("selling_price", 0.0), **common)
+                        list_price=r.get("selling_price", 0.0),
+                        internal_incentive=p.get("internal_incentive") or 0.0, **common)
             group = p["incentive_group"]
             if group and group in incentive_ids:
                 ir = rate("incentives", incentive_ids[group], day)
