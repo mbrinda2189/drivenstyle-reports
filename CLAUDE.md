@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.10.2** (tags v0.1.0 … v0.10.2 on GitHub
+Current version: **v0.10.3** (tags v0.1.0 … v0.10.3 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -134,6 +134,11 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `InvoicesRepo.months_read` / `remove_month`, `InputsRepo.remove_runs`.
   Brinda wants add / view / change / delete available wherever data is
   kept; the audit log stays read-only by design.
+- **PDF layout** (Brinda, 04-10-2026, v0.10.3): NO graphs in the PDF, no
+  empty white space, page numbers in the footer, print must be readable.
+  `pdf_book.py` writes each section, then copies them onto ONE "Report"
+  sheet (formulas translated), A4 landscape fit-to-width, max 8 columns.
+  This supersedes the "one portrait page per section + charts" layout below.
 - **PDF version** (Brinda, 04-10-2026, v0.10.0): the PDF is NOT the whole
   workbook any more. `app/reports/pdf_book.py` writes a temporary workbook
   with only the summary tables she listed + Excel charts (chart figures at

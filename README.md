@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
+> **Current status: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -141,9 +141,12 @@ every month in the tool. **Remove month** takes a month's invoices out (it
 then leaves the trend); read its export again to bring it back. **Remove** on
 a generated workbook only takes it out of the History list - the files stay.
 
-**PDF version and trend (v0.10.0).** The PDF now carries only the summary
-tables with graphs, one section per page (the Excel workbook still has every
-detail). The Trend sheet shows each month side by side with the change from
+**PDF layout (v0.10.3).** The PDF has no graphs; its sections follow one
+another without empty pages, every page has "Page x of y" in the footer, and
+it prints A4 landscape at about full size.
+
+**PDF version and trend (v0.10.0).** The PDF carries only the summary
+tables (the Excel workbook still has every detail). The Trend sheet shows each month side by side with the change from
 the previous month, sales by branch, top products and charts: read each
 month's invoice export once and enter its Monthly inputs to build it up; the
 Trend page joins the PDF once two months are in.

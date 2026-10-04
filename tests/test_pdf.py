@@ -77,38 +77,53 @@ def test_excel_is_asked_for_one_pdf(tmp_path, monkeypatch):
 
 
 # --- v0.10.0: the PDF version (summary tables + graphs) and the trend --------------
-def test_pdf_version_has_only_the_summary_pages(world):  # noqa: F811
+def test_pdf_version_is_one_flowing_sheet_without_graphs(world):  # noqa: F811
+    """v0.10.3: no graphs, no page per section, page numbers, readable print."""
     from app.data.rto_list import read_rto
     from app.reports.data import build_month
-    from app.reports.pdf_book import incentive_by_executive, write_pdf_workbook
+    from app.reports.pdf_book import OTHER_COL, incentive_by_executive, write_pdf_workbook
     from tests.test_rto import write_list
     masters, irepo, tmp_path = world
     d = build_month(masters, irepo, InputsRepo(masters), 2026, 9)
     rto = read_rto(write_list(tmp_path / "RTO.xlsx"))
     book = write_pdf_workbook(d, [d], None, tmp_path / "pdf.xlsx", "tester", rto=rto)
     wb = openpyxl.load_workbook(book)
-    assert wb.sheetnames == [
-        "Cover", "Summary", "Service vs product", "Labour", "Vehicle-wise",
-        "Spot incentive", "High-profit products", "Indirect vs direct", "Payment modes",
-        "Profit & loss", "New-car penetration", "New-car vs other"]      # one month: no Trend
-    summary = [row[0] for row in wb["Summary"].iter_rows(values_only=True) if row[0]]
-    assert "Points needing attention" not in summary
-    for ws in wb:                                   # one section = one page, with a graph
-        assert ws.page_setup.fitToHeight == 1 and ws.page_setup.orientation == "portrait"
-    charted = [name for name in wb.sheetnames if wb[name]._charts]
-    assert len(charted) >= 9 and "Profit & loss" in charted      # (no labour here -> no graph)
-    assert wb["Service vs product"].print_area            # chart figures are not printed
+    assert wb.sheetnames == ["Report"]                 # one sheet = sections follow on
+    ws = wb["Report"]
+    assert not ws._charts and not ws.row_breaks.brk    # no graphs, no forced page breaks
+    text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
+    order = [text.index(t) for t in (
+        "Drive N Style – Monthly reports", "Drive N Style – Executive summary",
+        "Service vs product profitability", "Labour calculation",
+        "Vehicle-wise average per car", "Spot incentive calculation",
+        "High-profit product sales", "Indirect vs direct cost %", "Payment mode analysis",
+        "Profit & loss", "New-car penetration", "New-car vs other business")]
+    assert order == sorted(order)
+    for gone in ("Points needing attention", "Invoice-wise profitability", "Contents",
+                 "Trend analysis (month on month)"):   # one month: no Trend
+        assert gone not in text
+    # page numbers in the footer; fitted to the page width only; no table over 8 columns
+    assert "&P" in ws.oddFooter.right.text and "Drive N Style" in ws.oddFooter.left.text
+    assert ws.page_setup.fitToWidth == 1 and ws.page_setup.fitToHeight == 0
+    assert ws.max_column <= 8
+    assert all((ws.column_dimensions[c].width or 0) <= OTHER_COL for c in "BCDEFGH")
+    # formulas were shifted to their new rows: the P&L's gross profit is still sales - costs
+    row = next(r for r in ws.iter_rows() if r[0].value == "Gross profit"
+               and isinstance(r[1].value, str))
+    assert row[1].value.startswith("=B") and str(row[0].row - 1) in row[1].value
+
     # the Excel workbook keeps its attention points and every sheet
     r = generate(masters, irepo, InputsRepo(masters), 2026, 9, tmp_path, ["Profit & loss"])
-    cells = [row[0] for row in openpyxl.load_workbook(r.path)["Summary"].iter_rows(
-        values_only=True) if row[0]]
+    cells = [c[0] for c in openpyxl.load_workbook(r.path)["Summary"].iter_rows(
+        values_only=True) if c[0]]
     assert "Points needing attention" in cells
 
-    # two months -> the Trend page is added
+    # two months -> the Trend section is added, without its charts
     book = write_pdf_workbook(d, [d, d], None, tmp_path / "pdf2.xlsx", rto=None)
-    names = openpyxl.load_workbook(book).sheetnames
-    assert names[-1] == "Trend" and "New-car penetration" not in names
-    # by executive: highest incentive payable first
+    ws = openpyxl.load_workbook(book)["Report"]
+    text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
+    assert "Trend analysis (month on month)" in text and "New-car penetration" not in text
+    assert not ws._charts
     payable = [g["payable"] for g in incentive_by_executive(d)]
     assert payable == sorted(payable, reverse=True)
 

@@ -6,6 +6,21 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.3] – 2026-10-04 – PDF without graphs, no empty space, page numbers, readable print
+
+### Changed (PDF only; the Excel workbook is unchanged)
+- **All graphs removed** from the PDF. (The Excel Trend sheet keeps its
+  charts.)
+- **No empty space**: the sections now follow one another on one continuous
+  document instead of one section per page; a new page starts only when
+  the page is full.
+- **Footer on every page**: "Drive N Style - <month>" on the left and
+  "Page x of y" on the right.
+- **Print size**: A4 landscape at (or very near) full size, so the 10 pt
+  text prints at about 10 pt. To make that possible the New-car penetration
+  table is shown as two tables with the same figures (DNS accessories, then
+  OE accessories) and no table is wider than eight columns.
+
 ## [0.10.2] – 2026-10-04 – Change a saved match; delete a dated price; History columns
 
 ### Added

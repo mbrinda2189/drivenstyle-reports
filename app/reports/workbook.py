@@ -329,8 +329,10 @@ def cover_sheet(ws: Worksheet, d: MonthData, sheets: list[str], user: str,
             c.number_format = fmt
         row += 1
 
-    row = section(ws, row + 1, "Contents")
-    for s in sheets + ([] if pdf else ["Not included"]):
+    names = sheets + ([] if pdf else ["Not included"])
+    if names:                      # (the PDF version is one sheet: no contents)
+        row = section(ws, row + 1, "Contents")
+    for s in names:
         c = ws.cell(row, 1, s)
         c.hyperlink = f"#'{s}'!A1"
         c.font = Font(name=FONT, color="1F5FBF", underline="single")

@@ -152,7 +152,8 @@ def _colour(chart) -> None:
 
 
 def trend_sheet(ws: Worksheet, d: MonthData, months: list[MonthData],
-                rto_by_month: dict[str, dict] | None = None) -> None:
+                rto_by_month: dict[str, dict] | None = None, charts: bool = True) -> None:
+    """`charts=False` (v0.10.3): the PDF version carries no graphs."""
     rto_by_month = rto_by_month or {}
     labels = [m.label[:3] + " " + str(m.year) for m in months]
     figures = [month_figures(m, rto_by_month.get(month_key(m.year, m.month)))
@@ -213,6 +214,9 @@ def trend_sheet(ws: Worksheet, d: MonthData, months: list[MonthData],
              lambda m: [(l.product, l.sales) for l in m.lines], 10)
 
     # --- 5. charts ---------------------------------------------------------------
+    if not charts:
+        _finish(ws, "B%d" % (head + 1))
+        return
     row += 3
     cats = Reference(ws, min_col=2, max_col=n + 1, min_row=head)
     line = LineChart()
