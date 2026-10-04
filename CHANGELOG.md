@@ -6,6 +6,24 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] – 2026-10-04 – "Gets incentive" flag; PDF margin % highest first
+
+### Added
+- **Sales executive master: "Gets incentive" (Yes / No, default Yes).** The
+  client said Mano Vikram and Nandha Kumar do not get incentives. For an
+  executive marked No, the sales count everywhere as before, but no spot
+  incentive is worked out (items or packages): they do not appear on the
+  Spot incentive sheet (a note names them), and their incentive is nil in
+  Executive-wise sales, the Summary, the Trend, the scorecard and the PDF.
+  The flag can be set on the Masters screen or imported; changes are in
+  the audit log. Database schema version 11.
+
+### Changed (PDF only)
+- Tables with a Margin % column are listed highest margin first: the
+  Summary's top 5 products, top 5 sales executives and branches (still
+  chosen by gross profit), the High-profit top 10s and New-car vs other.
+  The Summary's Costs table runs from the highest % of sales.
+
 ## [0.10.5] – 2026-10-04 – PDF: no cover block; percentages highest first
 
 ### Changed (PDF only; the Excel workbook is unchanged)

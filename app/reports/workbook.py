@@ -671,6 +671,10 @@ def vehicle_sheet(ws: Worksheet, d: MonthData) -> None:
 # ---------------------------------------------------------------------------
 # 7 Spot incentive (rule confirmed by the client, 30-09-2026)
 # ---------------------------------------------------------------------------
+NO_INCENTIVE_NOTE = ("No incentive for executives marked 'Gets incentive = No' in the Sales "
+                     "executive master: ")
+
+
 def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
     # v0.8.0: the items of a package carry no incentive of their own; the
     # invoice gets one row with the package incentive instead. Its bill
@@ -685,7 +689,7 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
                    product=f"Package ({len(i.package.lines)} items)",
                    group=i.package.package, qty=1, inc=i.package.incentive,
                    bill=i.package.coupon_value, billed=i.package.billed)
-              for i in d.invoices if i.package]
+              for i in d.invoices if i.package and i.incentive_allowed]
     lines.sort(key=lambda r: (r["executive"], r["date"], r["invoice_no"]))
     row = title(ws, "Spot incentive calculation", d.label, [
         "Rule used: payable = incentive × qty × (amount billed ÷ (bill value × qty)), "
@@ -693,7 +697,8 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
         "Amount billed = the line after its share of the discount, including GST. "
         "Incentive and bill value: Incentive master, on the invoice date.",
         "Package sales: one row per invoice with the package incentive; the package's items "
-        "earn no separate incentive."])
+        "earn no separate incentive."]
+        + ([NO_INCENTIVE_NOTE + ", ".join(d.no_incentive) + "."] if d.no_incentive else []))
     execs = sorted({r["executive"] for r in lines})
     detail_head = row + len(execs) + 5
     first, last = detail_head + 1, detail_head + max(1, len(lines))

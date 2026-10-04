@@ -249,6 +249,14 @@ EXECUTIVES = MasterDef(
         FieldDef("branch", "Branch", width=200,
                  synonyms=("city", "location", "town", "place", "outlet",
                            "showroom")),
+        # v0.11.0: some staff do not earn spot incentive (the client named
+        # Mano Vikram and Nandha Kumar, 04-10-2026). "No" = their sales count
+        # everywhere as before, but no spot incentive is worked out for
+        # their invoices (items or packages). Default Yes.
+        FieldDef("gets_incentive", "Gets incentive", kind="bool", default=True,
+                 width=120,
+                 synonyms=("gets incentive", "incentive", "incentive eligible",
+                           "incentive applicable", "eligible for incentive")),
         # Staff who leave can be marked inactive rather than deleted, so their
         # past sales still appear correctly when earlier months are re-run.
         FieldDef("active", "Active", kind="bool", default=True, width=70,

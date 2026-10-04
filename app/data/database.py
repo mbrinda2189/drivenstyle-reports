@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 10)
+TABLES (schema version 11)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -113,7 +113,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -460,6 +460,10 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
         oe_value   REAL    NOT NULL DEFAULT 0,
         saved_at   TEXT    NOT NULL
     );
+    """,
+    # --- 10 -> 11 : executives who do not earn spot incentive (v0.11.0) -------
+    """
+    ALTER TABLE executives ADD COLUMN gets_incentive INTEGER NOT NULL DEFAULT 1;
     """,
 ]
 

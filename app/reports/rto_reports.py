@@ -501,6 +501,8 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
     def top(title_text: str, groups: dict[str, list[float]], n: int = 5) -> None:
         head(title_text, "Sales", "Gross profit", "Margin %")
         ranked = sorted(groups.items(), key=lambda g: -g[1][1])[:n]
+        if highest_first:     # PDF (v0.11.0): the same top list, highest margin % first
+            ranked.sort(key=lambda g: -(g[1][1] / g[1][0] if g[1][0] else 0))
         for name, (sales, gp) in ranked:
             put(name, round(sales, 2), round(gp, 2), _ratio(gp, sales),
                 fmt=(MONEY, MONEY, PCT))
@@ -532,9 +534,12 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
 
     incentive = round(sum(i.incentive_payable for i in d.invoices), 2)
     head("Costs", "Amount", "% of sales")
-    for label, amount in (("Direct costs (product cost + labour)", now["cogs"]),
-                          ("Indirect costs", now["indirect"]),
-                          ("Spot incentive payable (tool)", incentive)):
+    costs = [("Direct costs (product cost + labour)", now["cogs"]),
+             ("Indirect costs", now["indirect"]),
+             ("Spot incentive payable (tool)", incentive)]
+    if highest_first:
+        costs.sort(key=lambda c: -c[1])
+    for label, amount in costs:
         put(label, amount, _ratio(amount, d.sales), fmt=(MONEY, PCT))
 
     if d.left_out:

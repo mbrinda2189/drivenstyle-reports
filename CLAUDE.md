@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.10.5** (tags v0.1.0 … v0.10.5 on GitHub
+Current version: **v0.11.0** (tags v0.1.0 … v0.11.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -134,6 +134,11 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `InvoicesRepo.months_read` / `remove_month`, `InputsRepo.remove_runs`.
   Brinda wants add / view / change / delete available wherever data is
   kept; the audit log stays read-only by design.
+- **Gets incentive flag** (client via Brinda, 04-10-2026, v0.11.0):
+  executives.gets_incentive; Mano Vikram and Nandha Kumar do not get spot
+  incentive. `Invoice.incentive_allowed`, `MonthData.no_incentive`.
+- **PDF: every % column runs highest first** (Brinda, 04-10-2026): incl.
+  margin % in top lists (chosen by gross profit, listed by margin).
 - **PDF layout** (Brinda, 04-10-2026, v0.10.3): NO graphs in the PDF, no
   empty white space, page numbers in the footer, print must be readable.
   `pdf_book.py` writes each section, then copies them onto ONE "Report"

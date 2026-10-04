@@ -142,3 +142,31 @@ def test_automatic_indirect_percentages_can_be_changed(tmp_path, masters):
         ("Breakage / returns / transport (% of COGS)", "4%", "5%")]
     with pytest.raises(ValueError):
         inputs.save_auto_rates({"auto_breakage_pct": 150})
+
+
+def test_executive_marked_no_incentive(tmp_path, masters):
+    """v0.11.0: "Gets incentive = No" - the sale counts, the incentive does not."""
+    full = [(z, p) for z, p, _ in ITEMS.values()]
+    irepo = month(tmp_path, masters, rows("DNS-1-2627", full, 33000)        # a package
+                  + rows("DNS-2-2627", full[:2], 30500))                    # two items
+    inputs = InputsRepo(masters)
+    d = build_month(masters, irepo, inputs, 2026, 9)
+    assert masters.list_rows("executives")[0]["gets_incentive"] is True     # default Yes
+    assert sum(i.incentive_payable for i in d.invoices) > 0 and d.no_incentive == []
+
+    ex = masters.list_rows("executives")[0]
+    masters.save("executives", [RowChange(ex["id"], {**ex, "gets_incentive": False})])
+    d = build_month(masters, irepo, inputs, 2026, 9)
+    assert sum(i.incentive_payable for i in d.invoices) == 0
+    assert d.no_incentive == ["Mano Vikram – HO"]
+    assert d.sales == 63500 and all(i.package or len(i.lines) == 2 for i in d.invoices)
+    out = tmp_path / "out"
+    out.mkdir()
+    r = generate(masters, irepo, inputs, 2026, 9, out, ["Spot incentive calculation"])
+    ws = openpyxl.load_workbook(r.path)["7 Spot incentive"]
+    cells = [c for row in ws.iter_rows(values_only=True) for c in row if isinstance(c, str)]
+    assert any("Gets incentive = No" in c and "Mano Vikram" in c for c in cells)
+    assert "DNS-1-2627" not in cells and "DNS-2-2627" not in cells          # no rows at all
+    log = masters.conn.execute("SELECT field, old_value, new_value FROM audit_log "
+                               "WHERE field = 'Gets incentive'").fetchone()
+    assert tuple(log) == ("Gets incentive", "Yes", "No")

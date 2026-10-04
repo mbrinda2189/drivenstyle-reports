@@ -162,7 +162,7 @@ STORES = {
                        "vehicle_needed", "active"),
                       "t.name COLLATE NOCASE", "product_rates", "product_id"),
     "executives": Store("executives", "phone_key",
-                        ("name", "phone", "branch", "active"),
+                        ("name", "phone", "branch", "gets_incentive", "active"),
                         "t.name COLLATE NOCASE, t.phone"),
     "cars": Store("cars", "car_key", ("make", "model", "segment", "active"),
                   "t.make COLLATE NOCASE, t.model COLLATE NOCASE"),
@@ -528,6 +528,12 @@ class MastersRepo:
         The caller has already checked the row with _row_problems.
         """
         st, mdef = STORES[master], self.definition(master)
+        # A field the caller did not give keeps its stored value (existing
+        # row) or takes the field's default (new row) - so a new column such
+        # as "Gets incentive" (default Yes) is never switched off by accident.
+        stored = self.get(master, row_id) if row_id is not None else None
+        fallback = lambda c: (stored or {}).get(c, mdef.get_field(c).default)
+        v = {**{c: fallback(c) for c in st.columns if c not in v}, **v}
         cols = {c: self._db_value(mdef.get_field(c), v.get(c)) for c in st.columns}
         cols[st.key_column] = self.key_of(master, v)
         if master == "products":

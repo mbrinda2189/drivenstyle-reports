@@ -179,6 +179,7 @@ class Invoice:
     # review - the text printed on the invoice, shown in the Invoice register.
     printed_executive: str = ""
     printed_car: str = ""
+    incentive_allowed: bool = True   # False: executive marked "Gets incentive = No"
     vin: str = ""                 # Zoho's VIN / registration field (v0.9.0:
                                   # links the invoice to the delivery list)
     package: PackageSale | None = None      # v0.8.0
@@ -274,6 +275,13 @@ class MonthData:
         words = [w for _, _, w in self.auto_rates]
         return [(h, a) for h, a in self.indirect_costs
                 if not any(w in h.lower() for w in words)]
+
+    @property
+    def no_incentive(self) -> list[str]:
+        """Executives with sales this month who are marked "Gets incentive =
+        No" in the Sales executive master (v0.11.0)."""
+        return sorted({f"{i.executive} – {i.branch}" if i.branch else i.executive
+                       for i in self.invoices if not i.incentive_allowed})
 
     @property
     def marker_lines(self) -> int:
@@ -396,6 +404,18 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
         elif near:
             inv.near_package = near.package.name
             inv.near_missing = near.missing[0]
+
+        # --- executives who do not earn spot incentive (v0.11.0) --------------
+        # "Gets incentive = No" in the Sales executive master: the sale counts
+        # everywhere as usual, but carries no item or package incentive.
+        # ("Others" is not in the master and stays eligible.)
+        if not others_exec and not ex.get("gets_incentive", True):
+            inv.incentive_allowed = False
+            for line in inv.lines:
+                line.incentive_group, line.incentive_amount = "", 0.0
+                line.bill_value = 0.0
+            if inv.package:
+                inv.package.incentive = 0.0
         included.append(inv)
 
     skipped = [f for f in invoices.scan_files(year, month) if f["status"] != "read"]

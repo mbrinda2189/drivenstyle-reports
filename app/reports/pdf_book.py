@@ -63,9 +63,12 @@ Where a table's point is a percentage, its rows are listed from the
 highest to the lowest: share of sales (Service vs product, New-car vs
 other), % of sales of the indirect cost heads (Indirect vs direct, Profit &
 loss), % of invoice total (Payment modes) and penetration % (Summary and
-New-car penetration, DNS tables). Tables that are rankings by an amount
-keep that ranking: the "top" lists by gross profit, spot incentive by
-incentive payable, labour by labour cost, segments by sales.
+New-car penetration, DNS tables), and - from v0.11.0 - margin %: the
+Summary's top products / executives / branches and the High-profit top 10s
+are still CHOSEN by gross profit but LISTED highest margin % first; New-car
+vs other and the Summary's Costs table likewise. Tables without a
+percentage keep their ranking by amount: spot incentive by incentive
+payable, labour by labour cost, segments by sales.
 The Excel workbook keeps its own order.
 
 No Qt and no database code here.
@@ -204,6 +207,8 @@ def incentive_by_executive(d: MonthData) -> list[dict]:
         g["payable"] += payable
 
     for i in d.invoices:
+        if not i.incentive_allowed:           # "Gets incentive = No" (v0.11.0)
+            continue
         name = exec_label(i.executive, i.branch)
         for l in i.lines:
             base = l.bill_value * l.qty
@@ -222,7 +227,9 @@ def incentive_by_executive(d: MonthData) -> list[dict]:
 def _incentive(ws, d):
     row = title(ws, "Spot incentive calculation", d.label, [
         "Rule: payable = incentive × qty × (amount billed ÷ (bill value × qty)), never more "
-        "than the full incentive. Highest incentive payable first."])
+        "than the full incentive. Highest incentive payable first."]
+        + (["No incentive for executives marked 'Gets incentive = No': "
+            + ", ".join(d.no_incentive) + "."] if d.no_incentive else []))
     rows = incentive_by_executive(d)
     row = section(ws, row, "By executive")
     t = table(ws, row, [
@@ -248,6 +255,8 @@ def _high_profit(ws, d):
         if r["sales"] > 0 and r["_gp"] / r["sales"] * 100 >= th - 1e-9:
             good.append(r)
     good.sort(key=lambda r: -r["_gp"])
+    # the ten are chosen by gross profit, then listed highest margin % first (v0.11.0)
+    by_margin = lambda r: (-(r["_gp"] / r["sales"]), -r["_gp"])
     cols = lambda first: [
         Col(first, "product", width=46),
         Col("Qty", "qty", "qty", 8, total="sum"),
@@ -259,7 +268,7 @@ def _high_profit(ws, d):
     ]
     p = Page(ws, row)
     for category, heading in (("Product", "Top 10 products"), ("Service", "Top 10 services")):
-        rows = [r for r in good if r["category"] == category][:10]
+        rows = sorted([r for r in good if r["category"] == category][:10], key=by_margin)
         r0 = section(ws, p.row, heading)
         t = table(ws, r0, cols("Product" if category == "Product" else "Service"), rows,
                   empty_text=f"No {category.lower()} reached a {th:g}% margin this month.")
@@ -366,6 +375,8 @@ def _source(ws, d, link):
     row = section(ws, row, "Where the month's business came from")
     rows = [rr._business("New cars delivered this month", link.linked),
             rr._business("Other business", link.other)]
+    margin = lambda r: (r["sales"] - r["cost"] - r["labour"]) / r["sales"] if r["sales"] else 0
+    rows.sort(key=lambda r: -margin(r))                 # highest margin % first
     avg = '=IF({invoices}{r}=0,"",{sales}{r}/{invoices}{r})'
     t = table(ws, row, [
         Col("Business", "name", width=32),
