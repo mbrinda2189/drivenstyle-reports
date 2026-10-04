@@ -708,7 +708,9 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
         "Amount billed = the line after its share of the discount, including GST. "
         "Incentive and bill value: Incentive master, on the invoice date.",
         "Package sales: one row per invoice with the package incentive; the package's items "
-        "earn no separate incentive."]
+        "earn no separate incentive.",
+        "'By executive': each executive's incentive payable is rounded up to the next Rs. 10. "
+        "The lines below show the exact amounts."]
         + ([NO_INCENTIVE_NOTE + ", ".join(d.no_incentive) + "."] if d.no_incentive else [])
         + (["'Internal team': the product's Internal incentive (Product master) × quantity, "
             "paid in full in addition to the salesperson's incentive."]
@@ -724,7 +726,10 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
         Col("Lines", "n", "qty", 8,
             formula=f"=COUNTIF($A${first}:$A${last},$A{{r}})", total="sum"),
         Col("Full incentive", "full", "money", 14, formula=sumif("$J"), total="sum"),
-        Col("Incentive payable", "payable", "money", 14, formula=sumif("$L"), total="sum"),
+        # v0.12.1: each executive's total is rounded UP to the next Rs. 10
+        # (1,492 -> 1,500); the lines below keep the exact figures.
+        Col("Incentive payable", "payable", "money", 14,
+            formula="=CEILING(ROUND(" + sumif("$L")[1:] + ",2),10)", total="sum"),
         Col("Reduced by discounts", "reduced", "money", 14,
             formula="={full}{r}-{payable}{r}", total="sum"),
     ], [dict(executive=e) for e in execs])
@@ -788,7 +793,8 @@ def executive_sheet(ws: Worksheet, d: MonthData, incentive_sheet_name: str | Non
     if incentive_sheet_name:
         ref = f"'{incentive_sheet_name}'"
         cols.append(Col("Incentive payable", "incentive", "money", 16,
-                        formula=f"=SUMIF({ref}!$A:$A,$A{{r}},{ref}!$L:$L)", total="sum"))
+                        formula=f"=CEILING(ROUND(SUMIF({ref}!$A:$A,$A{{r}},{ref}!$L:$L),2),10)",
+                        total="sum"))        # rounded up to Rs. 10, as on sheet 7
     t = table(ws, row, cols, rows, filters=True)
     _finish(ws, f"B{t['head'] + 1}")
 

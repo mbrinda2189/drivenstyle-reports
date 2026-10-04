@@ -540,7 +540,7 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
         attention.append(f"{len(near)} invoice(s) were one item short of a package "
                          "(sheet 5).")
 
-    incentive = round(sum(i.incentive_payable for i in d.invoices), 2)
+    incentive = d.incentive_payable        # each executive rounded up to Rs. 10
     head("Costs", "Amount", "% of sales")
     costs = [("Direct costs (product cost + labour)", now["cogs"]),
              ("Indirect costs", now["indirect"]),

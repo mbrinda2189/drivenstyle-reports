@@ -78,7 +78,7 @@ def month_figures(m: MonthData, rto: dict | None) -> dict:
         service=cat("Service"), cost=cost, labour=labour, gp=m.gross_profit,
         indirect=indirect, net=round(m.gross_profit - indirect, 2),
         packages=sum(1 for i in m.invoices if i.package),
-        incentive=round(sum(i.incentive_payable for i in m.invoices), 2),
+        incentive=m.incentive_payable,     # each executive rounded up to Rs. 10
         internal=m.internal_incentive,
         cars=rto.get("cars"), took=rto.get("took_dns"))
 

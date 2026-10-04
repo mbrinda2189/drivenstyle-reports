@@ -223,3 +223,40 @@ def test_internal_team_incentive(tmp_path, masters):
     from app.reports.pdf_book import incentive_by_executive
     last = incentive_by_executive(d)[-1]
     assert (last["executive"], last["payable"]) == ("Internal team", 3000)
+
+
+def test_incentive_is_rounded_up_to_ten(tmp_path, masters):
+    """v0.12.1: an executive's incentive for the month is rounded UP to the
+    next Rs. 10 (1,492 -> 1,500; 2,677.80 -> 2,680), once, on the total."""
+    from app.reports.data import round_up_10
+    from app.reports.pdf_book import incentive_by_executive
+    got = [round_up_10(x) for x in (1492, 2677.80, 1500, 0, 50.01, 1499.999)]
+    assert got == [1500, 2680, 1500, 0, 60, 1500]
+    # graphene at a discount: 1,500 x 21,000 / 25,000 = 1,260; underbody in full = 200;
+    # a second invoice: underbody 200 x 3,333 / 3,500 = 190.46  ->  1,650.46 -> 1,660
+    graphene, underbody = "Graphene Coating - Turtle Wax", "Underbody Coating - 5 Seater"
+    data = [line("DNS-1-2627", "2026-09-21", "Mano Vikram", "Creta", graphene, "", "", "goods",
+                 1, 27000, 21000, inv_total=24500),
+            line("DNS-1-2627", "2026-09-21", "Mano Vikram", "Creta", underbody, "", "", "goods",
+                 1, 3500, 3500, inv_total=24500),
+            line("DNS-2-2627", "2026-09-22", "Mano Vikram", "Creta", underbody, "", "", "goods",
+                 1, 3500, 3333, inv_total=3333)]
+    irepo = month(tmp_path, masters, data)
+    inputs = InputsRepo(masters)
+    d = build_month(masters, irepo, inputs, 2026, 9)
+    exact = sum(i.incentive_payable for i in d.invoices)
+    assert exact == pytest.approx(1650.46, abs=0.01)
+    assert d.incentive_by_executive == {"Mano Vikram – HO": 1660.0}
+    assert d.incentive_payable == 1660.0
+    assert incentive_by_executive(d)[0]["payable"] == 1660.0
+    out = tmp_path / "out"
+    out.mkdir()
+    r = generate(masters, irepo, inputs, 2026, 9, out,
+                 ["Spot incentive calculation", "Executive-wise sales"])
+    wb = openpyxl.load_workbook(r.path)
+    summary = next(row for row in wb["7 Spot incentive"].iter_rows(values_only=True)
+                   if row[0] == "Mano Vikram – HO" and str(row[3]).startswith("=CEILING"))
+    assert summary[3].endswith(",2),10)")
+    sales = next(row for row in wb["8 Executive-wise sales"].iter_rows(values_only=True)
+                 if row[0] == "Mano Vikram – HO")
+    assert str(sales[-1]).startswith("=CEILING(ROUND(SUMIF(")

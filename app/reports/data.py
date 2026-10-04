@@ -63,6 +63,7 @@ contained "Package"; no product is billed like that.)
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -88,6 +89,16 @@ COUNTER_SALE = "Counter sale (no vehicle)"
 # the ones set on Monthly inputs (inputs_repo.auto_rates), put on
 # MonthData.auto_rates by build_month.
 AUTO_INDIRECT = tuple((head, pct / 100, word) for _, head, pct, word in AUTO_HEADS)
+
+
+def round_up_10(amount: float) -> float:
+    """
+    v0.12.1 (Brinda, 04-10-2026): an executive's incentive for the month is
+    rounded UP to the next 10 rupees - 1,492 becomes 1,500 and 2,677.80
+    becomes 2,680. An exact multiple of 10 stays as it is. The rounding is
+    done ONCE on the executive's total, not on each invoice line.
+    """
+    return float(math.ceil(round(amount, 2) / 10 - 1e-9) * 10)
 
 
 @dataclass
@@ -286,6 +297,22 @@ class MonthData:
         words = [w for _, _, w in self.auto_rates]
         return [(h, a) for h, a in self.indirect_costs
                 if not any(w in h.lower() for w in words)]
+
+    @property
+    def incentive_by_executive(self) -> dict[str, float]:
+        """Executive (with branch) -> spot incentive payable for the month,
+        rounded up to the next Rs. 10 (see round_up_10)."""
+        totals: dict[str, float] = {}
+        for i in self.invoices:
+            if i.incentive_payable:
+                name = f"{i.executive} – {i.branch}" if i.branch else i.executive
+                totals[name] = totals.get(name, 0.0) + i.incentive_payable
+        return {name: round_up_10(v) for name, v in totals.items()}
+
+    @property
+    def incentive_payable(self) -> float:
+        """The month's spot incentive to executives (each rounded up to Rs. 10)."""
+        return round(sum(self.incentive_by_executive.values()), 2)
 
     @property
     def internal_incentive(self) -> float:

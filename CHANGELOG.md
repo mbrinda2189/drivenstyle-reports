@@ -6,6 +6,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.1] – 2026-10-04 – Incentive rounded up to the next ₹10
+
+### Changed
+- **Each executive's spot incentive for the month is rounded UP to the next
+  ₹10** (1,492 → 1,500; 2,677.80 → 2,680; an exact multiple of 10 is
+  unchanged). The rounding is done once on the executive's total: the "By
+  executive" table of the Spot incentive sheet, the Incentive payable
+  column of Executive-wise sales, the Summary, the Trend and the PDF. The
+  line-by-line detail keeps the exact amounts, so the working is visible.
+  The discount rule itself is unchanged.
+
 ## [0.12.0] – 2026-10-04 – Internal team incentive (₹3,000 per car PPF)
 
 ### Added

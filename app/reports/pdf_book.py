@@ -89,7 +89,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from app.data.payments_io import Payment
 from app.reports import rto_reports as rr
-from app.reports.data import MonthData
+from app.reports.data import MonthData, round_up_10
 from app.reports.trend import trend_sheet
 from app.reports.workbook import (
     Col, _by_product, _finish, cost_split_sheet, exec_label, pnl_sheet,
@@ -220,8 +220,8 @@ def incentive_by_executive(d: MonthData) -> list[dict]:
         if k:
             add(name, k.incentive, k.incentive * min(1.0, k.billed / k.coupon_value)
                 if k.coupon_value else 0.0)
-    for g in groups.values():
-        g["full"], g["payable"] = round(g["full"], 2), round(g["payable"], 2)
+    for g in groups.values():      # payable: rounded up to the next Rs. 10 (v0.12.1)
+        g["full"], g["payable"] = round(g["full"], 2), round_up_10(g["payable"])
     ranked = sorted(groups.values(), key=lambda g: (-g["payable"], g["executive"]))
     # v0.12.0: the internal team incentive as ONE separate last line
     internal = [l for l in d.lines if l.internal_incentive and l.qty]
@@ -234,7 +234,8 @@ def incentive_by_executive(d: MonthData) -> list[dict]:
 def _incentive(ws, d):
     row = title(ws, "Spot incentive calculation", d.label, [
         "Rule: payable = incentive × qty × (amount billed ÷ (bill value × qty)), never more "
-        "than the full incentive. Highest incentive payable first. 'Internal team' (last "
+        "than the full incentive; each executive's total is rounded up to the next Rs. 10. "
+        "Highest incentive payable first. 'Internal team' (last "
         "line) = the internal incentive per item sold, paid in full."]
         + (["No incentive for executives marked 'Gets incentive = No': "
             + ", ".join(d.no_incentive) + "."] if d.no_incentive else []))
