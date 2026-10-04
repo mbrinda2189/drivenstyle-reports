@@ -17,8 +17,9 @@ temporary workbook is deleted afterwards.
 
 WHAT IS IN THE PDF, in this order
 ---------------------------------
-    Month's headline figures (as on the Cover)
     Summary              executive summary WITHOUT "Points needing attention"
+                         (the Cover block - "Monthly reports ... Notes" -
+                         was dropped from the PDF in v0.10.5)
     Service vs product   summary table only
     Labour               "By product" table only
     Vehicle-wise         "By segment" table only
@@ -56,6 +57,17 @@ LAYOUT (v0.10.3)
   "Page x of y" on the right.
 * No graphs. (The Excel Trend sheet keeps its charts.)
 
+PERCENTAGES RUN DOWNWARDS (v0.10.5)
+-----------------------------------
+Where a table's point is a percentage, its rows are listed from the
+highest to the lowest: share of sales (Service vs product, New-car vs
+other), % of sales of the indirect cost heads (Indirect vs direct, Profit &
+loss), % of invoice total (Payment modes) and penetration % (Summary and
+New-car penetration, DNS tables). Tables that are rankings by an amount
+keep that ranking: the "top" lists by gross profit, spot incentive by
+incentive payable, labour by labour cost, segments by sales.
+The Excel workbook keeps its own order.
+
 No Qt and no database code here.
 """
 
@@ -76,7 +88,7 @@ from app.reports import rto_reports as rr
 from app.reports.data import MonthData
 from app.reports.trend import trend_sheet
 from app.reports.workbook import (
-    Col, _by_product, _finish, cost_split_sheet, cover_sheet, exec_label, pnl_sheet,
+    Col, _by_product, _finish, cost_split_sheet, exec_label, pnl_sheet,
     section, table, title)
 
 MARGIN = '=IF({sales}{r}=0,"",{gp}{r}/{sales}{r})'
@@ -281,6 +293,7 @@ def _payments(ws, d, payments: list[Payment] | None):
     total = sum(i.total for i in d.invoices)
     rows = [dict(mode=m, n=v[0], amount=round(v[1], 2)) for m, v in sorted(modes.items())]
     rows.append(dict(mode="Not received", n=pending_n, amount=round(pending, 2)))
+    rows.sort(key=lambda r: -r["amount"])              # % of invoice total, highest first
     for r in rows:
         r["share"] = r["amount"] / total if total else ""
     source = ("Zoho payments export" if payments is not None else
@@ -321,6 +334,7 @@ def _penetration(ws, d, link):
                          ("model", lambda c: c.model_group)):
         rows = rr._group_rows(link, key)
         first = heading.capitalize()
+        by_pen = sorted(rows, key=lambda g: -(g["dns"] / g["cars"] if g["cars"] else 0))
         row = section(ws, row, f"By {heading} - DNS accessories")
         t = table(ws, row, [
             Col(first, "name", width=24),
@@ -330,7 +344,7 @@ def _penetration(ws, d, link):
             Col("DNS value (list)", "dns_value", "money", 14, total="sum"),
             Col("DNS value per car delivered", "per", "money", 14, formula=per, total=per),
             Col("Invoiced (with GST)", "invoiced", "money", 14, total="sum"),
-        ], rows)
+        ], by_pen)                                  # highest penetration % first
         row = section(ws, t["next"], f"By {heading} - OE accessories")
         t = table(ws, row, [
             Col(first, "name", width=24),
@@ -443,17 +457,16 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
     wb = Workbook()
     report = wb.active
     report.title = "Report"
-    plan = [("Cover", lambda ws: cover_sheet(ws, data, [], user, pdf=True)),
-            ("Summary", lambda ws: rr.summary_sheet(ws, data, previous, link, user,
-                                                    attention=False)),
+    plan = [("Summary", lambda ws: rr.summary_sheet(ws, data, previous, link, user,
+                                                    attention=False, highest_first=True)),
             ("Service vs product", lambda ws: _category(ws, data)),
             ("Labour", lambda ws: _labour(ws, data)),
             ("Vehicle-wise", lambda ws: _vehicle(ws, data)),
             ("Spot incentive", lambda ws: _incentive(ws, data)),
             ("High-profit products", lambda ws: _high_profit(ws, data)),
-            ("Indirect vs direct", lambda ws: cost_split_sheet(ws, data)),
+            ("Indirect vs direct", lambda ws: cost_split_sheet(ws, data, largest_first=True)),
             ("Payment modes", lambda ws: _payments(ws, data, payments)),
-            ("Profit & loss", lambda ws: pnl_sheet(ws, data))]
+            ("Profit & loss", lambda ws: pnl_sheet(ws, data, largest_first=True))]
     if link is not None:
         plan += [("New-car penetration", lambda ws: _penetration(ws, data, link)),
                  ("New-car vs other", lambda ws: _source(ws, data, link))]

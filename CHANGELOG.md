@@ -6,6 +6,18 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.5] – 2026-10-04 – PDF: no cover block; percentages highest first
+
+### Changed (PDF only; the Excel workbook is unchanged)
+- The opening block "Drive N Style – Monthly reports … Notes" is no longer
+  in the PDF; it starts with the Executive summary.
+- Where a table's point is a percentage, its rows now run from the highest
+  to the lowest: indirect cost heads in Indirect vs direct and Profit &
+  loss (typed and automatic heads together, largest first), payment modes
+  by % of invoice total, and penetration % by location / model (Summary and
+  New-car penetration). Rankings by an amount keep their order (top lists by
+  gross profit, spot incentive by incentive payable, labour, segments).
+
 ## [0.10.4] – 2026-10-04 – PDF: wrong "% of sales" fixed
 
 ### Fixed

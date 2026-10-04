@@ -92,8 +92,9 @@ def test_pdf_version_is_one_flowing_sheet_without_graphs(world):  # noqa: F811
     ws = wb["Report"]
     assert not ws._charts and not ws.row_breaks.brk    # no graphs, no forced page breaks
     text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
+    assert "Drive N Style – Monthly reports" not in text and "Notes" not in text  # v0.10.5
     order = [text.index(t) for t in (
-        "Drive N Style – Monthly reports", "Drive N Style – Executive summary",
+        "Drive N Style – Executive summary",
         "Service vs product profitability", "Labour calculation",
         "Vehicle-wise average per car", "Spot incentive calculation",
         "High-profit product sales", "Indirect vs direct cost %", "Payment mode analysis",
@@ -119,6 +120,21 @@ def test_pdf_version_is_one_flowing_sheet_without_graphs(world):  # noqa: F811
             assert r[2].value == f'=IF($B${n}=0,"",B{n}/$B${n})'
             below = ws.cell(n + 2, 3).value                   # Product cost
             assert below == f'=IF($B${n}=0,"",B{n + 2}/$B${n})'
+    # v0.10.5: percentages run downwards - indirect cost heads largest first (PDF only)
+    inputs = InputsRepo(masters)
+    inputs.save_costs(2026, 9, [("Postage", 10.0), ("Rent", 5000.0), ("Salaries", 900.0)])
+    d2 = build_month(masters, irepo, inputs, 2026, 9)
+    ws2 = openpyxl.load_workbook(write_pdf_workbook(
+        d2, [d2], None, tmp_path / "pdf3.xlsx", rto=rto))["Report"]
+    labels = [r[0] for r in ws2.iter_rows(values_only=True) if isinstance(r[0], str)]
+    at = labels.index("Indirect vs direct cost %")
+    heads = labels[labels.index("Indirect costs", at) + 1:
+                   labels.index("Total indirect costs", at)]
+    # Rent 5,000 > Salaries 900 > automatic 4% (12) > Postage 10 > automatic 3% (9)
+    assert heads == ["Rent", "Salaries", "Breakage / returns / transport (4% of COGS)",
+                     "Postage", "Compliance GST (3% of COGS)"]
+    pen = labels.index("By location - DNS accessories")
+    assert labels[pen + 2:pen + 5] == ["POL", "(not given)", "OOTY"]   # 100%, 100%, 50%
     from app.reports.pdf_book import shift_formula
     assert shift_formula('=IF($B$7=0,"",B9/$B$7)', 100) == '=IF($B$107=0,"",B109/$B$107)'
     assert shift_formula("=ROUND(B11*0.04,2)", 5) == "=ROUND(B16*0.04,2)"

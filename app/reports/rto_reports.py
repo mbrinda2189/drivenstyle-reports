@@ -382,7 +382,8 @@ def scorecard_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
 # Executive summary
 # ---------------------------------------------------------------------------
 def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
-                  link: Linked | None, user: str = "", attention: bool = True) -> None:
+                  link: Linked | None, user: str = "", attention: bool = True,
+                  highest_first: bool = False) -> None:
     """
     One page for the owner: the month's headline figures (with last month's
     where a previous month has been read), the new-car business, the best
@@ -463,6 +464,8 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
         put("Share of sales from delivered cars", _ratio(new_sales, d.sales), fmt=PCT)
 
         by_loc = _group_rows(link, lambda c: c.location)
+        if highest_first:     # PDF version (v0.10.5): highest penetration % first
+            by_loc.sort(key=lambda g: -(g["dns"] / g["cars"] if g["cars"] else 0))
         head("Penetration by location", "Cars delivered", "Took DNS", "Penetration %")
         for g in by_loc:
             put(g["name"], g["cars"], g["dns"], _ratio(g["dns"], g["cars"]),

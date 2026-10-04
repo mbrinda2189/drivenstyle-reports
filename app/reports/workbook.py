@@ -806,8 +806,15 @@ def high_profit_sheet(ws: Worksheet, d: MonthData) -> None:
 # ---------------------------------------------------------------------------
 # 10 Indirect vs direct, 12 Profit & loss
 # ---------------------------------------------------------------------------
-def _statement(ws: Worksheet, row: int, d: MonthData, net: bool) -> None:
-    """Shared layout of sheets 10 and 12: Particulars | Amount | % of sales."""
+def _statement(ws: Worksheet, row: int, d: MonthData, net: bool,
+               largest_first: bool = False) -> None:
+    """
+    Shared layout of sheets 10 and 12: Particulars | Amount | % of sales.
+    `largest_first` (v0.10.5, PDF version only): the indirect cost heads -
+    typed and automatic together - are listed from the largest to the
+    smallest, so "% of sales" runs downwards. The workbook keeps the order
+    entered on Monthly inputs.
+    """
     for c, (text, width) in enumerate((("Particulars", 38), ("Amount", 16),
                                        ("% of sales", 12)), start=1):
         cell = ws.cell(row, c, text)
@@ -845,13 +852,16 @@ def _statement(ws: Worksheet, row: int, d: MonthData, net: bool) -> None:
     gp = put("Gross profit", f"=B{sales_row}-B{direct}", bold=True) if net else None
     row += 1
     ws.cell(row, 1, "Indirect costs").font = _font(True, NAVY)
-    heads = d.entered_indirect or [("(none entered on Monthly inputs)", 0.0)]
-    head_rows = [put(h, a, indent=1) for h, a in heads]
-    # v0.8.1: worked out automatically from COGS (= total direct costs:
-    # product cost + labour) - see AUTO_INDIRECT in reports/data.py.
-    for head, pct, _ in d.auto_indirect:
-        head_rows.append(put(f"{head} ({pct * 100:g}% of COGS)",
-                             f"=ROUND(B{direct}*{pct:.6g},2)", indent=1))
+    # (label, value or formula, amount for sorting). v0.8.1: the automatic
+    # heads are worked out from COGS (= total direct costs: product cost +
+    # labour) - see AUTO_INDIRECT in reports/data.py.
+    heads = [(h, a, a) for h, a in d.entered_indirect] or \
+        [("(none entered on Monthly inputs)", 0.0, 0.0)]
+    heads += [(f"{head} ({pct * 100:g}% of COGS)", f"=ROUND(B{direct}*{pct:.6g},2)", amount)
+              for head, pct, amount in d.auto_indirect]
+    if largest_first:
+        heads.sort(key=lambda h: -h[2])
+    head_rows = [put(h, value, indent=1) for h, value, _ in heads]
     indirect = put("Total indirect costs", f"=SUM(B{head_rows[0]}:B{head_rows[-1]})",
                    bold=True, top=True)
     row += 1
@@ -867,25 +877,25 @@ AUTO_NOTE = ("Breakage / returns / transport and Compliance GST are calculated a
              "percentages are set on Monthly inputs.")
 
 
-def cost_split_sheet(ws: Worksheet, d: MonthData) -> None:
+def cost_split_sheet(ws: Worksheet, d: MonthData, largest_first: bool = False) -> None:
     row = title(ws, "Indirect vs direct cost %", d.label,
                 ["Direct costs: product cost and labour on the month's invoices. "
                  "Indirect costs: entered on Monthly inputs.",
                  AUTO_NOTE])
     if not d.has_inputs:
         row = banner(ws, row, "No indirect costs were entered for this month.", 3)
-    _statement(ws, row, d, net=False)
+    _statement(ws, row, d, net=False, largest_first=largest_first)
     _finish(ws)
 
 
-def pnl_sheet(ws: Worksheet, d: MonthData) -> None:
+def pnl_sheet(ws: Worksheet, d: MonthData, largest_first: bool = False) -> None:
     row = title(ws, "Profit & loss", d.label,
                 ["Sales exclude GST (GST collected is not income). Invoices not included "
                  "(open issues) are not in these figures.",
                  AUTO_NOTE])
     if not d.has_inputs:
         row = banner(ws, row, "No indirect costs were entered for this month.", 3)
-    _statement(ws, row, d, net=True)
+    _statement(ws, row, d, net=True, largest_first=largest_first)
     _finish(ws)
 
 
