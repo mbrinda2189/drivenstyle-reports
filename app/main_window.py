@@ -111,6 +111,12 @@ class MainWindow(QMainWindow):
             lambda n: self.sidebar.set_badge(PAGE_REVIEW, str(n) if n else ""))
         self.review_page.backRequested.connect(lambda: self.go_to(PAGE_GENERATE))
         self.generate_page.generated.connect(self.history_page.refresh)
+        # v0.10.1: a month removed on History -> Scan review and the
+        # Generate summary must stop showing it; a month read -> History.
+        self.history_page.monthRemoved.connect(lambda *_: self.review_page.refresh())
+        self.history_page.monthRemoved.connect(
+            lambda *_: self.generate_page.refresh_summary())
+        self.generate_page.scanFinished.connect(self.history_page.refresh)
         self.generate_page.inputsRequested.connect(self._go_to_inputs)
         self.masters_page.mastersChanged.connect(self._refresh_master_counts)
         # Rebuild Scan review only when it is next shown (v0.6.1: rebuilding

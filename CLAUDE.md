@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.10.0** (tags v0.1.0 … v0.10.0 on GitHub
+Current version: **v0.10.1** (tags v0.1.0 … v0.10.1 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -130,6 +130,10 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `app/data/rto_list.py`). List figures and invoiced figures are shown side
   by side, never forced to agree. Models are grouped by a simple rule
   (`model_key`), not the Car master; consultants are as named in the list.
+- **Remove a month / History entry** (v0.10.1): History page;
+  `InvoicesRepo.months_read` / `remove_month`, `InputsRepo.remove_runs`.
+  Brinda wants add / view / change / delete available wherever data is
+  kept; the audit log stays read-only by design.
 - **PDF version** (Brinda, 04-10-2026, v0.10.0): the PDF is NOT the whole
   workbook any more. `app/reports/pdf_book.py` writes a temporary workbook
   with only the summary tables she listed + Excel charts (chart figures at

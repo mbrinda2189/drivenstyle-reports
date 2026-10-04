@@ -123,3 +123,31 @@ def test_saved_matches_can_be_listed_and_removed(tmp_path):
 
     from app.reports.issues_export import export_matches
     assert export_matches(irepo, 2026, 9, tmp_path / "m.xlsx") == 1
+
+
+def test_a_month_can_be_removed(tmp_path):
+    """v0.10.1: a month read by mistake can be taken out of the tool."""
+    from app.data.inputs_repo import InputsRepo as Inputs
+    masters = MastersRepo(connect(":memory:"))
+    product(masters, "Horn")
+    irepo = month(tmp_path, masters, [
+        line("DNS-1-2627", "2026-09-06", "", "DZIRE", "Horn", "", "", "goods",
+             1, 2100, 2100, inv_total=2100)])
+    irepo.set_car("DNS-1-2627", "DZIRE", OTHERS_ID, False)          # one-invoice choice
+    irepo.set_salesperson("name:x", "Someone", OTHERS_ID, True)     # all-invoices match
+    inputs = Inputs(masters)
+    inputs.save_rto_month(2026, 9, 10, 3, 0, 0)
+    inputs.record_run(2026, 9, "x.xlsx", 1, 0, 1.0, 1.0, "", [])
+    assert [m["month"] for m in irepo.months_read()] == ["2026-09"]
+    assert irepo.months_read()[0]["invoices"] == 1
+
+    assert irepo.remove_month(2026, 9) == 1
+    assert irepo.months_read() == [] and irepo.scan_run(2026, 9) is None
+    assert inputs.rto_months() == {}
+    kinds = [(m.store, m.kind) for m in irepo.saved_matches(2026, 9)]
+    assert kinds == [("alias", "executive")]            # only the all-invoices match stays
+    assert len(inputs.runs()) == 1                      # History is kept ...
+    assert inputs.remove_runs(2026, 9) == 1 and inputs.runs() == []   # ... until removed
+    actions = [r["action"] for r in masters.conn.execute(
+        "SELECT action FROM audit_log WHERE action = 'Deleted'")]
+    assert len(actions) == 2

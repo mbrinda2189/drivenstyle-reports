@@ -774,6 +774,49 @@ class InvoicesRepo:
             self._log(record, field_label, label)
 
     # ==================================================================
+    # Months read into the tool: list and remove (v0.10.1)
+    # ==================================================================
+    # WHY: every month that has been read feeds the Trend sheet. A month
+    # read by mistake, or with trial data, could be replaced by reading it
+    # again but never taken out - so it kept appearing in the trend.
+    def months_read(self) -> list[dict]:
+        """Every month with invoices in the tool, newest first:
+        month ("YYYY-MM"), invoices, scanned_at, folder (the file read)."""
+        return [dict(r) for r in self.conn.execute(
+            "SELECT r.month, r.scanned_at, r.folder, "
+            "(SELECT COUNT(*) FROM invoices i WHERE i.month = r.month) AS invoices "
+            "FROM scan_runs r ORDER BY r.month DESC")]
+
+    def remove_month(self, year: int, month: int) -> int:
+        """
+        Take a month's invoices out of the tool (logged in the audit log):
+        the invoices and their lines, the list of files read, the choices
+        saved for single invoices of that month, accepted totals differences
+        and the month's delivery-list totals. Returns the invoices removed.
+
+        NOT removed: the masters, name matches that apply to all invoices
+        (Scan review > Saved matches), the month's Monthly inputs, and the
+        workbooks already generated (History). Reading the month's export
+        again brings the invoices back.
+        """
+        key = month_key(year, month)
+        numbers = [r["invoice_no"] for r in self.conn.execute(
+            "SELECT invoice_no FROM invoices WHERE month = ?", (key,))]
+        with self.conn:
+            for no in numbers:
+                self.conn.execute("DELETE FROM invoice_overrides WHERE invoice_no = ?", (no,))
+                self.conn.execute("DELETE FROM issue_acks WHERE invoice_no = ?", (no,))
+            self.conn.execute("DELETE FROM invoices WHERE month = ?", (key,))
+            self.conn.execute("DELETE FROM scan_files WHERE month = ?", (key,))
+            self.conn.execute("DELETE FROM scan_runs WHERE month = ?", (key,))
+            self.conn.execute("DELETE FROM rto_months WHERE month = ?", (key,))
+            self.masters._audit(
+                "scan", None, f"Invoices – {month_label(year, month)}", "Deleted",
+                new=f"{len(numbers)} invoice(s) removed from the tool",
+                source="History")
+        return len(numbers)
+
+    # ==================================================================
     # Saved matches: see and undo the choices made on Scan review (v0.8.3)
     # ==================================================================
     # WHY: a choice on Scan review is remembered for every later month

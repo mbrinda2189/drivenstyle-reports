@@ -6,6 +6,20 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.1] – 2026-10-04 – Remove a month; remove a History entry
+
+### Added
+- **History → "Months read into the tool"**: every month whose invoices
+  are in the tool (and so in the trend), with the number of invoices, when
+  it was last read and from which file. **Remove month** takes the month's
+  invoices out after a confirmation: invoices and lines, the files-read
+  list, single-invoice choices, accepted totals differences and the
+  month's delivery-list totals. Masters, name matches for all invoices,
+  Monthly inputs and saved workbooks are kept. Logged in the audit log.
+- **History → Remove** on a generated workbook: takes the month out of the
+  History list; the Excel / PDF files are not deleted. Logged.
+- History refreshes when a month's invoices are read.
+
 ## [0.10.0] – 2026-10-04 – PDF version with graphs; month-wise trend
 
 ### Changed

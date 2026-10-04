@@ -221,6 +221,22 @@ class InputsRepo:
         """Month ("YYYY-MM") -> its saved delivery-list totals."""
         return {r["month"]: dict(r) for r in self.conn.execute("SELECT * FROM rto_months")}
 
+    def remove_runs(self, year: int, month: int) -> int:
+        """
+        v0.10.1: take a month out of the History list (logged). Only the
+        entries are removed - the Excel / PDF files stay in their folder.
+        Returns the number of entries removed.
+        """
+        key = month_key(year, month)
+        with self.conn:
+            n = self.conn.execute("DELETE FROM report_runs WHERE month = ?", (key,)).rowcount
+            if n:
+                self.masters._audit(
+                    "inputs", None, f"History – {month_label(year, month)}", "Deleted",
+                    new=f"{n} generated workbook entr{'y' if n == 1 else 'ies'} removed "
+                        "from History (files not deleted)", source="History")
+        return n
+
     def runs(self, latest_per_month: bool = True) -> list[dict]:
         """Generated workbooks, newest month first (by default only the
         latest run of each month)."""

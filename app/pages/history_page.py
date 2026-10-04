@@ -55,6 +55,7 @@ class HistoryPage(ScrollPage):
     """Table of generated months with Open / Regenerate actions."""
 
     regenerated = Signal(int, int)
+    monthRemoved = Signal(int, int)       # v0.10.1: a month's invoices were removed
 
     def __init__(self, masters: MastersRepo, invoices: InvoicesRepo,
                  inputs: InputsRepo, parent: QWidget | None = None):
@@ -81,13 +82,44 @@ class HistoryPage(ScrollPage):
         hdr = t.horizontalHeader()
         hdr.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         hdr.setSectionResizeMode(0, QHeaderView.Stretch)
-        for col, width in ((1, 90), (2, 90), (3, 150), (4, 150), (5, 170), (6, 280)):
+        for col, width in ((1, 90), (2, 90), (3, 150), (4, 150), (5, 170), (6, 360)):
             hdr.setSectionResizeMode(col, QHeaderView.Fixed)
             t.setColumnWidth(col, width)
         card.body.addWidget(t)
         self.note = label("", "Muted")
         card.body.addWidget(self.note)
         self.content.addWidget(card)
+
+        # --- Months read into the tool (v0.10.1) -----------------------------
+        # Every month listed here feeds the Trend sheet. "Remove month" takes
+        # a month read by mistake (or with trial data) out of the tool.
+        months = Card()
+        months.body.addWidget(label("Months read into the tool", "SectionTitle"))
+        months.body.addWidget(label(
+            "Every month here is part of the month-on-month trend. Removing a month takes "
+            "out its invoices only: masters, saved name matches, Monthly inputs and the "
+            "workbooks already saved are kept. Reading the month's export again brings "
+            "it back.", "Muted", wrap=True))
+        self.months_table = QTableWidget(0, 5)
+        self.months_table.setHorizontalHeaderLabels(
+            ["Month", "Invoices read", "Last read", "File read", ""])
+        m = self.months_table
+        m.verticalHeader().hide()
+        m.setAlternatingRowColors(True)
+        m.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        m.setSelectionMode(QAbstractItemView.NoSelection)
+        m.setFocusPolicy(Qt.NoFocus)
+        m.verticalHeader().setDefaultSectionSize(ROW)
+        mh = m.horizontalHeader()
+        mh.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        mh.setSectionResizeMode(3, QHeaderView.Stretch)
+        for col, width in ((0, 170), (1, 120), (2, 170), (4, 170)):
+            mh.setSectionResizeMode(col, QHeaderView.Fixed)
+            m.setColumnWidth(col, width)
+        months.body.addWidget(m)
+        self.months_note = label("", "Muted")
+        months.body.addWidget(self.months_note)
+        self.content.addWidget(months)
         self.content.addStretch(1)
         self.refresh()
 
@@ -120,14 +152,75 @@ class HistoryPage(ScrollPage):
             pdf_btn.setToolTip("Save this workbook as one PDF beside it and open it "
                                "(needs Microsoft Excel on this PC).")
             pdf_btn.clicked.connect(lambda _=False, x=run: self._pdf(x))
+            remove = button("Remove", "Ghost")
+            remove.setToolTip("Take this month out of this list. The Excel and PDF files "
+                              "stay in their folder.")
+            remove.clicked.connect(lambda _=False, x=run: self._remove_run(x))
             lay.addWidget(open_btn)
             lay.addWidget(pdf_btn)
             lay.addWidget(regen)
+            lay.addWidget(remove)
             lay.addStretch(1)
             t.setCellWidget(r, 6, actions)
         t.setFixedHeight(t.horizontalHeader().height() + ROW * max(1, len(runs)) + 6)
         self.note.setText("" if runs else
                           "No workbooks yet. Scan a month and generate it on Generate reports.")
+        self._fill_months()
+
+    def _fill_months(self) -> None:
+        rows = self.invoices.months_read()
+        m = self.months_table
+        m.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            year, month = map(int, row["month"].split("-"))
+            m.setItem(r, 0, QTableWidgetItem(month_label(year, month)))
+            n = QTableWidgetItem(str(row["invoices"]))
+            n.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            m.setItem(r, 1, n)
+            when = datetime.fromisoformat(row["scanned_at"]).strftime("%d-%m-%Y %H:%M")
+            m.setItem(r, 2, QTableWidgetItem(when))
+            source = QTableWidgetItem(Path(row["folder"]).name)
+            source.setToolTip(row["folder"])
+            m.setItem(r, 3, source)
+            holder = QWidget()
+            lay = QHBoxLayout(holder)
+            lay.setContentsMargins(6, 4, 6, 4)
+            remove = button("Remove month", "Danger")
+            remove.clicked.connect(lambda _=False, y=year, mo=month, c=row["invoices"]:
+                                   self._remove_month(y, mo, c))
+            lay.addWidget(remove)
+            lay.addStretch(1)
+            m.setCellWidget(r, 4, holder)
+        m.setFixedHeight(m.horizontalHeader().height() + ROW * max(1, len(rows)) + 6)
+        self.months_note.setText("" if rows else "No month has been read yet.")
+
+    def _remove_month(self, year: int, month: int, count: int) -> None:
+        name = month_label(year, month)
+        if QMessageBox.question(
+                self, "Remove month",
+                f"Remove {name} from the tool?\n\n"
+                f"Its {count} invoice(s) will be taken out and {name} will no longer appear "
+                "in the trend. Masters, saved name matches, Monthly inputs and saved "
+                "workbooks are kept.\n\nTo bring the month back, read its invoice export "
+                "again.", QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        done = self.invoices.remove_month(year, month)
+        self.refresh()
+        self.monthRemoved.emit(year, month)
+        self.toast(f"{name} removed ({done} invoices).")
+
+    def _remove_run(self, run: dict) -> None:
+        year, month = map(int, run["month"].split("-"))
+        name = month_label(year, month)
+        if QMessageBox.question(
+                self, "Remove from History",
+                f"Remove {name} from this list?\n\nThe Excel and PDF files already saved "
+                "are not deleted, and the month's invoices stay in the tool.",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+            return
+        self.inputs.remove_runs(year, month)
+        self.refresh()
+        self.toast(f"{name} removed from History.")
 
     def _pdf(self, run: dict) -> None:
         """
