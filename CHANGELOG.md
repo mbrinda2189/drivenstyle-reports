@@ -6,6 +6,35 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] – 2026-10-04 – PDF version with graphs; month-wise trend
+
+### Changed
+- **The PDF is now a separate "PDF version"** of the reports, for reading
+  (Brinda, 04-10-2026); the Excel workbook is unchanged. It holds, one
+  section per page, with colourful graphs:
+  Cover · Summary (without "Points needing attention") · Service vs product
+  (summary) · Labour (by product) · Vehicle-wise (by segment) · Spot
+  incentive (by executive, highest payable first) · High-profit (top 10
+  products, top 10 services) · Indirect vs direct · Payment modes (by mode,
+  by account deposited to) · Profit & loss · New-car penetration · New-car
+  vs other (where the business came from) · Trend (two or more months).
+  Left out of the PDF: invoice profitability, packages, executive-wise
+  sales, missed opportunity, RTO list vs invoices, consultant scorecard,
+  not included (`app/reports/pdf_book.py`).
+- **History → PDF** builds this PDF from the data as it is now.
+- **Trend sheet rebuilt** (workbook sheet "4 Trend" and the PDF's Trend
+  page, `app/reports/trend.py`): per month and in total – invoices, sales,
+  product / service sales, costs, gross profit and margin, indirect costs,
+  net profit and margin, average bill, packages, spot incentive, cars
+  delivered, cars that took DNS and penetration %; change from the previous
+  month; sales by branch; top 10 products; a line chart and a penetration
+  chart.
+
+### Added
+- The delivery (RTO) list's totals are kept for each month when a workbook
+  is generated with the list, so the trend can show penetration month by
+  month (database schema version 10, table `rto_months`).
+
 ## [0.9.1] – 2026-10-03 – The workbook as one PDF
 
 ### Added

@@ -43,8 +43,8 @@ from app.data.inputs_repo import InputsRepo
 from app.data.invoices_repo import InvoicesRepo, month_label
 from app.data.masters_repo import MastersRepo
 from app.pages.base import ScrollPage
-from app.reports.generate import GenerateError, generate
-from app.reports.pdf_export import PdfError, export_pdf
+from app.reports.generate import GenerateError, generate, make_pdf
+from app.reports.pdf_export import PdfError
 from app.utils import format_inr
 from app.widgets.common import Card, button, label
 
@@ -119,7 +119,7 @@ class HistoryPage(ScrollPage):
             pdf_btn = button("PDF", "Ghost")
             pdf_btn.setToolTip("Save this workbook as one PDF beside it and open it "
                                "(needs Microsoft Excel on this PC).")
-            pdf_btn.clicked.connect(lambda _=False, p=run["file_path"]: self._pdf(p))
+            pdf_btn.clicked.connect(lambda _=False, x=run: self._pdf(x))
             lay.addWidget(open_btn)
             lay.addWidget(pdf_btn)
             lay.addWidget(regen)
@@ -129,12 +129,19 @@ class HistoryPage(ScrollPage):
         self.note.setText("" if runs else
                           "No workbooks yet. Scan a month and generate it on Generate reports.")
 
-    def _pdf(self, path: str) -> None:
-        """v0.9.1: the saved workbook as one PDF (app/reports/pdf_export.py)."""
+    def _pdf(self, run: dict) -> None:
+        """
+        The month's PDF (summary tables and graphs - app/reports/pdf_book.py),
+        saved beside the workbook. It is built from the data as it is now.
+        """
+        year, month = map(int, run["month"].split("-"))
+        files = [run["payments_path"], run.get("rto_path") or ""]
+        payments, rto = [f if f and Path(f).exists() else "" for f in files]
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            pdf = export_pdf(path)
-        except PdfError as exc:
+            pdf = make_pdf(self.masters, self.invoices, self.inputs, year, month,
+                           run["file_path"], payments, rto)
+        except (PdfError, GenerateError) as exc:
             QApplication.restoreOverrideCursor()
             QMessageBox.warning(self, "PDF not made", str(exc))
             return

@@ -245,9 +245,10 @@ class GeneratePage(ScrollPage):
         self.output_picker.layout().setContentsMargins(36, 0, 0, 0)
         self.output_picker.pathChanged.connect(self._on_output_chosen)
         card.body.addWidget(self.output_picker)
-        # v0.9.1: one PDF of the whole workbook, made by Excel on this PC.
-        self.pdf_check = QCheckBox("Also save as PDF (one file, every sheet; needs "
-                                   "Microsoft Excel on this PC)")
+        # v0.9.1 / v0.10.0: the PDF version (summary tables + graphs, see
+        # app/reports/pdf_book.py), made by Excel on this PC.
+        self.pdf_check = QCheckBox("Also save as PDF (summary tables and graphs, one page "
+                                   "per section; needs Microsoft Excel on this PC)")
         self.pdf_check.setContentsMargins(36, 0, 0, 0)
         card.body.addWidget(self.pdf_check)
 

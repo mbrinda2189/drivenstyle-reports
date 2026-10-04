@@ -80,10 +80,14 @@ def pdf_path_for(workbook_path: str | Path) -> Path:
     return Path(workbook_path).with_suffix(".pdf")
 
 
-def export_pdf(workbook_path: str | Path) -> Path:
-    """Save the workbook as one PDF beside it; returns the PDF's path."""
+def export_pdf(workbook_path: str | Path, target: str | Path | None = None) -> Path:
+    """
+    Save the workbook as one PDF; returns the PDF's path. `target` = where
+    to save it (v0.10.0: the PDF is made from a temporary "PDF version"
+    workbook but saved beside the real one); default: beside the workbook.
+    """
     source = Path(workbook_path).resolve()
-    target = pdf_path_for(source)
+    target = Path(target).resolve() if target else pdf_path_for(source)
     if not source.exists():
         raise PdfError(f"“{source.name}” is no longer where it was saved.")
     if sys.platform != "win32":

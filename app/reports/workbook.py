@@ -245,7 +245,8 @@ MARGIN_TOTAL = '=IF({sales}{r}=0,"",{gp}{r}/{sales}{r})'
 def write_workbook(data: MonthData, trend: list[MonthData],
                    payments: list[Payment] | None, reports: list[str],
                    path: str | Path, user: str = "", rto: list | None = None,
-                   previous: MonthData | None = None) -> Path:
+                   previous: MonthData | None = None,
+                   rto_by_month: dict | None = None) -> Path:
     """
     Write the workbook for `data` (see module notes). Returns the path.
     v0.9.0: `rto` = the dealership's delivery list (app/data/rto_list.py);
@@ -254,6 +255,7 @@ def write_workbook(data: MonthData, trend: list[MonthData],
     before) when there is one. See app/reports/rto_reports.py.
     """
     from app.reports import rto_reports as rr      # (it imports this module)
+    from app.reports.trend import trend_sheet      # (so does this)
     wb = Workbook()
     cover = wb.active
     cover.title = "Cover"
@@ -262,7 +264,7 @@ def write_workbook(data: MonthData, trend: list[MonthData],
         "Invoice-wise profitability": lambda ws: invoice_sheet(ws, data),
         "Service vs product profitability": lambda ws: category_sheet(ws, data),
         "Labour calculation": lambda ws: labour_sheet(ws, data),
-        "Trend analysis (month on month)": lambda ws: trend_sheet(ws, data, trend),
+        "Trend analysis (month on month)": lambda ws: trend_sheet(ws, data, trend, rto_by_month),
         "Basic package analysis": lambda ws: package_sheet(ws, data),
         "Vehicle-wise average per car": lambda ws: vehicle_sheet(ws, data),
         "Spot incentive calculation": lambda ws: incentive_sheet(ws, data),
@@ -296,7 +298,9 @@ def write_workbook(data: MonthData, trend: list[MonthData],
 # ---------------------------------------------------------------------------
 # Cover
 # ---------------------------------------------------------------------------
-def cover_sheet(ws: Worksheet, d: MonthData, sheets: list[str], user: str) -> None:
+def cover_sheet(ws: Worksheet, d: MonthData, sheets: list[str], user: str,
+                pdf: bool = False) -> None:
+    """`pdf` (v0.10.0): the cover of the PDF version lists only its own pages."""
     ws["A1"] = "Drive N Style – Monthly reports"
     ws["A1"].font = _font(True, NAVY, 16)
     ws["A2"] = d.label
@@ -326,7 +330,7 @@ def cover_sheet(ws: Worksheet, d: MonthData, sheets: list[str], user: str) -> No
         row += 1
 
     row = section(ws, row + 1, "Contents")
-    for s in sheets + ["Not included"]:
+    for s in sheets + ([] if pdf else ["Not included"]):
         c = ws.cell(row, 1, s)
         c.hyperlink = f"#'{s}'!A1"
         c.font = Font(name=FONT, color="1F5FBF", underline="single")
@@ -493,62 +497,8 @@ def labour_sheet(ws: Worksheet, d: MonthData) -> None:
 # ---------------------------------------------------------------------------
 # 4 Trend
 # ---------------------------------------------------------------------------
-def trend_sheet(ws: Worksheet, d: MonthData, months: list[MonthData]) -> None:
-    row = title(ws, "Trend analysis (month on month)", d.label,
-                ["Months that have been scanned, up to the last 12. Each month uses the "
-                 "masters' rates that applied in that month."])
-    ws.column_dimensions["A"].width = 30
-    head = row
-    ws.cell(head, 1, "Particulars")
-    for j, m in enumerate(months, start=2):
-        ws.cell(head, j, m.label[:3] + " " + str(m.year))
-        ws.column_dimensions[get_column_letter(j)].width = 14
-    for c in range(1, len(months) + 2):
-        cell = ws.cell(head, c)
-        cell.font = _font(True, "FFFFFF")
-        cell.fill = PatternFill("solid", fgColor=NAVY)
-        cell.alignment = Alignment(horizontal="right" if c > 1 else "left")
-
-    def product_sales(m, cat):
-        return round(sum(l.sales for l in m.lines if l.category == cat), 2)
-
-    items = [
-        ("Invoices", lambda m: len(m.invoices), QTY),
-        ("Sales", lambda m: m.sales, MONEY),
-        ("Product sales", lambda m: product_sales(m, "Product"), MONEY),
-        ("Service sales", lambda m: product_sales(m, "Service"), MONEY),
-        ("Product cost", lambda m: round(sum(i.cost for i in m.invoices), 2), MONEY),
-        ("Labour", lambda m: round(sum(i.labour for i in m.invoices), 2), MONEY),
-    ]
-    r0 = head + 1
-    for k, (label, fn, fmt) in enumerate(items):
-        ws.cell(r0 + k, 1, label).font = _font()
-        for j, m in enumerate(months, start=2):
-            c = ws.cell(r0 + k, j, fn(m))
-            c.font, c.number_format = _font(), fmt
-    # rows: Invoices r0, Sales r0+1, Product r0+2, Service r0+3, Cost r0+4, Labour r0+5
-    derived = [
-        ("Gross profit", "={c}%d-{c}%d-{c}%d" % (r0 + 1, r0 + 4, r0 + 5), MONEY, True),
-        ("Margin %", '=IF({c}%d=0,"",{c}%d/{c}%d)' % (r0 + 1, r0 + 6, r0 + 1), PCT, False),
-        ("Average bill (sales per invoice)", '=IF({c}%d=0,"",{c}%d/{c}%d)' % (r0, r0 + 1, r0), MONEY, False),
-        ("Sales change vs previous month", None, PCT, False),
-    ]
-    for k, (label, template, fmt, bold) in enumerate(derived, start=len(items)):
-        ws.cell(r0 + k, 1, label).font = _font(bold)
-        for j in range(2, len(months) + 2):
-            col = get_column_letter(j)
-            if template:
-                value = template.format(c=col)
-            elif j == 2:
-                value = ""
-            else:
-                prev = get_column_letter(j - 1)
-                value = f'=IF({prev}{r0 + 1}=0,"",{col}{r0 + 1}/{prev}{r0 + 1}-1)'
-            c = ws.cell(r0 + k, j, value)
-            c.font, c.number_format = _font(bold), fmt
-            if bold:
-                c.border = Border(top=rule)
-    _finish(ws, "B%d" % (head + 1))
+# (rebuilt in v0.10.0 - see app/reports/trend.py: more rows, change from the
+# previous month, sales by branch, top products and charts)
 
 
 # ---------------------------------------------------------------------------

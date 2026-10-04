@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 9)
+TABLES (schema version 10)
 -------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -113,7 +113,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -447,6 +447,19 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
     # Kept with each generated workbook so History can regenerate it.
     """
     ALTER TABLE report_runs ADD COLUMN rto_path TEXT NOT NULL DEFAULT '';
+    """,
+    # --- 9 -> 10 : delivery-list totals per month, for the trend (v0.10.0) ----
+    # The list itself is a file and is not stored; these totals are kept
+    # each time a workbook is generated with it.
+    """
+    CREATE TABLE IF NOT EXISTS rto_months (
+        month      TEXT PRIMARY KEY,                     -- YYYY-MM
+        cars       INTEGER NOT NULL DEFAULT 0,           -- cars delivered
+        took_dns   INTEGER NOT NULL DEFAULT 0,           -- of which took DNS
+        dns_value  REAL    NOT NULL DEFAULT 0,           -- as per the list
+        oe_value   REAL    NOT NULL DEFAULT 0,
+        saved_at   TEXT    NOT NULL
+    );
     """,
 ]
 

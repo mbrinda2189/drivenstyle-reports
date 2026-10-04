@@ -23,6 +23,7 @@ payments file is not a Zoho export, or the month has not been scanned.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -32,7 +33,9 @@ from app.data.masters_repo import MastersRepo
 from app.data.payments_io import PaymentsFileError, read_payments
 from app.data.rto_list import RtoFileError, read_rto
 from app.reports.data import build_month, scanned_months, trend_months
-from app.reports.pdf_export import PdfError, export_pdf
+from app.reports.pdf_book import write_pdf_workbook
+from app.reports.pdf_export import PdfError, export_pdf, pdf_path_for
+from app.reports.rto_reports import Linked
 from app.reports.workbook import write_workbook
 
 
@@ -62,6 +65,28 @@ def file_name(year: int, month: int, at: datetime | None = None) -> str:
     return f"DriveNStyle_{MONTH_NAMES[month - 1][:3]}-{year}_Reports{stamp}.xlsx"
 
 
+def _read_inputs(payments_path: str, rto_path: str):
+    """The optional files: (payments or None, delivery list or None)."""
+    payments = rto = None
+    if payments_path:
+        try:
+            payments = read_payments(payments_path)
+        except PaymentsFileError as exc:
+            raise GenerateError(str(exc)) from exc
+    if rto_path:                      # v0.9.0: the dealership's delivery list
+        try:
+            rto = read_rto(rto_path)
+        except RtoFileError as exc:
+            raise GenerateError(str(exc)) from exc
+    return payments, rto
+
+
+def _previous(masters, invoices, inputs, year: int, month: int):
+    """The month before (if it has been read), for the executive summary."""
+    earlier = [m for m in scanned_months(invoices) if m < (year, month)]
+    return build_month(masters, invoices, inputs, *earlier[-1]) if earlier else None
+
+
 def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
              year: int, month: int, out_dir: str | Path, reports: list[str],
              payments_path: str = "", rto_path: str = "",
@@ -71,35 +96,29 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
     out_dir = Path(out_dir)
     if not out_dir.is_dir():
         raise GenerateError(f"The folder “{out_dir}” does not exist.")
-
-    payments = None
-    if payments_path:
-        try:
-            payments = read_payments(payments_path)
-        except PaymentsFileError as exc:
-            raise GenerateError(str(exc)) from exc
-
-    # v0.9.0: the dealership's delivery (RTO) list, if given (step 4)
-    rto = None
-    if rto_path:
-        try:
-            rto = read_rto(rto_path)
-        except RtoFileError as exc:
-            raise GenerateError(str(exc)) from exc
+    payments, rto = _read_inputs(payments_path, rto_path)
 
     # Products added or imported since the invoices were read also take
     # Zoho's item type as their category, unless it was set by hand.
     invoices.apply_zoho_categories()
     data = build_month(masters, invoices, inputs, year, month)
+    if rto is not None:
+        # v0.10.0: keep the list's totals so the trend can show penetration
+        # month by month (the list itself is not stored).
+        link = Linked(data, rto)
+        inputs.save_rto_month(year, month, len(rto),
+                              sum(link.took_dns(c) for c in rto),
+                              sum(c.dns_value for c in rto), sum(c.oe_value for c in rto))
+    want_trend = "Trend analysis (month on month)" in reports
     trend = (trend_months(masters, invoices, inputs, year, month)
-             if "Trend analysis (month on month)" in reports else [])
+             if want_trend or pdf else [])
+    previous = _previous(masters, invoices, inputs, year, month)
+    rto_by_month = inputs.rto_months()
     path = out_dir / file_name(year, month, datetime.now())
     try:
-        # the month before (if it has been read), for the executive summary
-        earlier = [m for m in scanned_months(invoices) if m < (year, month)]
-        previous = build_month(masters, invoices, inputs, *earlier[-1]) if earlier else None
-        write_workbook(data, trend, payments, reports, path, masters.user,
-                       rto=rto, previous=previous)
+        write_workbook(data, trend if want_trend else [], payments, reports, path,
+                       masters.user, rto=rto, previous=previous,
+                       rto_by_month=rto_by_month)
     except PermissionError as exc:
         raise GenerateError(f"“{path.name}” could not be saved. If it is open in "
                             "Excel, close it and generate again.") from exc
@@ -112,10 +131,43 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
     result = GenerateResult(path, len(data.invoices), len(data.left_out), data.sales,
                             data.gross_profit, payments is not None)
     if pdf:
-        # v0.9.1: also one PDF of the whole workbook. A failure here (no
-        # Excel on the PC ...) must not lose the workbook: it is reported.
+        # A failure here (no Excel on the PC ...) must not lose the
+        # workbook: it is reported separately.
         try:
-            result.pdf_path = export_pdf(path)
+            result.pdf_path = _make_pdf(data, trend, payments, rto, previous,
+                                        rto_by_month, path, masters.user)
         except PdfError as exc:
             result.pdf_error = str(exc)
     return result
+
+
+def _make_pdf(data, trend, payments, rto, previous, rto_by_month, workbook_path: Path,
+              user: str) -> Path:
+    """
+    v0.10.0: the PDF is made from a temporary "PDF version" workbook
+    (summary tables and graphs only - app/reports/pdf_book.py), saved beside
+    the real workbook with the same name, and the temporary file is removed.
+    """
+    with tempfile.TemporaryDirectory(prefix="dns_pdf_") as folder:
+        book = Path(folder) / (workbook_path.stem + ".xlsx")
+        try:
+            write_pdf_workbook(data, trend, payments, book, user, rto=rto,
+                               previous=previous, rto_by_month=rto_by_month)
+        except OSError as exc:
+            raise PdfError(f"The PDF version could not be prepared: {exc}") from exc
+        return export_pdf(book, pdf_path_for(workbook_path))
+
+
+def make_pdf(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
+             year: int, month: int, workbook_path: str | Path,
+             payments_path: str = "", rto_path: str = "") -> Path:
+    """
+    The PDF for a month from History: built from the data as it is NOW
+    (masters and Scan review fixes made since are included), saved beside
+    the workbook it belongs to. Raises PdfError / GenerateError.
+    """
+    payments, rto = _read_inputs(payments_path, rto_path)
+    data = build_month(masters, invoices, inputs, year, month)
+    return _make_pdf(data, trend_months(masters, invoices, inputs, year, month), payments,
+                     rto, _previous(masters, invoices, inputs, year, month),
+                     inputs.rto_months(), Path(workbook_path), masters.user)

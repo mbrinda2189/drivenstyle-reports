@@ -203,6 +203,24 @@ class InputsRepo:
                  invoices, left_out, sales, gross_profit, payments_path,
                  json.dumps(reports), rto_path))
 
+    # ------------------------------------------------------------------
+    # Delivery (RTO) list totals per month - for the trend (v0.10.0)
+    # ------------------------------------------------------------------
+    def save_rto_month(self, year: int, month: int, cars: int, took_dns: int,
+                       dns_value: float, oe_value: float) -> None:
+        """Keep the month's delivery-list totals (replaced each time the
+        month is generated with a list)."""
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO rto_months(month, cars, took_dns, dns_value, "
+                "oe_value, saved_at) VALUES (?,?,?,?,?,?)",
+                (month_key(year, month), cars, took_dns, round(dns_value, 2),
+                 round(oe_value, 2), datetime.now().isoformat(timespec="seconds")))
+
+    def rto_months(self) -> dict[str, dict]:
+        """Month ("YYYY-MM") -> its saved delivery-list totals."""
+        return {r["month"]: dict(r) for r in self.conn.execute("SELECT * FROM rto_months")}
+
     def runs(self, latest_per_month: bool = True) -> list[dict]:
         """Generated workbooks, newest month first (by default only the
         latest run of each month)."""

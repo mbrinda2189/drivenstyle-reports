@@ -382,7 +382,7 @@ def scorecard_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
 # Executive summary
 # ---------------------------------------------------------------------------
 def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
-                  link: Linked | None, user: str = "") -> None:
+                  link: Linked | None, user: str = "", attention: bool = True) -> None:
     """
     One page for the owner: the month's headline figures (with last month's
     where a previous month has been read), the new-car business, the best
@@ -444,7 +444,7 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
                        and isinstance(now[key], (int, float)) else ""]
         put(label, *values, fmt=fmt, bold=key in ("sales", "net"))
 
-    attention: list[str] = []
+    show_attention, attention = attention, []
     if link is not None:
         cars = len(link.cars)
         took = sum(link.took_dns(c) for c in link.cars)
@@ -546,13 +546,14 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
         attention.append("The delivery (RTO) list was not given, so new-car penetration is "
                          "not shown.")
 
-    head("Points needing attention", "")
-    for text in attention or ["Nothing to flag this month."]:
-        cell = ws.cell(state["row"], 1, "• " + text)
-        cell.font = _font()
-        if attention:
-            cell.fill = PatternFill("solid", fgColor=AMBER_TINT)
-        state["row"] += 1
+    if show_attention:      # left out of the PDF version (Brinda, 04-10-2026)
+        head("Points needing attention", "")
+        for text in attention or ["Nothing to flag this month."]:
+            cell = ws.cell(state["row"], 1, "• " + text)
+            cell.font = _font()
+            if attention:
+                cell.fill = PatternFill("solid", fgColor=AMBER_TINT)
+            state["row"] += 1
 
     ws.column_dimensions["A"].width = 52
     for col in "BCD":

@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.9.1** (tags v0.1.0 … v0.9.1 on GitHub
+Current version: **v0.10.0** (tags v0.1.0 … v0.10.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -130,6 +130,16 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `app/data/rto_list.py`). List figures and invoiced figures are shown side
   by side, never forced to agree. Models are grouped by a simple rule
   (`model_key`), not the Car master; consultants are as named in the list.
+- **PDF version** (Brinda, 04-10-2026, v0.10.0): the PDF is NOT the whole
+  workbook any more. `app/reports/pdf_book.py` writes a temporary workbook
+  with only the summary tables she listed + Excel charts (chart figures at
+  column AA, outside the print area; one section = one portrait page) and
+  Excel exports that. Excel workbook must stay unchanged unless she asks.
+  Excel export itself is confirmed working on her PC (v0.9.1 PDF, 42 pages).
+  Charts were checked with LibreOffice only - not yet seen in real Excel.
+- **Trend** (v0.10.0, `app/reports/trend.py`): business started August
+  2026; Brinda will give August data. RTO totals per month are saved in
+  `rto_months` when generating with the list.
 - **PDF** (Brinda, 03-10-2026, v0.9.1): all sheets in one PDF, made by
   Excel via PowerShell COM (`app/reports/pdf_export.py`); client's PC has
   Excel. NOT yet run against real Excel - written and tested from Linux
