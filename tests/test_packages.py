@@ -121,8 +121,8 @@ def test_automatic_indirect_costs(tmp_path, masters):
     col = {row[0]: row[1] for row in
            openpyxl.load_workbook(r.path)["12 Profit & loss"].iter_rows(values_only=True)}
     assert col["Rent"] == 1000 and "Breakage and returns" not in col
-    assert col["Breakage / returns / transport (4% of COGS)"].endswith("*0.04,2)")
-    assert col["Compliance GST (3% of COGS)"].endswith("*0.03,2)")
+    assert col["Breakage / returns / transport"].endswith("*0.04,2)")
+    assert col["Compliance GST"].endswith("*0.03,2)")
 
 
 def test_automatic_indirect_percentages_can_be_changed(tmp_path, masters):
@@ -139,7 +139,7 @@ def test_automatic_indirect_percentages_can_be_changed(tmp_path, masters):
         "SELECT field, old_value, new_value FROM audit_log WHERE master = 'inputs'"
     ).fetchall()
     assert [tuple(r) for r in log] == [
-        ("Breakage / returns / transport (% of COGS)", "4%", "5%")]
+        ("Breakage / returns / transport (% of product cost)", "4%", "5%")]
     with pytest.raises(ValueError):
         inputs.save_auto_rates({"auto_breakage_pct": 150})
 

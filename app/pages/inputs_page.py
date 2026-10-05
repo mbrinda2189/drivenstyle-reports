@@ -118,7 +118,7 @@ class InputsPage(ScrollPage):
         card.body.addWidget(label(
             "Added automatically in the reports (do not enter them here): "
             "Breakage / returns / transport and Compliance GST, as a "
-            "percentage of COGS (product cost + labour of the month). The "
+            "percentage of the month's product cost. The "
             "percentages are under Report settings.",
             "Muted", wrap=True))
 
@@ -165,9 +165,10 @@ class InputsPage(ScrollPage):
             "high-profit product sales report. Saved with the month's inputs.",
             "Muted", wrap=True))
 
-        # v0.8.2: the two automatic indirect costs, as % of COGS. One
+        # v0.8.2: the two automatic indirect costs, as % of product cost
+        # (v0.20.0; of product cost + labour before). One
         # setting for ALL months (not per month like the threshold above).
-        card.body.addWidget(label("Automatic indirect costs (% of COGS)",
+        card.body.addWidget(label("Automatic indirect costs (% of product cost)",
                                   "SectionTitle"))
         self.auto_spins: dict[str, QDoubleSpinBox] = {}
         for key, head, _, _ in AUTO_HEADS:

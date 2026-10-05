@@ -101,7 +101,7 @@ ROWS = (  # (label, key or function of the figures, number format, bold)
     ("Spot incentive payable", "incentive", MONEY, False),
     ("Internal team incentive", "internal", MONEY, False),
     ("Cars delivered (delivery list)", "cars", COUNT, False),
-    ("Cars that took DNS accessories", "took", COUNT, False),
+    ("Cars fitted with DNS accessories", "took", COUNT, False),
     ("DNS penetration %", lambda f: _ratio(f["took"], f["cars"])
      if f["cars"] else "", PCT, False),
 )

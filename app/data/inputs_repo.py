@@ -41,8 +41,8 @@ DEFAULT_THRESHOLD = 40.0
 
 # AUTOMATIC INDIRECT COSTS (v0.8.1, percentages editable from v0.8.2)
 # -------------------------------------------------------------------
-# Two indirect expenses are worked out from the month's COGS (product cost
-# + labour) instead of being typed in. (setting key, head, default % of
+# Two indirect expenses are worked out from the month's product cost
+# (v0.20.0; product cost + labour before) instead of being typed in. (setting key, head, default % of
 # COGS, word that marks the same head if typed on Monthly inputs.)
 # The percentages are ONE setting for all months (stored in
 # monthly_settings under the month "all"), because the client's rule is
@@ -183,7 +183,7 @@ class InputsRepo:
                     "VALUES (?, ?, ?)", (ALL_MONTHS, key, str(pct)))
                 self.masters._audit(
                     "inputs", None, "Report settings – all months", "Edited",
-                    f"{head} (% of COGS)", f"{old[key]:g}%", f"{pct:g}%",
+                    f"{head} (% of product cost)", f"{old[key]:g}%", f"{pct:g}%",
                     "Monthly inputs")
 
     # ------------------------------------------------------------------

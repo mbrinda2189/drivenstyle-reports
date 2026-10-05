@@ -75,6 +75,31 @@ from app.reports import packages as pk
 
 COUNTER_SALE = "Counter sale (no vehicle)"
 
+
+def segment_group(segment: str) -> str:
+    """
+    Segment as shown in "Vehicle-wise - By segment" (v0.20.0, Brinda,
+    05-10-2026): counter sales (no vehicle) and cars with no segment in the
+    Car master are counted in the one line "Others", together with the
+    invoices whose car was marked "Others" on Scan review.
+    """
+    return OTHERS if not segment or segment == COUNTER_SALE else segment
+
+
+# Labour calculation is shown as separate tables (v0.20.0): one for floor
+# mats, one for sunfilm. The table is picked from the item name; an item
+# with labour that is neither goes to "Other" so the total still agrees.
+LABOUR_GROUPS = ("Floor mat", "Sunfilm", "Other")
+
+
+def labour_group(product: str) -> str:
+    name = (product or "").lower()
+    if "sunfilm" in name or "sun film" in name:
+        return "Sunfilm"
+    if "floor mat" in name or "floormat" in name:
+        return "Floor mat"
+    return "Other"
+
 # AUTOMATIC INDIRECT COSTS (v0.8.1)
 # ---------------------------------
 # Brinda, 03-10-2026: every month two indirect expenses are not entered by
@@ -88,6 +113,10 @@ COUNTER_SALE = "Counter sale (no vehicle)"
 # twice.) These are the defaults; from v0.8.2 the percentages in force are
 # the ones set on Monthly inputs (inputs_repo.auto_rates), put on
 # MonthData.auto_rates by build_month.
+#
+# v0.20.0 (Brinda, 05-10-2026): the two percentages are taken on the PRODUCT
+# COST ONLY, not on product cost + labour - see MonthData.auto_base. This
+# again applies to every month when it is generated again.
 AUTO_INDIRECT = tuple((head, pct / 100, word) for _, head, pct, word in AUTO_HEADS)
 
 
@@ -286,10 +315,38 @@ class MonthData:
         return round(sum(i.cost + i.labour for i in self.invoices), 2)
 
     @property
+    def auto_base(self) -> float:
+        """
+        The amount the automatic indirect costs are a percentage of: the
+        month's PRODUCT COST only (v0.20.0; it was product cost + labour
+        before - Brinda, 05-10-2026).
+        """
+        return round(sum(i.cost for i in self.invoices), 2)
+
+    @property
     def auto_indirect(self) -> list[tuple[str, float, float]]:
-        """(head, share of COGS, amount) - see AUTO_INDIRECT."""
-        return [(head, pct, round(self.cogs * pct, 2))
+        """(head, share of product cost, amount) - see AUTO_INDIRECT."""
+        return [(head, pct, round(self.auto_base * pct, 2))
                 for head, pct, _ in self.auto_rates]
+
+    @property
+    def direct_incentives(self) -> list[tuple[str, float]]:
+        """
+        v0.20.0: the "Incentives" head typed on Monthly inputs is shown under
+        DIRECT costs in the Profit & loss and Indirect vs direct statements
+        (Brinda, 05-10-2026), so gross profit there is after incentives. Any
+        typed head with the word "incentive" counts. Net profit is the same
+        as before - the amount only moves from one block to the other.
+        NOTE: the other reports (branches, products, vehicles, summary) keep
+        gross profit = sales - product cost - labour, because the incentive
+        is one figure for the month and cannot be split by product or branch.
+        """
+        return [(h, a) for h, a in self.entered_indirect if "incentive" in h.lower()]
+
+    @property
+    def other_indirect(self) -> list[tuple[str, float]]:
+        """Typed indirect heads without the incentive head(s) above."""
+        return [(h, a) for h, a in self.entered_indirect if "incentive" not in h.lower()]
 
     @property
     def entered_indirect(self) -> list[tuple[str, float]]:

@@ -6,6 +6,32 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.0] – 2026-10-05 – Monthly reports: client's changes to P&L, labour and vehicle tables
+
+All of these are in both the Excel workbook and the PDF.
+
+### Changed
+- **Incentives are a direct cost.** The "Incentives" head typed on Monthly
+  inputs is now shown under Direct costs in Profit & loss and Indirect vs
+  direct, so Gross profit there is after incentives. Net profit is not
+  affected by this move. The other reports (branches, products, vehicles,
+  summary, trend) keep gross profit = sales − product cost − labour,
+  because the incentive is one figure for the month and cannot be split.
+- **Breakage / returns / transport (4%) and Compliance GST (3%) are now
+  worked out on the product cost only**, not on product cost + labour.
+  This applies to every month when it is generated again, and raises net
+  profit by 7% of the month's labour.
+- The words "(4% of COGS)" and "(3% of COGS)" are no longer printed beside
+  those two heads.
+- New-car business: "Cars that took DNS accessories" is now "Cars fitted
+  with DNS accessories".
+- **Labour calculation** is shown as separate tables – Floor mat and
+  Sunfilm, each with its total – followed by the total labour. The table
+  is picked from the item name; an item with labour that is neither goes
+  to a table "Other", so the total always agrees.
+- **Vehicle-wise, By segment:** "Counter sale (no vehicle)" and
+  "(no segment)" are counted in the one line "Others".
+
 ## [0.19.2] – 2026-10-05 – Monthly reports PDF: pages are filled properly
 
 ### Fixed (monthly reports PDF only; the Excel workbook is unchanged)

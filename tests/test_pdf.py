@@ -124,7 +124,7 @@ def test_pdf_version_layout(world):  # noqa: F811
     # New-car business: exactly the five lines asked for
     at = text.index("New-car business")
     assert text[at + 2:at + 8] == [
-        "Particulars", "Cars delivered", "Cars that took DNS accessories",
+        "Particulars", "Cars delivered", "Cars fitted with DNS accessories",
         "DNS penetration %", "DNS value as per list", "DNS value per car delivered"]
     # page set-up
     assert "&P" in ws.oddFooter.right.text and "Drive N Style" in ws.oddFooter.left.text

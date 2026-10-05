@@ -454,7 +454,7 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
         new_sales, other_sales = _sum(link.linked, "sales"), _sum(link.other, "sales")
         head("New-car business (delivery list)", "")
         put("Cars delivered", cars, fmt="0")
-        put("Cars that took DNS accessories", took, fmt="0")
+        put("Cars fitted with DNS accessories", took, fmt="0")
         put("DNS penetration %", _ratio(took, cars), fmt=PCT, bold=True)
         put("DNS value as per list", listed)
         put("DNS value per car delivered", round(listed / cars, 2) if cars else 0.0)

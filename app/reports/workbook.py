@@ -56,7 +56,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.data.payments_io import Payment
-from app.reports.data import MonthData
+from app.reports.data import LABOUR_GROUPS, MonthData, labour_group, segment_group
 
 FONT = "Arial"
 NAVY, SLATE, AMBER, AMBER_TINT = "0B2545", "5B6B82", "B7791F", "FBF1DE"
@@ -469,17 +469,34 @@ def labour_sheet(ws: Worksheet, d: MonthData) -> None:
                  "marked 'Labour involved'.",
                  f"The Rs. 1 labour marker lines on the invoices ({d.marker_lines} this month) "
                  "are not used: labour comes from the product."])
-    products = sorted({l.product for l in lines})
-    detail_head = row + len(products) + 5
+    # v0.20.0: one table per kind of work - floor mat, sunfilm (and "Other"
+    # only if some other item carries labour) - then the total of them all.
+    groups = [(g, sorted({l.product for l in lines if labour_group(l.product) == g}))
+              for g in LABOUR_GROUPS]
+    groups = [(g, ps) for g, ps in groups if ps] or [("Floor mat", [])]
+    # rows used: per table heading 1 + header 1 + lines + total 1 + gap 2;
+    # then the "Total labour" line and a gap before the detail table.
+    detail_head = row + sum(len(ps) + 5 for _, ps in groups) + 3
     first, last = detail_head + 1, detail_head + max(1, len(lines))
 
-    row = section(ws, row, "By product")
     sumif = lambda col: f"=SUMIF($D${first}:$D${last},$A{{r}},{col}${first}:{col}${last})"
-    table(ws, row, [
-        Col("Product / service", "product", width=40),
-        Col("Qty", "qty", "qty", 9, formula=sumif("$E"), total="sum"),
-        Col("Labour cost", "labour_total", "money", 14, formula=sumif("$G"), total="sum"),
-    ], [dict(product=p) for p in products])
+    totals = []
+    for g, ps in groups:
+        row = section(ws, row, g)
+        t = table(ws, row, [
+            Col("Product / service", "product", width=40),
+            Col("Qty", "qty", "qty", 9, formula=sumif("$E"), total="sum"),
+            Col("Labour cost", "labour_total", "money", 14, formula=sumif("$G"), total="sum"),
+        ], [dict(product=p) for p in ps])
+        if t["total"]:
+            totals.append(t["total"])
+        row = t["head"] + len(ps) + 4
+    ws.cell(row, 1, "Total labour").font = _font(True)
+    for col, fmt in (("B", "0"), ("C", MONEY)):
+        c = ws[f"{col}{row}"]
+        c.value = "=" + "+".join(f"{col}{r}" for r in totals) if totals else 0
+        c.font, c.number_format = _font(True), fmt
+        ws[f"A{row}"].border = c.border = Border(top=rule, bottom=rule)
 
     row = section(ws, detail_head - 1, "Every line with labour")
     table(ws, row, [
@@ -617,10 +634,11 @@ def vehicle_sheet(ws: Worksheet, d: MonthData) -> None:
     row = title(ws, "Vehicle-wise average per car", d.label,
                 ["Each invoice is one car. Car and segment come from the Car master.",
                  "Counter sales (items marked 'Vehicle needed = No', no car on the invoice) "
-                 "are shown as one row, 'Counter sale (no vehicle)'."])
+                 "are one row in 'By car model'. In 'By segment' they are counted under "
+                 "'Others', together with cars that have no segment."])
     cars: dict[str, dict] = {}
     for i in d.invoices:
-        c = cars.setdefault(i.car, dict(car=i.car, segment=i.segment, cars=0,
+        c = cars.setdefault(i.car, dict(car=i.car, segment=segment_group(i.segment), cars=0,
                                         sales=0.0, cost=0.0, labour=0.0))
         c["cars"] += 1
         c["sales"] += i.sales
@@ -630,9 +648,7 @@ def vehicle_sheet(ws: Worksheet, d: MonthData) -> None:
     for c in car_rows:
         for k in ("sales", "cost", "labour"):
             c[k] = round(c[k], 2)
-    segments = sorted({c["segment"] or "(no segment)" for c in car_rows})
-    for c in car_rows:
-        c["segment"] = c["segment"] or "(no segment)"
+    segments = sorted({c["segment"] for c in car_rows})
 
     avg = '=IF({cars}{r}=0,"",{sales}{r}/{cars}{r})'
     avg_gp = '=IF({cars}{r}=0,"",{gp}{r}/{cars}{r})'
@@ -873,16 +889,21 @@ def _statement(ws: Worksheet, row: int, d: MonthData, net: bool,
     ws.cell(row, 1, "Direct costs").font = _font(True, NAVY)
     c1 = put("Product cost", cost, indent=1)
     c2 = put("Labour", labour, indent=1)
-    direct = put("Total direct costs", f"=B{c1}+B{c2}", bold=True, top=True)
+    # v0.20.0: incentives typed on Monthly inputs are a direct cost here.
+    for h, a in d.direct_incentives:
+        c2 = put(h, a, indent=1)
+    direct = put("Total direct costs", f"=SUM(B{c1}:B{c2})", bold=True, top=True)
     gp = put("Gross profit", f"=B{sales_row}-B{direct}", bold=True) if net else None
     row += 1
     ws.cell(row, 1, "Indirect costs").font = _font(True, NAVY)
     # (label, value or formula, amount for sorting). v0.8.1: the automatic
     # heads are worked out from COGS (= total direct costs: product cost +
     # labour) - see AUTO_INDIRECT in reports/data.py.
-    heads = [(h, a, a) for h, a in d.entered_indirect] or \
+    # v0.20.0: they are a percentage of the PRODUCT COST only (row c1), and
+    # the percentage is no longer printed beside the head.
+    heads = [(h, a, a) for h, a in d.other_indirect] or \
         [("(none entered on Monthly inputs)", 0.0, 0.0)]
-    heads += [(f"{head} ({pct * 100:g}% of COGS)", f"=ROUND(B{direct}*{pct:.6g},2)", amount)
+    heads += [(head, f"=ROUND(B{c1}*{pct:.6g},2)", amount)
               for head, pct, amount in d.auto_indirect]
     if largest_first:
         heads.sort(key=lambda h: -h[2])
@@ -898,13 +919,13 @@ def _statement(ws: Worksheet, row: int, d: MonthData, net: bool,
 
 
 AUTO_NOTE = ("Breakage / returns / transport and Compliance GST are calculated automatically "
-             "as a percentage of COGS = product cost + labour (total direct costs). The "
-             "percentages are set on Monthly inputs.")
+             "as a percentage of the product cost. The percentages are set on Monthly "
+             "inputs. Incentives entered on Monthly inputs are shown under direct costs.")
 
 
 def cost_split_sheet(ws: Worksheet, d: MonthData, largest_first: bool = False) -> None:
     row = title(ws, "Indirect vs direct cost %", d.label,
-                ["Direct costs: product cost and labour on the month's invoices. "
+                ["Direct costs: product cost and labour on the month's invoices, and incentives. "
                  "Indirect costs: entered on Monthly inputs.",
                  AUTO_NOTE])
     if not d.has_inputs:

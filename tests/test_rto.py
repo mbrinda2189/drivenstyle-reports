@@ -114,7 +114,7 @@ def test_workbook_with_and_without_the_list(world):
                              "17 Consultant scorecard", "Not included"]
     summary = {row[0]: row[1] for row in wb["Summary"].iter_rows(values_only=True) if row[0]}
     assert summary["Cars delivered"] == 4
-    assert summary["Cars that took DNS accessories"] == 3
+    assert summary["Cars fitted with DNS accessories"] == 3
     assert summary["DNS penetration %"] == 0.75
     missed = [row[1] for row in wb["14 Missed opportunity"].iter_rows(values_only=True)]
     assert "MONIKA" in missed and "LATHA" not in missed

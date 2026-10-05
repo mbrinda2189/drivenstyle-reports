@@ -91,7 +91,8 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from app.data.payments_io import Payment
 from app.reports import rto_reports as rr
-from app.reports.data import MonthData, round_up_10
+from app.reports.data import (
+    LABOUR_GROUPS, MonthData, labour_group, round_up_10, segment_group)
 from openpyxl.styles import PatternFill
 
 from app.reports.workbook import (
@@ -181,12 +182,29 @@ def _labour(ws, d):
             g["qty"] += l.qty
             g["labour"] = round(g["labour"] + l.labour, 2)
     rows = sorted(groups.values(), key=lambda g: -g["labour"])
-    row = section(ws, row, "By product")
-    t = table(ws, row, [
+    # v0.20.0: a table for floor mats, one for sunfilm (and "Other" only if
+    # needed), each with its total, then the total labour of the month.
+    cols = [
         Col("Product / service", "product", width=52),
         Col("Qty", "qty", "qty", 10, total="sum"),
         Col("Labour cost", "labour", "money", 16, total="sum"),
-    ], rows, empty_text="No labour this month.")
+    ]
+    shown = [(g, [r for r in rows if labour_group(r["product"]) == g]) for g in LABOUR_GROUPS]
+    shown = [(g, rs) for g, rs in shown if rs]
+    t = {"next": row}
+    if not shown:
+        t = table(ws, row, cols, [], empty_text="No labour this month.")
+    for g, rs in shown:
+        row = section(ws, t["next"], g)
+        t = table(ws, row, cols, rs)
+    if shown:
+        row = section(ws, t["next"], "Total labour")
+        t = table(ws, row, [
+            Col("", "name", width=52),
+            Col("Qty", "qty", "qty", 10, total="sum"),
+            Col("Labour cost", "labour", "money", 16, total="sum"),
+        ], [dict(name=g, qty=sum(r["qty"] for r in rs),
+                 labour=round(sum(r["labour"] for r in rs), 2)) for g, rs in shown])
     p = Page(ws, t["next"])
     p.finish()
 
@@ -196,8 +214,9 @@ def _vehicle(ws, d):
                 ["Each invoice is one car. Segment comes from the Car master."])
     groups: dict[str, dict] = {}
     for i in d.invoices:
-        g = groups.setdefault(i.segment or "(no segment)", dict(
-            segment=i.segment or "(no segment)", cars=0, sales=0.0, cost=0.0, labour=0.0))
+        seg = segment_group(i.segment)      # v0.20.0: counter sale / no segment = Others
+        g = groups.setdefault(seg, dict(
+            segment=seg, cars=0, sales=0.0, cost=0.0, labour=0.0))
         g["cars"] += 1
         for k in ("sales", "cost", "labour"):
             g[k] = round(g[k] + getattr(i, k), 2)
@@ -412,7 +431,7 @@ def _new_car(ws, d, link):
         ws.column_dimensions[get_column_letter(c)].width = width
     for label, value, fmt in (
             ("Cars delivered", cars, "0"),
-            ("Cars that took DNS accessories", took, "0"),
+            ("Cars fitted with DNS accessories", took, "0"),
             ("DNS penetration %", took / cars if cars else "", PCT),
             ("DNS value as per list", listed, MONEY),
             ("DNS value per car delivered", round(listed / cars, 2) if cars else 0.0, MONEY)):
