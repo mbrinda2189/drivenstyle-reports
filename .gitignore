@@ -26,3 +26,7 @@ Thumbs.db
 
 # Test runner cache
 .pytest_cache/
+
+# Google sign-in files of the payout app - never commit
+client_secret*.json
+google_token.json

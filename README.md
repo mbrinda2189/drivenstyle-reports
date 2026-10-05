@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.13.0 – PDF reader brought up to date for the daily payout app (item notes, Branch line, invoices with GST on some lines, amount billed per line); earlier: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
+> **Current status: v0.14.0 – daily payout app started: the masters as a Google Sheet, checked on every read (`payout_app/`); earlier: v0.13.0 – PDF reader brought up to date for the daily payout app (item notes, Branch line, invoices with GST on some lines, amount billed per line); earlier: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -321,6 +321,51 @@ and Save. Changes are logged in the audit log.
 (same reports, folder and payments export; uses the current masters, fixes
 and inputs).
 
+## Daily payout app (`payout_app/`) – being built
+
+A separate small app for the client's staff, in this same repository so it
+shares the invoice reader, the matching and the incentive rules with the
+monthly tool. Each day it will read the new invoice PDFs from a folder,
+work out labour and spot incentive, and post them to a Google Sheet where
+the staff record each payment with proof. Built so far (v0.14.0):
+
+**The masters as a Google Sheet.** The client edits the masters directly in
+the sheet "Drive N Style Masters" (owner: automation.drivenstyle@gmail.com);
+staff can only view it.
+
+| Tab | Columns |
+|---|---|
+| Products | SKU, Product name, HSN/SAC, Category, Incentive group, Selling price, Cost price, Labour involved, Labour charge, Internal incentive, Vehicle needed, Effective from, Active |
+| Sales executives | Name, Contact no, Branch, Gets incentive, Active |
+| Cars | Make, Model, Segment, Active |
+| Incentives | Product / Service, Incentive amount, Bill value, Effective from, Active |
+| Packages | Package, Package item, Zoho item name, Active |
+| Settings | Setting, Value |
+
+*Changing a price, labour charge or incentive:* do not type over the old
+amount. Add a new row with the same name and the date the new amount
+applies from in "Effective from". Invoices dated earlier keep the old amount.
+
+*Checks:* every time the app reads the sheet it checks all of it (the same
+rules as the Masters screen, plus that every amount, Yes/No and date can be
+read). Problems are listed with tab and row number, and nothing from the
+sheet is used until they are fixed. If there is no internet, the last good
+copy is used and the app says so.
+
+```powershell
+pip install -r requirements.txt                 # once (Google libraries)
+python -m payout_app.masters_cli preview        # check this PC's masters, no Google
+python -m payout_app.masters_cli create         # make the sheet (sign in as the owner account)
+python -m payout_app.masters_cli check          # read the sheet and check it
+python -m payout_app.masters_cli use <link>     # on another PC: use the existing sheet
+```
+
+The app's Google key file (`client_secret_....json`) is looked for in
+`%LOCALAPPDATA%\Drive N Style Reports` and in the project's `data` folder;
+the sign-in is saved as `google_token.json` in the first. Neither is ever
+committed. After `create`, share the sheet in Google Sheets: client =
+Editor, staff = Viewer.
+
 ## Where the data is kept
 
 The masters are stored in one SQLite file, created on first run:
@@ -430,6 +475,11 @@ drivenstyle-reports/
         ├── masters_page.py
         ├── inputs_page.py
         └── history_page.py
+payout_app/                Daily payout app (separate app, same rules)
+    ├── masters_sheet.py   Masters sheet: layout, write, read + every check
+    ├── google_api.py      Google sign-in and the Sheets calls
+    ├── settings.py        Which sheet this PC uses
+    └── masters_cli.py     create / check / use / preview commands
 ```
 
 ## Look and feel

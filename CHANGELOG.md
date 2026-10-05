@@ -6,6 +6,46 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.0] – 2026-10-05 – Payout app, step 2: the masters as a Google Sheet
+
+First part of the separate **daily payout app** (`payout_app/`). The
+monthly reports tool is **unchanged** and keeps its own masters for now.
+
+### Added
+- **`payout_app/` package** in this repository. It imports the invoice
+  reader, the matching rules and the incentive calculation from `app/data`
+  and `app/reports`, so both apps always use the same rules.
+- **Masters Google Sheet "Drive N Style Masters"**: one tab per master
+  (Products, Sales executives, Cars, Incentives, Packages) plus Settings.
+  A rate change is a NEW ROW with the same name and a later "Effective
+  from" date, so an invoice already calculated never changes. Yes/No and
+  Category cells are drop-downs; headings are frozen.
+- **Validate on read**: every read of the sheet runs the monthly tool's own
+  master checks (duplicates, 10-digit mobiles, unknown incentive group,
+  package item not in Products, required cells, negative amounts) and
+  checks every amount, Yes/No and date cell. Each problem names its tab
+  and row. If there is any problem, nothing from the sheet is used.
+- **Last good copy**: a successful read is kept on the PC and used, with a
+  note, only when the sheet cannot be reached.
+- **Commands** (until the app has screens):
+  `python -m payout_app.masters_cli create | check | use <link> | preview`.
+- **Google sign-in** in the browser, once per PC (`payout_app/google_api.py`).
+- `MastersRepo.find_id` (small helper used when loading the sheet).
+
+### Changed
+- `requirements.txt`: `google-api-python-client`, `google-auth-oauthlib`.
+  Run `pip install -r requirements.txt` once.
+
+### Pending
+- The Google calls were written and tested from Linux against a stand-in
+  and against Google's own request builder, but **not yet run with a real
+  sign-in** - the first real run is `create` on Brinda's PC.
+- The Google project is in "Testing": sign-in is asked again every 7 days
+  until it is published (needs a homepage and privacy policy link) or the
+  app is moved to a service account. To decide before go-live.
+- Monthly tool to read the same sheet (later version); Zoho item import to
+  write into the sheet.
+
 ## [0.13.0] – 2026-10-05 – PDF reader brought up to date (for the daily payout app)
 
 The monthly reports read Zoho's export and are **unchanged**. This version

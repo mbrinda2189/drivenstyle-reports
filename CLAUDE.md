@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.13.0** (tags v0.1.0 … v0.13.0 on GitHub
+Current version: **v0.14.0** (tags v0.1.0 … v0.14.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -120,8 +120,21 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   (ignored - never commit). No approval step, no technician, labour one
   line per invoice, NO daily rounding of incentive (month-end only).
   Step 1 done in v0.13.0: PDF reader updated (`InvoiceLine.note`, Branch,
-  mixed-GST totals check, `invoices_repo.billed_lines`). Next: masters
-  sheet + validate-on-read, then Scan / Review / posting.
+  mixed-GST totals check, `invoices_repo.billed_lines`).
+  Step 2 done in v0.14.0: `payout_app/` (no `core/` folder - `app/data`
+  and `app/reports` ARE the shared rules and are imported from there;
+  agreed 05-10-2026). `masters_sheet.py` = sheet layout, `to_tabs`,
+  `load_tabs` (loads the rows into an in-memory database through
+  MastersRepo.save, so the monthly tool's checks apply), `refresh` with
+  last good copy; `google_api.py` = OAuth sign-in + Sheets calls;
+  `masters_cli.py` = create / check / use / preview. Dated rows: a new row
+  per rate change with "Effective from". The monthly tool still uses its
+  own database masters (switch later). Google calls NOT yet run with a
+  real sign-in - first real run is Brinda's `create`. Google project is in
+  Testing (7-day sign-in); publish vs service account still open.
+  Next: step 3 - Scan the PDF folder, Review, post to the payout register.
+  In the Cowork VM git cannot delete files: set GIT_OPTIONAL_LOCKS=0 and
+  rename a leftover `.git/*.lock` out of the way (`*.stale`).
 
 - **Sales** = each line after its share of the invoice-level discount,
   **excluding GST**. Invoices showing no GST count in full as sales.

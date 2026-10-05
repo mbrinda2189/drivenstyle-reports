@@ -411,6 +411,14 @@ class MastersRepo:
             (key,)).fetchone()
         return row["id"] if row else None
 
+    def find_id(self, master: str, values: dict) -> int | None:
+        """
+        Database id of the row these values belong to (found by the master's
+        unique key: product name, contact number, make + model ...), or None.
+        Used by the payout app when it loads the masters sheet (v0.14.0).
+        """
+        return self._find_id(master, self.key_of(master, values))
+
     def _incentive_id(self, name: str) -> int | None:
         return self._find_id("incentives", name_key(name)) if name else None
 
