@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.17.1 – payout app Set-up can clear the register (with a backup) and remove duplicate sheets, for a clean start; earlier: v0.17.0 – daily payout app: Payouts screen (record payments with reference and proof, hold / reopen, payout slip) and History; earlier: v0.16.0 – daily payout app has its own window (`python -m payout_app`): Set-up, Scan and Review screens; earlier: v0.15.0 – daily payout app: invoice PDFs are calculated and posted to the payout register Google Sheet (commands; screens next); earlier: v0.14.0 – daily payout app started: the masters as a Google Sheet, checked on every read (`payout_app/`); earlier: v0.13.0 – PDF reader brought up to date for the daily payout app (item notes, Branch line, invoices with GST on some lines, amount billed per line); earlier: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
+> **Current status: v0.18.0 – the payout app can be built into a program for the staff PCs (`python scripts\build_payout_app.py`), with a staff guide; earlier: v0.17.1 – payout app Set-up can clear the register (with a backup) and remove duplicate sheets, for a clean start; earlier: v0.17.0 – daily payout app: Payouts screen (record payments with reference and proof, hold / reopen, payout slip) and History; earlier: v0.16.0 – daily payout app has its own window (`python -m payout_app`): Set-up, Scan and Review screens; earlier: v0.15.0 – daily payout app: invoice PDFs are calculated and posted to the payout register Google Sheet (commands; screens next); earlier: v0.14.0 – daily payout app started: the masters as a Google Sheet, checked on every read (`payout_app/`); earlier: v0.13.0 – PDF reader brought up to date for the daily payout app (item notes, Branch line, invoices with GST on some lines, amount billed per line); earlier: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -433,6 +433,31 @@ the sign-in is saved as `google_token.json` in the first. Neither is ever
 committed. After `create`, share the sheet in Google Sheets: client =
 Editor, staff = Viewer.
 
+### Building the program for the staff PCs (v0.18.0)
+
+On the development PC (Windows), inside the virtual environment:
+
+```powershell
+pip install -r requirements-dev.txt        # once - brings PyInstaller
+python scripts\build_payout_app.py
+```
+
+The script copies the Google key and this PC's sheet links into the build,
+builds `dist\Drive N Style Payouts\` (the .exe, "Staff guide.pdf" and an
+`_internal` folder), lets the built program check itself, and zips the
+folder. If the check prints a FAIL, do not give the build out.
+
+On a staff PC (Windows 10, nothing else to install): unzip, make a desktop
+shortcut to `Drive N Style Payouts.exe`, start it ("Windows protected your
+PC" → More info → Run anyway, once), then Set-up → Sign in and choose the
+invoice folder. To update, replace the folder; sign-in and settings are
+kept. Staff sign in to Google again once a week. An unexpected error is
+saved in `%LOCALAPPDATA%\Drive N Style Reports\payout_app_errors.log`.
+
+*Changing the masters* needs no new build: the client edits the masters
+Google Sheet (new executive = a new row; new amount = a new row with an
+"Effective from" date) and every PC uses it from the next scan.
+
 ## Where the data is kept
 
 The masters are stored in one SQLite file, created on first run:
@@ -551,7 +576,8 @@ payout_app/                Daily payout app (separate app, same rules)
     ├── register.py        Payout register: layout, posting rules, hand-edit check
     ├── payout_cli.py      create-register / scan / status commands
     ├── service.py         The app's actions (scan, save match, cancel invoice)
-    ├── __main__.py        Starts the window:  python -m payout_app
+    ├── __main__.py        Starts the window:  python -m payout_app  (+ self-check, error log)
+    ├── assets/            App icon
     ├── slip.py            Payout slip: to pay / paid on a day
     └── ui/                Screens: main_window, setup_page, scan_page,
                            review_page, payouts_page, history_page, tables,

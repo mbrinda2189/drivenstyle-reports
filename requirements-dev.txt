@@ -2,3 +2,4 @@
 # Install with:  pip install -r requirements-dev.txt
 -r requirements.txt
 pytest>=8           # Automated tests:  python -m pytest
+pyinstaller>=6.0    # Builds the payout app for the staff PCs: python scripts\build_payout_app.py

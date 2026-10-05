@@ -6,6 +6,44 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.0] – 2026-10-05 – Payout app: the program for the staff PCs
+
+### Added
+- **Build script** `python scripts\build_payout_app.py` (on Brinda's
+  Windows PC): makes `dist\Drive N Style Payouts\` with
+  `Drive N Style Payouts.exe`, and the same folder zipped. A staff PC
+  (Windows 10) needs nothing else installed. A folder, not one big .exe:
+  it starts in a second or two and raises fewer antivirus false alarms.
+- **Travels inside the program**: the app's Google key file and the links
+  of the masters sheet and the payout register (taken from the build PC's
+  settings), so staff only sign in and choose the invoice folder. The
+  links are defaults - a PC's own setting wins. The key is still never
+  committed to Git.
+- **The built program checks itself** (`--check`): opens the app unseen,
+  finds the theme pictures and the Google key, loads Google's libraries
+  for Sheets and Drive, writes and reads back a test PDF, and confirms
+  the sheet links are built in. The build script runs it and refuses to
+  zip a build that fails.
+- **Staff guide** (`docs/payout_app_staff_guide.md`), put into the program
+  folder as "Staff guide.pdf": first time on a PC, every day, rules,
+  weekly sign-in, what to do when something goes wrong.
+- **Error log**: an unexpected error is saved to
+  `payout_app_errors.log` in the PC's data folder and a message box says
+  where - the installed program has no command window to show it.
+- App icon (window and .exe); `payout_main.py` as the build's entry point.
+
+### Changed
+- `requirements-dev.txt`: `pyinstaller`.
+
+### Pending
+- The build was tried on Linux only (it built, and the built program
+  passed its self-check). **The first Windows build is Brinda's.**
+- The program is not signed, so Windows shows "Windows protected your PC"
+  once per PC (More info → Run anyway).
+- Google sign-in is asked again every 7 days (Brinda, 05-10-2026: accepted
+  for now; publishing the Google project later removes it without a new
+  build).
+
 ## [0.17.1] – 2026-10-05 – Payout app: a clean start for the Google Sheets
 
 Brinda asked for the trial data and extra sheets to be cleaned up before

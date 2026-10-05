@@ -39,6 +39,8 @@ Google needs two files:
        person. It is looked for in this order:
            * the path in the environment variable DNS_GOOGLE_CLIENT_SECRET
            * the app's data folder (%LOCALAPPDATA%\\Drive N Style Reports)
+           * inside the installed app (v0.18.0: the build puts it there, so
+             a staff PC needs nothing copied by hand)
            * the project's "data" folder (development)
        It must never be committed to Git (/data/ is ignored).
     2. The person's sign-in - created the first time: the browser opens,
@@ -123,9 +125,10 @@ def find_client_secret() -> Path:
             return Path(given)
         raise GoogleError(f"DNS_GOOGLE_CLIENT_SECRET points to “{given}”, "
                           "which is not a file.")
+    from payout_app.settings import bundle_dir
     project_data = Path(__file__).resolve().parent.parent / "data"
-    for folder in (data_dir(), project_data):
-        hits = sorted(folder.glob(SECRET_PATTERN)) if folder.is_dir() else []
+    for folder in (data_dir(), bundle_dir(), project_data):
+        hits = sorted(folder.glob(SECRET_PATTERN)) if folder and folder.is_dir() else []
         if hits:
             return hits[0]
     raise GoogleError(

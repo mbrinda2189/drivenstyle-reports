@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.17.1** (tags v0.1.0 … v0.17.1 on GitHub
+Current version: **v0.18.0** (tags v0.1.0 … v0.18.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -169,6 +169,18 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   the installer): service.clear_register (backup copy first, type CLEAR,
   owner only; clears Payouts / Invoices / Log, keeps Matches + Setup),
   find_duplicates / trash_duplicates (Drive trash, never a sheet in use).
+  v0.18.0: `scripts/build_payout_app.py` (PyInstaller one-folder build
+  from `payout_main.py`; bundles Google key + sheet-link defaults into
+  `payout_bundle`, prunes Google's unused discovery documents, excludes
+  pandas / numpy / scipy ..., writes "Staff guide.pdf" from
+  docs/payout_app_staff_guide.md, runs the built exe with `--check`,
+  zips). settings.load() = bundled defaults under the PC's own settings;
+  google_api.find_client_secret also looks in the bundle. Unexpected
+  errors -> payout_app_errors.log. Built and self-checked on Linux only;
+  the first Windows build is Brinda's. Staff PCs: Windows 10. Weekly
+  Google sign-in accepted for now (Brinda, 05-10-2026).
+  Masters changes (new executive, new amount) are made by the client in
+  the masters Google Sheet - no rebuild.
   Next: installer (PyInstaller) for the staff PCs; first real runs on
   Brinda's PC of register / Drive calls; publish Google app vs service
   account. Cowork note: Qt tests run only in the cloud workspace - stage
