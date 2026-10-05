@@ -6,6 +6,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.2] – 2026-10-05 – Monthly reports PDF: pages are filled properly
+
+### Fixed (monthly reports PDF only; the Excel workbook is unchanged)
+- Pages ended too early, so a small table could sit alone on a page while
+  the page before it was half empty (for example "By account deposited to"
+  on a page of its own after "Payment mode analysis – By mode"). The tool
+  guessed about 32 lines to a page; a page really holds about 40. The PDF
+  is now printed at a fixed size worked out from the column widths, so the
+  tool knows exactly how much fits and starts a new page only when the next
+  heading-and-table truly does not fit. The PDF has fewer pages.
+- The rule from v0.19.1 still holds: a heading is never separated from its
+  table.
+
 ## [0.19.1] – 2026-10-05 – Monthly reports PDF: a heading stays with its table
 
 ### Fixed (monthly reports PDF only)

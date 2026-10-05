@@ -128,7 +128,9 @@ def test_pdf_version_layout(world):  # noqa: F811
         "DNS penetration %", "DNS value as per list", "DNS value per car delivered"]
     # page set-up
     assert "&P" in ws.oddFooter.right.text and "Drive N Style" in ws.oddFooter.left.text
-    assert ws.page_setup.fitToWidth == 1 and ws.page_setup.fitToHeight == 0
+    # v0.19.2: a fixed print size (not "fit to width"), so page ends are exact
+    assert not ws.sheet_properties.pageSetUpPr.fitToPage
+    assert 80 <= int(ws.page_setup.scale) <= 90
     assert ws.max_column <= 8
     assert all((ws.column_dimensions[c].width or 0) <= OTHER_COL for c in "BCDEFGH")
     # formulas moved with their tables (also past the removed description rows):
@@ -155,7 +157,8 @@ def test_pdf_version_layout(world):  # noqa: F811
 
     # pieces that must stay together: heading + table; a sub-heading straight after
     # the section heading stays with it
-    from app.reports.pdf_book import PAGE_POINTS, PAGE_USE, _blocks, _page_breaks
+    from app.reports.pdf_book import PAGE_POINTS, PAGE_USE, _blocks, _page_breaks, \
+        print_scale
     oe = next(c.row for row in ws.iter_rows(max_col=1) for c in row
               if c.value == "OE accessories")
     end = next(c.row for row in ws.iter_rows(max_col=1) for c in row
@@ -164,11 +167,25 @@ def test_pdf_version_layout(world):  # noqa: F811
     assert len(pieces) == 2 and pieces[0][0] == oe
     assert ws.cell(pieces[1][0], 1).value == "By model - OE accessories"
     # a piece that does not fit the rest of the page starts the next page
+    scale = print_scale(ws)
+    assert scale == int(ws.page_setup.scale) and 84 <= scale <= 88
+    # a page holds about 40 rows at that size (it was wrongly taken as 32)
+    rows_per_page = int(PAGE_POINTS / (scale / 100) * PAGE_USE // 15)
+    assert 38 <= rows_per_page <= 42
     sheet = openpyxl.Workbook().active
-    rows_per_page = int(PAGE_POINTS * PAGE_USE // 15)
-    second_end = 23 + rows_per_page - 15            # fills most of the second page
-    _page_breaks(sheet, [(1, 20), (23, second_end), (second_end + 3, second_end + 5)])
-    assert [b.id for b in sheet.row_breaks.brk] == [22]     # only before the second piece
+    # a piece that does not fit the rest of the page starts the next page ...
+    _page_breaks(sheet, [(1, 20), (23, 23 + rows_per_page - 15), (60, 62)], scale)
+    assert [b.id for b in sheet.row_breaks.brk][:1] == [22]
+    # ... two short pieces after a full page share the next page (v0.19.2: "By
+    # account deposited to" must not go to a page of its own) ...
+    sheet = openpyxl.Workbook().active
+    _page_breaks(sheet, [(1, rows_per_page), (rows_per_page + 3, rows_per_page + 17),
+                         (rows_per_page + 20, rows_per_page + 27)], scale)
+    assert [b.id for b in sheet.row_breaks.brk] == [rows_per_page + 2]
+    # ... and a table longer than a page is cut where the page is full
+    sheet = openpyxl.Workbook().active
+    _page_breaks(sheet, [(1, 5), (8, 8 + rows_per_page + 9)], scale)
+    assert [b.id for b in sheet.row_breaks.brk] == [7, 7 + rows_per_page]
 
     # without the delivery list the new-car sections are simply left out
     ws = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "p2.xlsx"))["Report"]

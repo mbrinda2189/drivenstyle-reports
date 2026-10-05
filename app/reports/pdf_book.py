@@ -45,8 +45,10 @@ LAYOUT (v0.10.3)
   under it do not fit in what is left of a page, they start the next page
   together (see _page_breaks). Otherwise sections simply follow on; only a
   table longer than a whole page continues across pages.
-* PRINT SIZE: A4 landscape, fitted to the page WIDTH only (never squeezed
-  to one page high). No table is wider than eight columns and column
+* PRINT SIZE: landscape at a FIXED size worked out from the column widths
+  (about 86% - 10 pt text prints at roughly 8.6 pt), not Excel's "fit to
+  width": with a fixed size the tool knows exactly how many rows a page
+  holds (v0.19.2, see PAGE SIZE and _page_breaks). No table is wider than eight columns and column
   widths are capped (FIRST_COL / OTHER_COL), so the sheet is about as wide
   as the page and the 10 pt text prints at (or very near) 10 pt. For this
   the New-car penetration table, 11 columns in Excel, is shown here as two
@@ -105,9 +107,21 @@ GP = "={sales}{r}-{cost}{r}-{labour}{r}"
 FIRST_COL, OTHER_COL = 42, 14.5     # widest a column may be on the report sheet
 GAP_ROWS = 2                        # blank rows between two sections
 MARGINS_CM = dict(left=1.0, right=1.0, top=1.0, bottom=1.6)
-# A4 landscape is 21 cm high; what is left between the margins, in points
-PAGE_POINTS = (21.0 - MARGINS_CM["top"] - MARGINS_CM["bottom"]) / 2.54 * 72
-PAGE_USE = 0.94                     # assume a slightly shorter page (see _page_breaks)
+# PAGE SIZE. The sheet asks for A4, but Excel prints on the paper of the
+# PC's default printer: Brinda's PDF of 05-10-2026 came out on US Letter.
+# Letter is the narrower of the two (792 points across, landscape) and A4
+# the shorter (595.3 points high), so the tool allows for the worse of each:
+# the columns are sized to fit Letter and the rows are counted for A4.
+PAPER_WIDTH = 792.0
+PAPER_HEIGHT = 595.3
+PAGE_POINTS = PAPER_HEIGHT - (MARGINS_CM["top"] + MARGINS_CM["bottom"]) / 2.54 * 72
+PAGE_USE = 0.985                    # a whisker short, for rounding in Excel
+# Excel prints columns about 6% wider than their on-screen pixels (measured
+# on that PDF: 832 points printed for 786 on screen), and the print size is
+# set two points below what just fits, so nothing spills onto a second page
+# across.
+EXCEL_WIDER = 832 / 786
+SCALE_SAFETY = 2
 
 
 class Page:
@@ -621,34 +635,59 @@ def _blocks(report: Worksheet, first: int, last: int) -> list[tuple[int, int]]:
     return [(a, b - 1) for a, b in zip(starts, starts[1:] + [last + 1])]
 
 
-def _page_breaks(report: Worksheet, blocks: list[tuple[int, int]]) -> None:
+def print_scale(report: Worksheet) -> int:
     """
-    v0.19.1 - a heading must never be left at the foot of a page with its
-    table on the next one. Excel cannot "keep a heading with its table", so
-    the tool decides where pages start: the pieces from _blocks are added to
-    the page one after another, and when the next piece does not fit in what
-    is left of the page, a page break is put BEFORE it - the heading moves
-    to the next page together with its table. The cost is some blank space
-    at the foot of such a page; that is preferred to a split.
+    The fixed print size (per cent) at which the sheet's columns fit across
+    the page - see PAGE SIZE in the module notes. The width Excel prints is
+    worked out from the column widths (pixels = width x 7 + 5, at 96 to the
+    inch) times EXCEL_WIDER, measured on Brinda's real PDF.
+    """
+    last_col = _used(report)[1]
+    pixels = sum(int((report.column_dimensions[get_column_letter(c)].width or 8.43) * 7 + 5)
+                 for c in range(1, last_col + 1))
+    width = pixels * 0.75 * EXCEL_WIDER
+    room = PAPER_WIDTH - (MARGINS_CM["left"] + MARGINS_CM["right"]) / 2.54 * 72
+    return max(50, min(100, int(room / width * 100) - SCALE_SAFETY)) if width else 100
 
-    The page height is taken a little short of the real one (PAGE_USE), and
-    at full size: the sheet is fitted to the page WIDTH, which can only make
-    it smaller, i.e. fit MORE rows than assumed - so the tool may break a
-    page slightly early but never too late. A piece taller than a whole
-    page (a very long table) starts on a fresh page and runs on.
+
+def _page_breaks(report: Worksheet, blocks: list[tuple[int, int]], scale: int) -> None:
     """
-    page = PAGE_POINTS * PAGE_USE
+    A heading must never be left at the foot of a page with its table on
+    the next one (v0.19.1). Excel cannot "keep a heading with its table", so
+    the tool decides where EVERY page starts: the pieces from _blocks are
+    laid on the page one after another, and when the next piece does not fit
+    in what is left, a page break is put before it - heading and table move
+    to the next page together.
+
+    v0.19.2: the page height is now exact instead of a cautious guess. The
+    print size is fixed (`scale`), so a page holds PAGE_POINTS / scale of
+    sheet height - about 40 rows, not the 32 assumed before. (The guess made
+    pages end early: "By account deposited to" went to a page of its own
+    although the page before it was half empty.) A table longer than a whole
+    page starts on a fresh page and is itself cut by the tool where the page
+    is full, so the count never drifts from what Excel prints.
+    """
+    page = PAGE_POINTS / (scale / 100) * PAGE_USE
     height = lambda r: report.row_dimensions[r].height or 15.0
     used = 0.0
+
+    def new_page(before_row: int) -> None:
+        nonlocal used
+        report.row_breaks.append(Break(id=before_row - 1))
+        used = 0.0
+
     for n, (first, last) in enumerate(blocks):
         need = sum(height(r) for r in range(first, last + 1))
         if used and used + need > page:
-            report.row_breaks.append(Break(id=first - 1))
-            used = 0.0
-        used += need
-        if used > page:                      # a table longer than a page
-            used %= page
-        if n + 1 < len(blocks):              # the blank rows before the next piece
+            new_page(first)
+        if need <= page:
+            used += need
+        else:                                    # longer than a page: cut it row by row
+            for r in range(first, last + 1):
+                if used and used + height(r) > page:
+                    new_page(r)
+                used += height(r)
+        if n + 1 < len(blocks):                  # the blank rows before the next piece
             used += sum(height(r) for r in range(last + 1, blocks[n + 1][0]))
 
 
@@ -686,18 +725,23 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
         row += rows + GAP_ROWS
         wb.remove(part)
 
-    _finish(report)                                # A4 landscape, fit to width
+    _finish(report)                                # A4 landscape
     report.print_title_rows = None
-    report.page_margins.left = report.page_margins.right = 1.0 / 2.54
-    report.page_margins.top = 1.0 / 2.54
-    report.page_margins.bottom = 1.6 / 2.54
+    for side, cm in MARGINS_CM.items():
+        setattr(report.page_margins, side, cm / 2.54)
+    # A FIXED print size instead of "fit to width" (v0.19.2): only then does
+    # the tool know how many rows a page holds - see _page_breaks.
+    scale = print_scale(report)
+    report.sheet_properties.pageSetUpPr.fitToPage = False
+    report.page_setup.fitToWidth = report.page_setup.fitToHeight = None
+    report.page_setup.scale = scale
     report.oddFooter.left.text = f"Drive N Style - {data.label}"
     report.oddFooter.center.text = ""
     report.oddFooter.right.text = "Page &P of &N"
     report.oddFooter.left.size = report.oddFooter.right.size = 9
     last_row, last_col = _used(report)
     report.print_area = f"A1:{get_column_letter(last_col)}{last_row}"
-    _page_breaks(report, blocks)
+    _page_breaks(report, blocks, scale)
     wb.calculation.fullCalcOnLoad = True
     path = Path(path)
     wb.save(path)
