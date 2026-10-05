@@ -12,6 +12,12 @@ WHAT IS SET HERE (once per PC)
     Masters sheet    the link of "Drive N Style Masters"
     Payout register  the link of "Drive N Style Payout Register". The
                      owner's PC can also create a new, empty register here.
+    Proofs folder    the ONE Google Drive folder the payment proofs are
+                     uploaded to. The owner creates it here once ("Create
+                     the proofs folder", signed in as the owner account) and
+                     shares it with the staff as Editor in Google Drive. It
+                     is noted in the register, so the other PCs find it by
+                     themselves - nothing to set there.
     Invoice folder   where the staff save the invoice PDFs
     Start date       optional: invoices dated earlier are left alone (the
                      register starts at go-live, with no back-posting)
@@ -37,7 +43,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox
 from app.pages.base import ScrollPage
 from app.theme import Colors
 from app.widgets.common import Card, PathPicker, button, label
-from payout_app import google_api, masters_sheet, register, settings
+from payout_app import google_api, masters_sheet, register, service, settings
 from payout_app.google_api import GoogleError
 from payout_app.masters_sheet import parse_sheet_date
 
@@ -91,6 +97,22 @@ class SetupPage(ScrollPage):
         card.body.addWidget(self.check_result)
         self.content.addWidget(card)
 
+        # --- proofs folder --------------------------------------------------------
+        card = Card()
+        card.body.addWidget(label("Payment proofs", "SectionTitle"))
+        self.proofs = label("One shared Google Drive folder holds every proof. The "
+                            "owner creates it once; “Save and check” shows whether "
+                            "this register has one.", "Muted", wrap=True)
+        self.proofs.setOpenExternalLinks(True)
+        card.body.addWidget(self.proofs)
+        row = QHBoxLayout()
+        self.proofs_button = button("Create the proofs folder", "Secondary")
+        self.proofs_button.clicked.connect(self._create_proofs_folder)
+        row.addWidget(self.proofs_button)
+        row.addStretch(1)
+        card.body.addLayout(row)
+        self.content.addWidget(card)
+
         # --- folder -------------------------------------------------------------
         card = Card()
         card.body.addWidget(label("Invoices", "SectionTitle"))
@@ -118,7 +140,7 @@ class SetupPage(ScrollPage):
 
     def _set_busy(self, busy: bool) -> None:
         for control in (self.sign_in_button, self.sign_out_button, self.check_button,
-                        self.create_button):
+                        self.create_button, self.proofs_button):
             control.setEnabled(not busy)
 
     # ------------------------------------------------------------------
@@ -180,6 +202,16 @@ class SetupPage(ScrollPage):
                                          f"no tab {', '.join(missing)}."))
                 else:
                     lines.append((True, f"Payout register “{title}” is fine."))
+                    folder = register.setup_value(
+                        client.read_tabs(register_id).get(register.SETUP),
+                        register.PROOFS_KEY)
+                    if folder:
+                        name = self.win.session.drive.folder_name(folder)
+                        lines.append((True, f"Proofs folder “{name}” can be opened."))
+                    else:
+                        lines.append((False, "No proofs folder yet - the owner creates "
+                                             "it below. Until then payments need a "
+                                             "reference."))
             except GoogleError as exc:
                 lines.append((False, f"Payout register: {exc}"))
             return lines
@@ -227,6 +259,29 @@ class SetupPage(ScrollPage):
             self.changed.emit()
 
         self.win.run("Creating the register…", work, done)
+
+    def _create_proofs_folder(self) -> None:
+        if not settings.get("register_sheet_id"):
+            self.win.toast("Set the payout register first.")
+            return
+        answer = QMessageBox.question(
+            self, "Create the proofs folder",
+            "The folder is made in the Google Drive of the account signed in on this "
+            "PC, which then OWNS every proof. Do this signed in as the owner account "
+            "(automation.drivenstyle@gmail.com).\n\nCreate it now?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return
+
+        def done(result) -> None:
+            name, url = result
+            self.proofs.setText(
+                f"Proofs folder: <a href='{escape(url)}'>{escape(name)}</a>. Share it "
+                "with the staff as Editor in Google Drive.")
+            self.changed.emit()
+
+        self.win.run("Creating the proofs folder…",
+                     lambda _p: service.create_proofs_folder(self.win.session), done)
 
     # ------------------------------------------------------------------
     def _folder_changed(self, path: str) -> None:

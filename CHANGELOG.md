@@ -6,6 +6,51 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.0] – 2026-10-05 – Payout app, step 4b: Payouts, proofs, payout slip, History
+
+### Added
+- **Payouts screen**: the register's lines with filters (status, type,
+  payee, search) and three tiles (waiting to be paid, on hold, paid
+  today). Tick the lines paid together and **Record payment…**: paid
+  date, mode, reference, proof file, remarks. One reference and one proof
+  can cover many lines.
+- **Rules**: a payment needs a **reference or a proof**; the paid date
+  cannot be in the future; only Pending / Hold lines can be paid, and if
+  one ticked line has meanwhile been paid or cancelled nothing at all is
+  recorded. Only the payment columns are written - never a calculated one.
+- **Proofs in one shared Google Drive folder** ("Drive N Style Payout
+  Proofs", Brinda's choice A). The owner creates it once from Set-up; it is
+  noted in the register's new **Setup** tab, so the other PCs find it by
+  themselves. A proof (picture or PDF, up to 10 MB) is uploaded under a
+  telling name, e.g. `2026-10-05_GPay_UTR123_Kumaran.jpg`, and its link is
+  written on every line it covers. "Open proof" shows it.
+- **Hold… / Release** (reason required to hold) and **Reopen…** (reason
+  required): a recorded payment is corrected by reopening it - the line is
+  Pending again and what it held stays in the Log.
+- **Payout slip…**: one block per payee with its invoices and total -
+  either everything waiting to be paid, or what was paid on a chosen day.
+  Shown on screen; "Save as PDF…" writes an A4 PDF.
+- **History screen**: the register's Log, newest first, with search.
+- Set-up: "Create the proofs folder"; "Save and check" also checks that
+  the proofs folder can be opened.
+
+### Fixed
+- **Crash now and then when a background step finished** (v0.16.0): the
+  worker object could be destroyed from two threads. The background
+  thread is now one object that lives, and is deleted, on the screen's
+  thread only. Found by running the screen tests repeatedly (3 crashes
+  in 6 runs before, none in 25 after).
+
+### Changed
+- The register has a new tab **Setup**. A register created with v0.15.0 /
+  v0.16.0 gets it automatically when the proofs folder is created.
+- Tests: the stand-ins for Google moved to `tests/fakes.py`.
+
+### Pending
+- The Drive calls (create folder, upload) have not yet been run with a
+  real sign-in - the first real upload is Brinda's.
+- Installer for the staff PCs; publish the Google app vs service account.
+
 ## [0.16.0] – 2026-10-05 – Payout app, step 4a: the app window (Scan, Review, Set-up)
 
 The daily payout app now has its own window: `python -m payout_app`.

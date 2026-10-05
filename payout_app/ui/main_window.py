@@ -7,9 +7,15 @@ WHAT THIS MODULE DOES
 Builds the window - the navy sidebar on the left, the pages on the right -
 and connects the pages:
 
-    Scan     the daily run and its result
-    Review   names that hold invoices up; fixing one scans again
-    Set-up   Google sign-in, the two sheets, the invoice folder
+    Scan      the daily run and its result
+    Review    names that hold invoices up; fixing one scans again
+    Payouts   recording payments with reference and proof; payout slip
+    History   everything the app has done (the register's Log)
+    Set-up    Google sign-in, the two sheets, proofs folder, invoice folder
+
+Payouts and History show a copy of the register. Whenever the register
+has changed - a scan, a payment, a cancelled invoice - both are marked
+stale and read it again when next shown.
 
 HOW SLOW WORK IS RUN
 --------------------
@@ -39,12 +45,14 @@ from app.widgets.common import Toast
 from app.widgets.sidebar import Sidebar
 from payout_app import service, settings
 from payout_app.ui import workers
+from payout_app.ui.history_page import HistoryPage
+from payout_app.ui.payouts_page import PayoutsPage
 from payout_app.ui.review_page import ReviewPage
 from payout_app.ui.scan_page import ScanPage
 from payout_app.ui.setup_page import SetupPage
 
 APP_NAME = "Drive N Style Payouts"
-PAGE_SCAN, PAGE_REVIEW, PAGE_SETUP = range(3)
+PAGE_SCAN, PAGE_REVIEW, PAGE_PAYOUTS, PAGE_HISTORY, PAGE_SETUP = range(5)
 
 
 class MainWindow(QMainWindow):
@@ -67,7 +75,8 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
 
-        self.sidebar = Sidebar(["Scan", "Review", "Set-up"], subtitle="Daily payouts")
+        self.sidebar = Sidebar(["Scan", "Review", "Payouts", "History", "Set-up"],
+                               subtitle="Daily payouts")
         lay.addWidget(self.sidebar)
 
         right = QVBoxLayout()
@@ -76,8 +85,11 @@ class MainWindow(QMainWindow):
         self.stack = AnimatedStack()
         self.scan_page = ScanPage(self)
         self.review_page = ReviewPage(self)
+        self.payouts_page = PayoutsPage(self)
+        self.history_page = HistoryPage(self)
         self.setup_page = SetupPage(self)
-        for page in (self.scan_page, self.review_page, self.setup_page):
+        for page in (self.scan_page, self.review_page, self.payouts_page,
+                     self.history_page, self.setup_page):
             self.stack.addWidget(page)
         right.addWidget(self.stack, 1)
         self.status = QLabel("")
@@ -93,6 +105,7 @@ class MainWindow(QMainWindow):
         self.scan_page.reviewRequested.connect(lambda: self.go_to(PAGE_REVIEW))
         self.review_page.rescanRequested.connect(self.scan_page.scan_again)
         self.setup_page.changed.connect(self.scan_page.refresh_folder)
+        self.setup_page.changed.connect(self.register_changed)
 
         if not (settings.get("masters_sheet_id") and settings.get("register_sheet_id")
                 and settings.get("invoice_folder")):
@@ -103,6 +116,12 @@ class MainWindow(QMainWindow):
         self.review_page.show_report(report)
         count = len(report.issues)
         self.sidebar.set_badge(PAGE_REVIEW, str(count) if count else "")
+        self.register_changed()
+
+    def register_changed(self) -> None:
+        """Payouts and History must read the register again."""
+        self.payouts_page._stale = True
+        self.history_page._stale = True
 
     @property
     def busy(self) -> bool:

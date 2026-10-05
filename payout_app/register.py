@@ -16,6 +16,9 @@ payout_cli.py sends those writes through google_api.py.
     plan(...)                  what one scan has to write (a `Plan`)
     matches_from(rows)         the saved matches for engine.calculate
     pending_by_payee(rows)     totals for the "status" command
+    payout_lines(rows)         the Payouts tab as a list of lines (v0.17.0)
+    payment_cells(...)         the cells written when a line is paid,
+                               reopened, held or released
 
 THE TABS
 --------
@@ -37,6 +40,21 @@ Matches   printed names matched to a master record (see engine.py)
               Kind | Printed on invoice | Master record | Added by | Added on
 Log       every change the app makes: When | Who | What | Record | Old | New
 Summary   pending and paid totals (formulas over Payouts)
+Setup     settings every PC shares: Key | Value. So far "Proofs folder" -
+          the Google Drive folder the payment proofs are uploaded to.
+
+RECORDING A PAYMENT (v0.17.0)
+-----------------------------
+Only the payment columns of a line are ever written when it is paid
+(Status ... Entered at, columns K to R) - never the calculated ones, so a
+payment can not disturb an amount. The rules (enforced in service.py):
+    * Paid needs a REFERENCE or a PROOF (Brinda, 05-10-2026);
+    * only a Pending or Hold line can be paid;
+    * a Paid line is changed by REOPENING it with a reason: its payment
+      cells are cleared, the line is Pending again, and what it held goes
+      to the Log. It is then recorded afresh. Nothing is overwritten
+      silently;
+    * Hold keeps a line out of the "to pay" list, with a reason.
 
 POSTING RULES (`plan`)
 ----------------------
@@ -93,6 +111,10 @@ from payout_app.masters_sheet import date_to_serial, parse_sheet_date
 
 SHEET_TITLE = "Drive N Style Payout Register"
 PAYOUTS, INVOICES, MATCHES, LOG, SUMMARY = "Payouts", "Invoices", "Matches", "Log", "Summary"
+SETUP = "Setup"
+SETUP_HEADERS = ["Key", "Value"]
+PROOFS_KEY = "Proofs folder"
+PROOFS_FOLDER_NAME = "Drive N Style Payout Proofs"
 
 PAYOUT_HEADERS = ["Line ID", "Invoice no", "Invoice date", "Customer", "Car", "Type",
                   "Payee", "Amount", "Working", "Calculated on",
@@ -122,6 +144,7 @@ def new_register_tabs() -> dict[str, list[list]]:
     """Tabs and headings of a new register (Summary is filled separately)."""
     return {PAYOUTS: [list(PAYOUT_HEADERS)], INVOICES: [list(INVOICE_HEADERS)],
             MATCHES: [list(MATCH_HEADERS)], LOG: [list(LOG_HEADERS)],
+            SETUP: [list(SETUP_HEADERS), [PROOFS_KEY, ""]],
             # 12 columns, so the Summary's tables have room to spread out
             SUMMARY: [["Summary"] + [""] * 11]}
 
@@ -507,3 +530,71 @@ def pending_by_payee(payout_rows: list[list]) -> list[tuple[str, str, float, flo
     return [(t, p, round(v[0], 2), round(v[1], 2))
             for (t, p), v in sorted(totals.items(),
                                     key=lambda kv: (order.get(kv[0][0], 9), kv[0][1].lower()))]
+
+
+# ---------------------------------------------------------------------------
+# Payments (v0.17.0)
+# ---------------------------------------------------------------------------
+PAYMENT_FIRST, PAYMENT_LAST = P["Status"], P["Entered at"]
+PAYMENT_COLUMN = "K"                      # column letter of "Status"
+assert PAYMENT_FIRST == 10                # K is the 11th column
+
+
+def payout_lines(payout_rows: list[list]) -> list[dict]:
+    """
+    The Payouts tab as dicts, one per line, in sheet order. `row` is the
+    sheet row number; dates are `date` objects (None if blank / unreadable).
+    """
+    def day(value):
+        try:
+            return parse_sheet_date(value)
+        except Exception:
+            return None
+
+    out = []
+    for n, r in enumerate(payout_rows[1:], start=2):
+        if not _s(_cell(r, P["Line ID"])):
+            continue
+        out.append(dict(
+            row=n, line_id=_s(_cell(r, P["Line ID"])),
+            invoice_no=_s(_cell(r, P["Invoice no"])),
+            invoice_date=day(_cell(r, P["Invoice date"])),
+            customer=_s(_cell(r, P["Customer"])), car=_s(_cell(r, P["Car"])),
+            type=_s(_cell(r, P["Type"])), payee=_s(_cell(r, P["Payee"])),
+            amount=_amount(_cell(r, P["Amount"])), working=_s(_cell(r, P["Working"])),
+            status=_s(_cell(r, P["Status"])) or PENDING,
+            paid_date=day(_cell(r, P["Paid date"])), mode=_s(_cell(r, P["Mode"])),
+            reference=_s(_cell(r, P["Reference"])), proof=_s(_cell(r, P["Proof"])),
+            remarks=_s(_cell(r, P["Remarks"])),
+            entered_by=_s(_cell(r, P["Entered by"])),
+            entered_at=_s(_cell(r, P["Entered at"]))))
+    return out
+
+
+def payment_cells(status: str, paid_date: date | None = None, mode: str = "",
+                  reference: str = "", proof: str = "", remarks: str = "",
+                  who: str = "", now: datetime | None = None) -> list:
+    """The eight payment cells of a line, Status ... Entered at (K to R)."""
+    return [status, date_to_serial(paid_date) if paid_date else "", mode, reference,
+            proof, remarks, who, stamp(now) if now else ""]
+
+
+def payment_range(row: int) -> str:
+    """Where a line's payment cells start: "K7" for sheet row 7."""
+    return f"{PAYMENT_COLUMN}{row}"
+
+
+def payment_summary(line: dict) -> str:
+    """A paid line's payment in one line of text, for the Log."""
+    parts = [line["status"]]
+    if line.get("paid_date"):
+        parts.append(line["paid_date"].strftime("%d-%m-%Y"))
+    parts += [p for p in (line.get("mode"), line.get("reference"), line.get("proof")) if p]
+    return " | ".join(parts)
+
+
+def setup_value(setup_rows: list[list] | None, key: str) -> str:
+    for r in (setup_rows or [])[1:]:
+        if _s(_cell(r, 0)).lower() == key.lower():
+            return _s(_cell(r, 1))
+    return ""

@@ -15,5 +15,8 @@ look, and one theme file keeps both apps the same.
     setup_page.py    Set-up: Google sign-in, the two sheets, invoice folder
     scan_page.py     Scan: the daily run and what it did
     review_page.py   Review: names that hold invoices up, and their fixes
-Still to come: Payouts (recording payments and proofs) and History.
+    payouts_page.py  Payouts: record payments with reference and proof,
+                     hold / reopen, the payout slip
+    history_page.py  History: the register's Log, searchable
+    tables.py        one plain read-only table, the same on every page
 """

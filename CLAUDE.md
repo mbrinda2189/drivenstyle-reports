@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.16.0** (tags v0.1.0 … v0.16.0 on GitHub
+Current version: **v0.17.0** (tags v0.1.0 … v0.17.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -156,11 +156,20 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   shared folder, Brinda's choice A) - older tokens are re-asked.
   Screen tests: tests/test_payout_ui.py (offscreen, fake Google; skipped
   without PySide6 - run them in the cloud workspace).
-  Next: step 4b (v0.17.0) - Payouts screen: record payment (date, mode,
-  reference, proof file -> shared Drive folder, one proof for many
-  lines), Paid needs reference or proof, correct/reopen with reason,
-  payout slip per day, History (Log) screen. Then installer.
-  Open: publish the Google app vs service account.
+  Step 4b done in v0.17.0: Payouts + History screens; service
+  record_payment / reopen_payment / set_hold / create_proofs_folder /
+  read_register; `slip.py`; google_api.DriveClient (create_folder,
+  upload) and SheetsClient.update_ranges / add_tab; register "Setup" tab
+  (Proofs folder id). Payments write ONLY columns K-R of a line
+  (register.payment_range). workers.py was rewritten as Task(QThread)
+  after an intermittent segfault - read its notes before touching it,
+  and run tests/test_payout_ui.py MANY times after any change there.
+  Stand-ins for Google: tests/fakes.py.
+  Next: installer (PyInstaller) for the staff PCs; first real runs on
+  Brinda's PC of register / Drive calls; publish Google app vs service
+  account. Cowork note: Qt tests run only in the cloud workspace - stage
+  app/ + payout_app/ + tests there (pip install PySide6 pdfplumber
+  openpyxl pytest; QT_QPA_PLATFORM=offscreen).
   In the Cowork VM git cannot delete files: set GIT_OPTIONAL_LOCKS=0 and
   rename a leftover `.git/*.lock` out of the way (`*.stale`).
 

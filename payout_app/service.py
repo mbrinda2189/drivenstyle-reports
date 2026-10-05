@@ -15,6 +15,12 @@ never behave differently:
     cancel_invoice(session, ...)  mark an invoice Cancelled
     monthly_tool_matches()        the matches saved in the monthly tool on
                                   this PC, offered for copying (Brinda's PC)
+    read_register(session)        payout lines + log, for the Payouts and
+                                  History screens
+    record_payment(session, ...)  mark lines Paid, with reference / proof
+    reopen_payment(session, ...)  undo a recorded payment, with a reason
+    set_hold(session, ...)        put lines on hold / release them
+    create_proofs_folder(session) the shared Drive folder for proofs (owner)
 
 Nothing here shows anything: every action returns plain data and raises
 GoogleError (sign-in / internet / sharing) with a message for the user.
@@ -36,6 +42,33 @@ THE DAILY RUN (`scan`)
     6. Write: new payout lines, corrected lines, invoice states, log.
 A TRIAL RUN does everything except writing.
 
+PAYMENTS AND PROOFS (v0.17.0)
+-----------------------------
+`record_payment` marks one or more lines Paid in ONE go - staff often pay a
+person for several invoices with a single transfer, so one reference and
+one proof may cover many lines. The rules:
+    * a REFERENCE or a PROOF is required (Brinda, 05-10-2026);
+    * the paid date cannot be in the future;
+    * only Pending or Hold lines can be paid. The register is read again
+      first, and if any chosen line has meanwhile been paid or cancelled
+      (by the other PC), NOTHING is recorded and the lines are named;
+    * the proof (a photo, screenshot or PDF, up to 10 MB) is uploaded to
+      the shared proofs folder under a name that says what it is -
+      "2026-10-05_GPay_UTR123_Kumaran.jpg" - and its link is written on
+      every line it covers;
+    * only the payment columns are written; every line is logged.
+A payment is CORRECTED by reopening it (`reopen_payment`, reason
+required): the payment cells are cleared, the line is Pending again and
+what it held is kept in the Log. The uploaded proof is not deleted.
+
+THE PROOFS FOLDER (Brinda's choice A, 05-10-2026)
+-------------------------------------------------
+One Google Drive folder, "Drive N Style Payout Proofs", owned by the
+automation account and shared with the staff as Editor - so proofs never
+depend on a staff member's own Drive. The owner creates it once from
+Set-up; its id is kept in the register's "Setup" tab, so every PC finds it
+without being told.
+
 CANCELLING AN INVOICE
 ---------------------
 The invoice's row in the Invoices tab gets the state "Cancelled" and the
@@ -47,6 +80,7 @@ do about them.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -55,24 +89,36 @@ from typing import Callable
 
 from app.data.paths import database_path
 from payout_app import engine, masters_sheet, register, settings
-from payout_app.google_api import GoogleError, SheetsClient, sign_in, who
+from payout_app.google_api import DriveClient, GoogleError, SheetsClient, sign_in, who
 from payout_app.register import I, P
+
+PROOF_TYPES = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".pdf")
+PROOF_MAX_BYTES = 10 * 1024 * 1024
 
 
 class Session:
     """The signed-in person and the Google connection, made on first use."""
 
-    def __init__(self, client=None, user: str = ""):
-        self._client, self._user = client, user
+    def __init__(self, client=None, user: str = "", drive=None):
+        self._client, self._user, self._drive = client, user, drive
+        self._creds = None
         self.pdf_cache: dict = {}        # engine.read_files cache (this session)
 
     @property
     def client(self):
         if self._client is None:
-            creds = sign_in()
-            self._client = SheetsClient(creds)
-            self._user = self._user or who(creds)
+            self._creds = sign_in()
+            self._client = SheetsClient(self._creds)
+            self._user = self._user or who(self._creds)
         return self._client
+
+    @property
+    def drive(self):
+        """Google Drive, for the proofs (made on first use)."""
+        if self._drive is None:
+            _ = self.client
+            self._drive = DriveClient(self._creds or sign_in())
+        return self._drive
 
     @property
     def user(self) -> str:
@@ -81,7 +127,7 @@ class Session:
 
     def forget(self) -> None:
         """After signing out: connect again on the next use."""
-        self._client, self._user = None, ""
+        self._client, self._user, self._drive, self._creds = None, "", None, None
 
     @staticmethod
     def masters_id() -> str:
@@ -353,3 +399,192 @@ def monthly_tool_matches(path: str | Path | None = None) -> list[dict]:
         if target:
             out.append(dict(kind=kinds[a["kind"]], printed=a["raw_key"], target=target))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Payments (v0.17.0)
+# ---------------------------------------------------------------------------
+@dataclass
+class RegisterView:
+    """What the Payouts and History screens show."""
+    lines: list[dict] = field(default_factory=list)       # register.payout_lines
+    log: list[list] = field(default_factory=list)         # newest first
+    proofs_folder: str = ""                               # its id ("" = not set up)
+
+
+def read_register(session: Session) -> RegisterView:
+    tabs = session.client.read_tabs(session.register_id())
+    log = [r + [""] * (len(register.LOG_HEADERS) - len(r))
+           for r in (tabs.get(register.LOG) or [])[1:] if any(str(c).strip() for c in r)]
+    return RegisterView(register.payout_lines(tabs.get(register.PAYOUTS) or []),
+                        list(reversed(log)),
+                        register.setup_value(tabs.get(register.SETUP), register.PROOFS_KEY))
+
+
+def proof_name(paid_date: date, mode: str, reference: str, payees: list[str],
+               extension: str) -> str:
+    """
+    A file name that says what the proof is:
+    "2026-10-05_GPay_UTR123_Kumaran.jpg". Several payees -> "3-payees";
+    labour (no payee) -> "Labour". Characters Windows / Drive dislike go.
+    """
+    names = sorted({p for p in payees if p})
+    who_for = names[0] if len(names) == 1 else (f"{len(names)}-payees" if names else "Labour")
+    parts = [paid_date.strftime("%Y-%m-%d"), mode, reference, who_for]
+    clean = [re.sub(r"[^A-Za-z0-9.-]+", "-", p).strip("-") for p in parts if p]
+    return "_".join(c for c in clean if c)[:120] + extension.lower()
+
+
+def _check_proof(path: str | Path) -> Path:
+    path = Path(path)
+    if not path.is_file():
+        raise GoogleError(f"The proof file “{path}” was not found.")
+    if path.suffix.lower() not in PROOF_TYPES:
+        raise GoogleError("The proof must be a picture or a PDF "
+                          f"({', '.join(t.lstrip('.') for t in PROOF_TYPES)}).")
+    if path.stat().st_size > PROOF_MAX_BYTES:
+        raise GoogleError("The proof file is larger than 10 MB. Please use a smaller "
+                          "picture or PDF.")
+    return path
+
+
+def _fresh_lines(session: Session, line_ids: list[str]) -> tuple[list[dict], dict]:
+    """The chosen lines as they are in the register NOW, and all the tabs."""
+    tabs = session.client.read_tabs(session.register_id())
+    by_id = {l["line_id"]: l for l in register.payout_lines(tabs.get(register.PAYOUTS) or [])}
+    missing = [i for i in line_ids if i not in by_id]
+    if missing:
+        raise GoogleError("These lines are no longer in the register: "
+                          + ", ".join(missing) + ". Refresh and try again.")
+    return [by_id[i] for i in line_ids], tabs
+
+
+def record_payment(session: Session, line_ids: list[str], paid_date: date, mode: str,
+                   reference: str = "", proof_path: str | Path = "", remarks: str = "",
+                   now: Callable[[], datetime] = datetime.now) -> str:
+    """
+    Mark the lines Paid (see module notes). Returns the proof's link ("" if
+    none was given). Raises GoogleError - and records nothing - when a rule
+    is not met.
+    """
+    line_ids = list(dict.fromkeys(line_ids))
+    mode, reference = " ".join(mode.split()), " ".join(reference.split())
+    remarks, moment = " ".join(remarks.split()), now()
+    if not line_ids:
+        raise GoogleError("Tick the lines that were paid first.")
+    if not mode:
+        raise GoogleError("Choose how it was paid (Cash, GPay ...).")
+    if not reference and not proof_path:
+        raise GoogleError("A payment needs a reference number or a proof.")
+    if paid_date > moment.date():
+        raise GoogleError("The paid date cannot be in the future.")
+    proof = _check_proof(proof_path) if proof_path else None
+
+    lines, tabs = _fresh_lines(session, line_ids)
+    not_open = [f"{l['line_id']} ({l['status']})" for l in lines
+                if l["status"] not in (register.PENDING, register.HOLD)]
+    if not_open:
+        raise GoogleError("Nothing was recorded. These lines are not waiting for "
+                          "payment any more: " + ", ".join(not_open) + ".")
+    link = ""
+    if proof is not None:
+        folder = register.setup_value(tabs.get(register.SETUP), register.PROOFS_KEY)
+        if not folder:
+            raise GoogleError("The proofs folder is not set up yet. It is created once "
+                              "on Set-up, on the owner's PC.")
+        link = session.drive.upload(
+            proof, proof_name(paid_date, mode, reference, [l["payee"] for l in lines],
+                              proof.suffix), folder)
+    cells = register.payment_cells(register.PAID, paid_date, mode, reference, link,
+                                   remarks, session.user, moment)
+    session.client.update_ranges(session.register_id(), [
+        (register.PAYOUTS, register.payment_range(l["row"]), [cells]) for l in lines])
+    paid = dict(status=register.PAID, paid_date=paid_date, mode=mode,
+                reference=reference, proof=link)
+    session.client.append_rows(session.register_id(), register.LOG, [
+        [register.stamp(moment), session.user, "Payment recorded", l["line_id"],
+         l["status"], register.payment_summary(paid)] for l in lines])
+    return link
+
+
+def reopen_payment(session: Session, line_ids: list[str], reason: str,
+                   now: Callable[[], datetime] = datetime.now) -> None:
+    """Undo recorded payments: the lines are Pending again; logged with the reason."""
+    reason, moment = " ".join(reason.split()), now()
+    if not line_ids:
+        raise GoogleError("Tick the paid lines to reopen first.")
+    if not reason:
+        raise GoogleError("Please give the reason for reopening the payment.")
+    lines, _ = _fresh_lines(session, list(dict.fromkeys(line_ids)))
+    not_paid = [f"{l['line_id']} ({l['status']})" for l in lines
+                if l["status"] != register.PAID]
+    if not_paid:
+        raise GoogleError("Only paid lines can be reopened. Not paid: "
+                          + ", ".join(not_paid) + ".")
+    cells = register.payment_cells(register.PENDING, remarks=f"Reopened: {reason}",
+                                   who=session.user, now=moment)
+    session.client.update_ranges(session.register_id(), [
+        (register.PAYOUTS, register.payment_range(l["row"]), [cells]) for l in lines])
+    session.client.append_rows(session.register_id(), register.LOG, [
+        [register.stamp(moment), session.user, "Payment reopened", l["line_id"],
+         register.payment_summary(l), f"Pending - {reason}"] for l in lines])
+
+
+def set_hold(session: Session, line_ids: list[str], hold: bool, reason: str = "",
+             now: Callable[[], datetime] = datetime.now) -> None:
+    """Put Pending lines on Hold (reason required), or release held lines."""
+    reason, moment = " ".join(reason.split()), now()
+    if not line_ids:
+        raise GoogleError("Tick the lines first.")
+    if hold and not reason:
+        raise GoogleError("Please give the reason for holding the payment.")
+    lines, _ = _fresh_lines(session, list(dict.fromkeys(line_ids)))
+    wanted = register.PENDING if hold else register.HOLD
+    wrong = [f"{l['line_id']} ({l['status']})" for l in lines if l["status"] != wanted]
+    if wrong:
+        raise GoogleError(("Only pending lines can be put on hold: " if hold else
+                           "Only held lines can be released: ") + ", ".join(wrong) + ".")
+    new = register.HOLD if hold else register.PENDING
+    cells = register.payment_cells(new, remarks=f"On hold: {reason}" if hold else "",
+                                   who=session.user, now=moment)
+    session.client.update_ranges(session.register_id(), [
+        (register.PAYOUTS, register.payment_range(l["row"]), [cells]) for l in lines])
+    session.client.append_rows(session.register_id(), register.LOG, [
+        [register.stamp(moment), session.user,
+         "Put on hold" if hold else "Hold released", l["line_id"], l["status"],
+         f"{new} - {reason}" if reason else new] for l in lines])
+
+
+def create_proofs_folder(session: Session,
+                         now: Callable[[], datetime] = datetime.now) -> tuple[str, str]:
+    """
+    Make the shared proofs folder in the signed-in person's Drive (do this
+    as the owner account) and note it in the register's Setup tab. If the
+    register already names a folder that can be opened, that one is kept.
+    Returns (folder name, link).
+    """
+    client, register_id = session.client, session.register_id()
+    tabs = client.read_tabs(register_id)
+    known = register.setup_value(tabs.get(register.SETUP), register.PROOFS_KEY)
+    link = "https://drive.google.com/drive/folders/{}"
+    if known:
+        return session.drive.folder_name(known), link.format(known)
+    folder_id, url = session.drive.create_folder(register.PROOFS_FOLDER_NAME)
+    setup = tabs.get(register.SETUP)
+    if setup is None:              # a register made before v0.17.0
+        client.add_tab(register_id, register.SETUP,
+                       [list(register.SETUP_HEADERS), [register.PROOFS_KEY, folder_id]])
+    else:
+        at = next((n for n, r in enumerate(setup[1:], start=2)
+                   if register._s(register._cell(r, 0)).lower()
+                   == register.PROOFS_KEY.lower()), None)
+        if at:
+            client.update_rows(register_id, [(register.SETUP, at,
+                                              [register.PROOFS_KEY, folder_id])])
+        else:
+            client.append_rows(register_id, register.SETUP,
+                               [[register.PROOFS_KEY, folder_id]])
+    client.append_rows(register_id, register.LOG, [[
+        register.stamp(now()), session.user, "Proofs folder created",
+        register.PROOFS_FOLDER_NAME, "", url]])
+    return register.PROOFS_FOLDER_NAME, url

@@ -28,34 +28,10 @@ from app.data.inputs_repo import InputsRepo  # noqa: E402
 from app.theme import build_stylesheet  # noqa: E402
 from payout_app import engine, masters_sheet as ms, register as rg, service, settings  # noqa: E402
 from payout_app.ui.main_window import PAGE_REVIEW, PAGE_SETUP, MainWindow  # noqa: E402
+from payout_app.ui.payouts_page import PaymentDialog, SlipDialog  # noqa: E402
+from tests.fakes import FakeDrive, FakeGoogle  # noqa: E402
 from tests.test_invoices import inv_0753, inv_226  # noqa: E402
 from tests.test_payout_engine import build_masters, with_vehicle  # noqa: E402
-
-
-class FakeGoogle:
-    """The masters sheet "M" and the register "R" as row lists."""
-
-    def __init__(self, masters_tabs):
-        self.store = {"M": masters_tabs, "R": rg.new_register_tabs()}
-        self.titles = {"M": "Drive N Style Masters", "R": "Drive N Style Payout Register"}
-
-    def read_tabs(self, sheet_id):
-        return {t: [list(r) for r in rows] for t, rows in self.store[sheet_id].items()}
-
-    def tab_names(self, sheet_id):
-        return list(self.store[sheet_id])
-
-    def title(self, sheet_id):
-        return self.titles[sheet_id]
-
-    def append_rows(self, sheet_id, tab, rows):
-        self.store[sheet_id][tab] += [list(r) for r in rows]
-
-    def update_rows(self, sheet_id, updates):
-        for tab, n, cells in updates:
-            row = self.store[sheet_id][tab][n - 1]
-            row += [""] * (len(cells) - len(row))
-            row[:len(cells)] = cells
 
 
 @pytest.fixture(scope="module")
@@ -80,7 +56,7 @@ def world(qapp, repo, tmp_path, monkeypatch):
                         lambda paths, progress=None, cache=None:
                         [(i.file_name, i, "") for i in invoices])
     monkeypatch.setattr(service, "monthly_tool_matches", lambda path=None: [])
-    window = MainWindow(service.Session(google, "staff@example.com"))
+    window = MainWindow(service.Session(google, "staff@example.com", FakeDrive()))
     window.show()
     yield window, google, invoices
     window.close()
@@ -210,6 +186,125 @@ def test_first_start_opens_on_setup(qapp, repo):
     window = MainWindow(service.Session(FakeGoogle({}), "x"))
     assert window.sidebar.buttons[PAGE_SETUP].isChecked()
     window.close()
+
+
+# --- Payouts and History (v0.17.0) -------------------------------------------
+def scanned(qapp, world):
+    """Scan (posts the two lines of DNS26-GST-0753) and open Payouts."""
+    window, google, _ = world
+    window.scan_page.scan()
+    wait(qapp, window)
+    window.payouts_page.reload()
+    wait(qapp, window)
+    return window, google, window.payouts_page
+
+
+def test_payouts_lists_pending_lines(qapp, world):
+    window, google, page = scanned(qapp, world)
+    assert page.table.rowCount() == 2
+    assert page.table.item(0, 1).text() == "DNS26-GST-0753"
+    assert page.table.item(1, 3).text() == "Edhayan"
+    assert page.tile_pending.value_label.text() == "349.97"
+    assert page.selected.text().startswith("2 line(s) shown")
+    page.table.setCurrentCell(1, 2)
+    assert "invoice of 05-09-2026" in page.detail.text()
+    assert "Working: Underbody: 200 x 1" in page.detail.text()
+    page.kind.setCurrentIndex(page.kind.findData("Labour"))
+    assert page.table.rowCount() == 1
+    page.kind.setCurrentIndex(0)
+    page.search.setText("nobody")
+    assert page.table.rowCount() == 0
+
+
+def test_recording_a_payment_from_the_screen(qapp, world, tmp_path):
+    window, google, page = scanned(qapp, world)
+    page._record()                                    # nothing ticked: only a message
+    assert not window.busy
+    page.tick(["DNS26-GST-0753-LAB", "DNS26-GST-0753-INC"])
+    assert page.selected.text().startswith("2 line(s) ticked")
+    page.record(page.ticked(), date.today(), "GPay", "UTR77", "", "evening run")
+    wait(qapp, window)            # the payment ...
+    wait(qapp, window)            # ... then the list is read again
+    assert page.table.rowCount() == 0                 # nothing pending any more
+    assert page.tile_pending.value_label.text() == "0.00"
+    assert page.tile_today.value_label.text() == "349.97"
+    page.status.setCurrentIndex(page.status.findData("Paid"))
+    assert page.table.rowCount() == 2
+    assert page.table.item(0, 7).text() == "GPay · UTR77"
+    paid = google.store["R"]["Payouts"][1]
+    assert paid[rg.P["Status"]] == "Paid" and paid[rg.P["Entered by"]] == "staff@example.com"
+    # a paid line cannot be paid again from the screen ...
+    page.tick(["DNS26-GST-0753-LAB"])
+    page._record()
+    assert not window.busy
+    # ... but it can be reopened with a reason, and then held and released
+    page.reopen(page.ticked(), "Wrong reference")
+    wait(qapp, window)
+    wait(qapp, window)
+    assert google.store["R"]["Payouts"][1][rg.P["Status"]] == "Pending"
+    page.status.setCurrentIndex(page.status.findData("Pending"))
+    page.tick(["DNS26-GST-0753-LAB"])
+    page.hold(page.ticked(), True, "Wait for the owner")
+    wait(qapp, window)
+    wait(qapp, window)
+    assert page.tile_hold.value_label.text() == "150.00"
+    # History shows all of it, newest first, and can be searched
+    history = window.history_page
+    history.reload()
+    wait(qapp, window)
+    what = [history.table.item(r, 2).text() for r in range(history.table.rowCount())]
+    assert what[0] == "Put on hold" and "Payment reopened" in what and "Posted" in what
+    history.search.setText("reopened")
+    assert history.table.rowCount() == 1 and "1 of" in history.count.text()
+
+
+def test_payment_dialog_insists_on_reference_or_proof(qapp, world):
+    window, google, page = scanned(qapp, world)
+    dialog = PaymentDialog(page.shown, proofs_ready=False, parent=page)
+    assert not dialog.proof.isEnabled()
+    dialog._accept()
+    assert "reference number or a proof" in dialog.problem.text()
+    assert dialog.result() != PaymentDialog.Accepted
+    dialog.reference.setText(" UTR5 ")
+    dialog._accept()
+    assert dialog.result() == PaymentDialog.Accepted
+    values = dialog.values()
+    assert values["paid_date"] == date.today() and values["mode"] == "Cash"
+    assert values["reference"] == "UTR5" and values["proof_path"] == ""
+
+
+def test_payout_slip_is_shown_and_saved_as_pdf(qapp, world, tmp_path):
+    window, google, page = scanned(qapp, world)
+    dialog = SlipDialog(page.view.lines, page)
+    text = dialog.page.toPlainText()
+    assert "To pay - pending" in text and "Edhayan" in text and "Grand total" in text
+    dialog.which.setCurrentIndex(dialog.which.findData("paid"))
+    assert "Nothing to show" in dialog.page.toPlainText()
+    dialog.which.setCurrentIndex(0)
+    target = tmp_path / "slip.pdf"
+    dialog.save_pdf(str(target))
+    assert target.read_bytes().startswith(b"%PDF") and target.stat().st_size > 1000
+
+
+def test_owner_creates_the_proofs_folder_from_setup(qapp, world, monkeypatch, tmp_path):
+    window, google, page = scanned(qapp, world)
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    window.setup_page._create_proofs_folder()
+    wait(qapp, window)
+    assert google.store["R"]["Setup"][1] == ["Proofs folder", "F1"]
+    assert "Drive N Style Payout Proofs" in window.setup_page.proofs.text()
+    shot = tmp_path / "pay.png"
+    shot.write_bytes(b"x")
+    page.reload()
+    wait(qapp, window)
+    page.tick(["DNS26-GST-0753-INC"])
+    page.record(page.ticked(), date.today(), "GPay", "", str(shot))
+    wait(qapp, window)
+    wait(qapp, window)
+    assert window.session.drive.uploads[0][2] == "F1"
+    assert google.store["R"]["Payouts"][2][rg.P["Proof"]].startswith("https://drive.google.com")
+    page.status.setCurrentIndex(page.status.findData("Paid"))
+    assert page.table.item(0, 7).text() == "GPay · proof"
 
 
 # --- the actions behind the screens ------------------------------------------

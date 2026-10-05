@@ -30,3 +30,6 @@ Thumbs.db
 # Google sign-in files of the payout app - never commit
 client_secret*.json
 google_token.json
+
+# Files the Claude desktop app saves beside the project
+Claude outputs/

@@ -43,8 +43,9 @@ THE MODULES (built step by step)
     service.py         The app's actions in one place - the daily scan,
                        saving a match, cancelling an invoice - used by
                        both the screens and the commands.
+    slip.py            The payout slip (to pay / paid on a day), as data
+                       and as a printable page.
     ui/                The screens (PySide6):  python -m payout_app
-                       Scan, Review and Set-up so far.
-Still to come: the Payouts screen (recording payments and proofs) and
-History.
+                       Scan, Review, Payouts, History and Set-up.
+Still to come: the installer for the staff PCs.
 """

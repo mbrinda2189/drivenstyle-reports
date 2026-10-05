@@ -17,6 +17,12 @@ app works with plain rows and can be tested without the internet.
         .append_rows(sheet_id, tab, rows)      add rows below the last one
         .update_rows(sheet_id, updates)        overwrite given rows from column A
         .write_formulas(sheet_id, tab, rows)   cells Google should work out
+        .update_ranges(sheet_id, updates)      overwrite cells from a given cell
+        .add_tab(sheet_id, title, rows)        add a tab to an existing sheet
+    DriveClient(credentials)
+        .create_folder(name)                   a folder in the person's Drive
+        .folder_name(folder_id)                check a folder can be opened
+        .upload(path, name, folder_id)         put a file in a folder -> link
     who(credentials)              name of the signed-in person, for the log
 
 SIGNING IN
@@ -385,12 +391,80 @@ class SheetsClient:
                   "data": [{"range": f"{_quoted(tab)}!A{row}", "values": [cells]}
                            for tab, row, cells in updates]}), "update the sheet")
 
+    def update_ranges(self, sheet_id: str, updates: list[tuple[str, str, list[list]]]
+                      ) -> None:
+        """Overwrite cells: (tab, top-left cell such as "K7", rows of cells)."""
+        if not updates:
+            return
+        self._run(self.sheets.values().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={"valueInputOption": "RAW",
+                  "data": [{"range": f"{_quoted(tab)}!{cell}", "values": rows}
+                           for tab, cell, rows in updates]}), "update the sheet")
+
+    def add_tab(self, sheet_id: str, title: str, rows: list[list]) -> None:
+        """Add a tab (for a register made before the tab existed) and fill it."""
+        self._run(self.sheets.batchUpdate(
+            spreadsheetId=sheet_id,
+            body={"requests": [{"addSheet": {"properties": {"title": title}}}]}),
+            f"add the tab {title}")
+        self.update_ranges(sheet_id, [(title, "A1", rows)])
+
     def write_formulas(self, sheet_id: str, tab: str, rows: list[list]) -> None:
         """Write cells that Google should interpret (formulas), from A1."""
         self._run(self.sheets.values().update(
             spreadsheetId=sheet_id, range=f"{_quoted(tab)}!A1",
             valueInputOption="USER_ENTERED", body={"values": rows}),
             f"fill {tab}")
+
+
+class DriveClient:
+    """The Google Drive operations the payout app uses (payment proofs)."""
+
+    FOLDER_TYPE = "application/vnd.google-apps.folder"
+
+    def __init__(self, credentials=None, service=None):
+        """`service` is only given by the tests (a stand-in for Google)."""
+        if service is None:
+            _, _, _, build = _libraries()
+            service = build("drive", "v3", credentials=credentials, cache_discovery=False)
+        self.files = service.files()
+
+    def _run(self, request, doing: str):
+        try:
+            return request.execute()
+        except Exception as exc:
+            raise GoogleError(f"Google could not {doing}: {_reason(exc)}") from exc
+
+    def create_folder(self, name: str) -> tuple[str, str]:
+        """Make a folder in the signed-in person's Drive. Returns (id, link)."""
+        made = self._run(self.files.create(
+            body={"name": name, "mimeType": self.FOLDER_TYPE},
+            fields="id,webViewLink"), "create the folder")
+        return made["id"], made.get(
+            "webViewLink", f"https://drive.google.com/drive/folders/{made['id']}")
+
+    def folder_name(self, folder_id: str) -> str:
+        """The folder's name - fails with a plain message if it cannot be opened."""
+        got = self._run(self.files.get(fileId=folder_id, fields="id,name,mimeType",
+                                       supportsAllDrives=True), "open the proofs folder")
+        if got.get("mimeType") != self.FOLDER_TYPE:
+            raise GoogleError("The proofs folder link does not point to a folder.")
+        return got.get("name", "")
+
+    def upload(self, path: str | Path, name: str, folder_id: str) -> str:
+        """Upload a file into a folder under `name`. Returns its link."""
+        try:
+            from googleapiclient.http import MediaFileUpload
+        except ImportError as exc:
+            raise GoogleError("Google's libraries are not installed. Run:  "
+                              "pip install -r requirements.txt") from exc
+        media = MediaFileUpload(str(path), resumable=False)
+        made = self._run(self.files.create(
+            body={"name": name, "parents": [folder_id]}, media_body=media,
+            fields="id,webViewLink", supportsAllDrives=True), "upload the proof")
+        return made.get("webViewLink",
+                        f"https://drive.google.com/file/d/{made['id']}/view")
 
 
 def who(credentials) -> str:
