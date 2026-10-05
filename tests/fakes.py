@@ -48,6 +48,10 @@ class FakeGoogle:
     def add_tab(self, sheet_id, title, rows):
         self.store[sheet_id][title] = [list(r) for r in rows]
 
+    def clear_rows(self, sheet_id, tabs):
+        for tab in tabs:
+            del self.store[sheet_id][tab][1:]
+
     def _write(self, sheet_id, tab, row_number, column, cells):
         rows = self.store[sheet_id][tab]
         while len(rows) < row_number:
@@ -58,8 +62,24 @@ class FakeGoogle:
 
 
 class FakeDrive:
-    def __init__(self):
+    def __init__(self, owner=True, files=None):
         self.folders, self.uploads = {}, []
+        self.owner, self.copies, self.trashed = owner, [], []
+        self.files = files or []            # what list_named returns
+
+    def copy(self, file_id, name):
+        self.copies.append((file_id, name))
+        return f"https://docs.google.com/spreadsheets/d/COPY{len(self.copies)}/edit"
+
+    def owned_by_me(self, file_id):
+        return self.owner
+
+    def list_named(self, names):
+        return [dict(f) for f in self.files
+                if f["name"] in names and f["id"] not in self.trashed]
+
+    def trash(self, file_id):
+        self.trashed.append(file_id)
 
     def create_folder(self, name):
         folder_id = f"F{len(self.folders) + 1}"

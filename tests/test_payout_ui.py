@@ -307,6 +307,54 @@ def test_owner_creates_the_proofs_folder_from_setup(qapp, world, monkeypatch, tm
     assert page.table.item(0, 7).text() == "GPay · proof"
 
 
+def test_owner_clears_the_register_from_setup(qapp, world):
+    window, google, page = scanned(qapp, world)
+    assert len(google.store["R"]["Payouts"]) == 3
+    setup = window.setup_page
+    setup.clear_register("clear")                    # wrong word: refused, shown
+    import PySide6.QtWidgets as widgets
+    original = widgets.QMessageBox.warning
+    widgets.QMessageBox.warning = lambda *a, **k: None
+    try:
+        wait(qapp, window)
+    finally:
+        widgets.QMessageBox.warning = original
+    assert len(google.store["R"]["Payouts"]) == 3
+    setup.clear_register("CLEAR")
+    wait(qapp, window)
+    assert google.store["R"]["Payouts"] == [rg.PAYOUT_HEADERS]
+    assert google.store["R"]["Invoices"] == [rg.INVOICE_HEADERS]
+    assert "Register cleared: 2 payout line(s), 2 invoice(s)" in setup.housekeeping.text()
+    assert "backup" in setup.housekeeping.text()
+    assert window.session.drive.copies[0][0] == "R"
+    page.reload()
+    wait(qapp, window)
+    assert page.table.rowCount() == 0
+
+
+def test_duplicates_dialog_only_lets_extras_be_ticked(qapp, world):
+    from PySide6.QtCore import Qt
+    from payout_app.ui.setup_page import DuplicatesDialog
+    window, google, _ = world
+    files = [dict(id="M", name="Drive N Style Masters", kind="Sheet",
+                  created="05-10-2026 10:30", link="", in_use=True),
+             dict(id="OLD", name="Drive N Style Masters", kind="Sheet",
+                  created="05-10-2026 09:40", link="", in_use=False)]
+    dialog = DuplicatesDialog(files, window.setup_page)
+    assert dialog.table.item(0, 4).text() == "in use"
+    assert not dialog.table.item(0, 0).flags() & Qt.ItemIsUserCheckable
+    assert dialog.chosen() == []
+    dialog.table.item(1, 0).setCheckState(Qt.Checked)
+    assert [f["id"] for f in dialog.chosen()] == ["OLD"]
+    window.session.drive.files = [
+        dict(id="OLD", name="Drive N Style Masters", mimeType="sheet", createdTime="",
+             webViewLink="")]
+    window.setup_page.trash(dialog.chosen())
+    wait(qapp, window)
+    assert window.session.drive.trashed == ["OLD"]
+    assert "1 duplicate(s) moved" in window.setup_page.housekeeping.text()
+
+
 # --- the actions behind the screens ------------------------------------------
 def test_cancel_leaves_paid_lines_alone(repo):
     build_masters(repo)

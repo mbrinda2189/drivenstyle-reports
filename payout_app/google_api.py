@@ -19,10 +19,15 @@ app works with plain rows and can be tested without the internet.
         .write_formulas(sheet_id, tab, rows)   cells Google should work out
         .update_ranges(sheet_id, updates)      overwrite cells from a given cell
         .add_tab(sheet_id, title, rows)        add a tab to an existing sheet
+        .clear_rows(sheet_id, tabs)            empty tabs below their headings
     DriveClient(credentials)
         .create_folder(name)                   a folder in the person's Drive
         .folder_name(folder_id)                check a folder can be opened
         .upload(path, name, folder_id)         put a file in a folder -> link
+        .copy(file_id, name)                   a copy of a file (backup) -> link
+        .owned_by_me(file_id)                  is the signed-in person the owner?
+        .list_named(names)                     the person's own files with these names
+        .trash(file_id)                        move a file to Drive's trash
     who(credentials)              name of the signed-in person, for the log
 
 SIGNING IN
@@ -402,6 +407,15 @@ class SheetsClient:
                   "data": [{"range": f"{_quoted(tab)}!{cell}", "values": rows}
                            for tab, cell, rows in updates]}), "update the sheet")
 
+    def clear_rows(self, sheet_id: str, tabs: list[str]) -> None:
+        """Empty every row below the headings of these tabs (formats stay)."""
+        if not tabs:
+            return
+        self._run(self.sheets.values().batchClear(
+            spreadsheetId=sheet_id,
+            body={"ranges": [f"{_quoted(tab)}!A2:ZZ" for tab in tabs]}),
+            "clear the sheet")
+
     def add_tab(self, sheet_id: str, title: str, rows: list[list]) -> None:
         """Add a tab (for a register made before the tab existed) and fill it."""
         self._run(self.sheets.batchUpdate(
@@ -465,6 +479,45 @@ class DriveClient:
             fields="id,webViewLink", supportsAllDrives=True), "upload the proof")
         return made.get("webViewLink",
                         f"https://drive.google.com/file/d/{made['id']}/view")
+
+
+    def copy(self, file_id: str, name: str) -> str:
+        """Make a copy of a file in the signed-in person's Drive. Returns its link."""
+        made = self._run(self.files.copy(fileId=file_id, body={"name": name},
+                                         fields="id,webViewLink", supportsAllDrives=True),
+                         "make the backup copy")
+        return made.get("webViewLink",
+                        f"https://docs.google.com/spreadsheets/d/{made['id']}/edit")
+
+    def owned_by_me(self, file_id: str) -> bool:
+        got = self._run(self.files.get(fileId=file_id, fields="ownedByMe",
+                                       supportsAllDrives=True), "open the file")
+        return bool(got.get("ownedByMe"))
+
+    def list_named(self, names: list[str]) -> list[dict]:
+        """
+        The signed-in person's OWN files (not in the trash) whose name is
+        exactly one of `names`, oldest first: id, name, mimeType,
+        createdTime, webViewLink.
+        """
+        wanted = " or ".join("name = '{}'".format(n.replace("\\", "\\\\").replace("'", "\\'"))
+                             for n in names)
+        query = f"trashed = false and 'me' in owners and ({wanted})"
+        found, token = [], None
+        while True:
+            page = self._run(self.files.list(
+                q=query, pageSize=200, pageToken=token, orderBy="createdTime",
+                fields="nextPageToken, files(id,name,mimeType,createdTime,webViewLink)"),
+                "list the files")
+            found += page.get("files", [])
+            token = page.get("nextPageToken")
+            if not token:
+                return found
+
+    def trash(self, file_id: str) -> None:
+        """Move a file to Drive's trash (Google keeps it there for 30 days)."""
+        self._run(self.files.update(fileId=file_id, body={"trashed": True},
+                                    supportsAllDrives=True), "move the file to the trash")
 
 
 def who(credentials) -> str:

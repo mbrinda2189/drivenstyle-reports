@@ -21,6 +21,9 @@ never behave differently:
     reopen_payment(session, ...)  undo a recorded payment, with a reason
     set_hold(session, ...)        put lines on hold / release them
     create_proofs_folder(session) the shared Drive folder for proofs (owner)
+    clear_register(session, word) start the register afresh (owner)
+    find_duplicates(session)      extra copies of the sheets made in testing
+    trash_duplicates(session, ids) move chosen extras to Drive's trash
 
 Nothing here shows anything: every action returns plain data and raises
 GoogleError (sign-in / internet / sharing) with a message for the user.
@@ -68,6 +71,29 @@ automation account and shared with the staff as Editor - so proofs never
 depend on a staff member's own Drive. The owner creates it once from
 Set-up; its id is kept in the register's "Setup" tab, so every PC finds it
 without being told.
+
+HOUSEKEEPING, FOR THE OWNER (v0.17.1)
+-------------------------------------
+While the app was being tried out the register filled with trial lines,
+test payments and September's invoices, and a few extra sheets were made.
+Brinda asked (05-10-2026) for a clean start before go-live:
+
+`clear_register` empties the Payouts, Invoices and Log tabs (headings
+stay). Matches, Setup and Summary are kept. Because this cannot be undone
+in the sheet:
+    * only the OWNER of the register may do it (staff are refused);
+    * the word CLEAR must be typed;
+    * a BACKUP COPY of the whole register is made first in the owner's
+      Drive, named "... - backup dd-mm-yyyy hh.mm", and the first line of
+      the fresh Log says who cleared it, when, and where the backup is.
+Every PDF then counts as new again, so set the start date on Set-up to
+the go-live date before the next scan.
+
+`find_duplicates` lists the owner's own files that carry the exact name of
+the masters sheet, the register or the proofs folder, and marks those this
+PC uses. `trash_duplicates` moves chosen ones to Drive's TRASH (kept 30
+days by Google) - never one that is in use. Backups have another name and
+are never listed.
 
 CANCELLING AN INVOICE
 ---------------------
@@ -588,3 +614,93 @@ def create_proofs_folder(session: Session,
         register.stamp(now()), session.user, "Proofs folder created",
         register.PROOFS_FOLDER_NAME, "", url]])
     return register.PROOFS_FOLDER_NAME, url
+
+
+# ---------------------------------------------------------------------------
+# Housekeeping for the owner (v0.17.1)
+# ---------------------------------------------------------------------------
+CLEAR_WORD = "CLEAR"
+CLEARED_TABS = (register.PAYOUTS, register.INVOICES, register.LOG)
+FOLDER_TYPE = "application/vnd.google-apps.folder"
+
+
+def clear_register(session: Session, typed: str,
+                   now: Callable[[], datetime] = datetime.now) -> tuple[str, dict]:
+    """
+    Start the register afresh (see module notes). `typed` must be CLEAR.
+    Returns (link of the backup copy, how many rows were removed per tab).
+    """
+    if typed.strip() != CLEAR_WORD:
+        raise GoogleError(f"Nothing was cleared - type {CLEAR_WORD} to confirm.")
+    client, register_id, moment = session.client, session.register_id(), now()
+    if not session.drive.owned_by_me(register_id):
+        raise GoogleError("Only the owner of the payout register can clear it. Sign in "
+                          "as the owner account on Set-up.")
+    tabs = client.read_tabs(register_id)
+    removed = {tab: max(len([r for r in (tabs.get(tab) or [])[1:]
+                             if any(str(c).strip() for c in r)]), 0)
+               for tab in CLEARED_TABS}
+    backup = session.drive.copy(
+        register_id, f"{register.SHEET_TITLE} - backup {moment:%d-%m-%Y %H.%M}")
+    client.clear_rows(register_id, list(CLEARED_TABS))
+    client.append_rows(register_id, register.LOG, [[
+        register.stamp(moment), session.user, "Register cleared",
+        f"{removed[register.PAYOUTS]} payout line(s), "
+        f"{removed[register.INVOICES]} invoice(s), {removed[register.LOG]} log entries",
+        "", f"Backup: {backup}"]])
+    session.pdf_cache.clear()
+    return backup, removed
+
+
+def find_duplicates(session: Session) -> list[dict]:
+    """
+    The signed-in person's own files named like the masters sheet, the
+    register or the proofs folder (see module notes), oldest first:
+    id, name, kind (Sheet / Folder), created (dd-mm-yyyy hh:mm), link,
+    in_use (True = this PC uses it - it cannot be trashed).
+    """
+    used = {settings.get("masters_sheet_id"), settings.get("register_sheet_id")}
+    if settings.get("register_sheet_id"):
+        tabs = session.client.read_tabs(session.register_id())
+        used.add(register.setup_value(tabs.get(register.SETUP), register.PROOFS_KEY))
+    used.discard("")
+    names = [masters_sheet.SHEET_TITLE, register.SHEET_TITLE, register.PROOFS_FOLDER_NAME]
+    out = []
+    for f in session.drive.list_named(names):
+        created = str(f.get("createdTime", ""))
+        try:
+            created = datetime.fromisoformat(created.replace("Z", "+00:00")) \
+                .astimezone().strftime("%d-%m-%Y %H:%M")
+        except ValueError:
+            pass
+        out.append(dict(id=f["id"], name=f.get("name", ""),
+                        kind="Folder" if f.get("mimeType") == FOLDER_TYPE else "Sheet",
+                        created=created, link=f.get("webViewLink", ""),
+                        in_use=f["id"] in used))
+    return out
+
+
+def trash_duplicates(session: Session, files: list[dict],
+                     now: Callable[[], datetime] = datetime.now) -> int:
+    """
+    Move the chosen files (dicts from find_duplicates) to Drive's trash.
+    The list is fetched again first: a file that is in use, or that is no
+    longer among the duplicates, is refused and nothing is trashed.
+    """
+    if not files:
+        raise GoogleError("Tick the files to move to the trash first.")
+    current = {f["id"]: f for f in find_duplicates(session)}
+    wrong = [f["name"] for f in files
+             if f["id"] not in current or current[f["id"]]["in_use"]]
+    if wrong:
+        raise GoogleError("Nothing was moved. A chosen file is in use on this PC or "
+                          "is no longer in the list - press Find again.")
+    for f in files:
+        session.drive.trash(f["id"])
+    if settings.get("register_sheet_id"):
+        moment = now()
+        session.client.append_rows(session.register_id(), register.LOG, [
+            [register.stamp(moment), session.user, "Duplicate moved to trash",
+             f"{current[f['id']]['kind']}: {f['name']}", current[f["id"]]["link"], ""]
+            for f in files])
+    return len(files)

@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.17.0** (tags v0.1.0 … v0.17.0 on GitHub
+Current version: **v0.17.1** (tags v0.1.0 … v0.17.1 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -165,6 +165,10 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   after an intermittent segfault - read its notes before touching it,
   and run tests/test_payout_ui.py MANY times after any change there.
   Stand-ins for Google: tests/fakes.py.
+  v0.17.1: housekeeping on Set-up (Brinda wanted the sheets clean before
+  the installer): service.clear_register (backup copy first, type CLEAR,
+  owner only; clears Payouts / Invoices / Log, keeps Matches + Setup),
+  find_duplicates / trash_duplicates (Drive trash, never a sheet in use).
   Next: installer (PyInstaller) for the staff PCs; first real runs on
   Brinda's PC of register / Drive calls; publish Google app vs service
   account. Cowork note: Qt tests run only in the cloud workspace - stage

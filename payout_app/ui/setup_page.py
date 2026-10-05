@@ -18,6 +18,14 @@ WHAT IS SET HERE (once per PC)
                      shares it with the staff as Editor in Google Drive. It
                      is noted in the register, so the other PCs find it by
                      themselves - nothing to set there.
+    Housekeeping     for the OWNER, before go-live (v0.17.1):
+                     "Clear the register…" empties the trial lines, the
+                     invoices read and the log after making a backup copy
+                     (the word CLEAR must be typed; only the register's
+                     owner can do it); "Find duplicate sheets…" lists extra
+                     copies of the sheets made while testing and moves the
+                     ticked ones to Google Drive's trash - never one this
+                     PC uses.
     Invoice folder   where the staff save the invoice PDFs
     Start date       optional: invoices dated earlier are left alone (the
                      register starts at go-live, with no back-posting)
@@ -37,15 +45,18 @@ from __future__ import annotations
 
 from html import escape
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMessageBox
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QDialog, QHBoxLayout, QInputDialog, QLineEdit, QMessageBox, QTableWidgetItem,
+    QVBoxLayout)
 
 from app.pages.base import ScrollPage
 from app.theme import Colors
-from app.widgets.common import Card, PathPicker, button, label
+from app.widgets.common import Card, PathPicker, button, fit_to_screen, label
 from payout_app import google_api, masters_sheet, register, service, settings
 from payout_app.google_api import GoogleError
 from payout_app.masters_sheet import parse_sheet_date
+from payout_app.ui.tables import fill, make_table
 
 
 class SetupPage(ScrollPage):
@@ -113,6 +124,26 @@ class SetupPage(ScrollPage):
         card.body.addLayout(row)
         self.content.addWidget(card)
 
+        # --- housekeeping (owner) -------------------------------------------------
+        card = Card()
+        card.body.addWidget(label("Housekeeping (owner only)", "SectionTitle"))
+        self.housekeeping = label(
+            "Before go-live: clear the trial postings from the register (a backup "
+            "copy is made first), and remove extra copies of the sheets made while "
+            "testing.", "Muted", wrap=True)
+        self.housekeeping.setOpenExternalLinks(True)
+        card.body.addWidget(self.housekeeping)
+        row = QHBoxLayout()
+        self.clear_button = button("Clear the register…", "Danger")
+        self.clear_button.clicked.connect(self._clear_register)
+        row.addWidget(self.clear_button)
+        self.duplicates_button = button("Find duplicate sheets…", "Secondary")
+        self.duplicates_button.clicked.connect(self._find_duplicates)
+        row.addWidget(self.duplicates_button)
+        row.addStretch(1)
+        card.body.addLayout(row)
+        self.content.addWidget(card)
+
         # --- folder -------------------------------------------------------------
         card = Card()
         card.body.addWidget(label("Invoices", "SectionTitle"))
@@ -140,7 +171,8 @@ class SetupPage(ScrollPage):
 
     def _set_busy(self, busy: bool) -> None:
         for control in (self.sign_in_button, self.sign_out_button, self.check_button,
-                        self.create_button, self.proofs_button):
+                        self.create_button, self.proofs_button, self.clear_button,
+                        self.duplicates_button):
             control.setEnabled(not busy)
 
     # ------------------------------------------------------------------
@@ -284,6 +316,64 @@ class SetupPage(ScrollPage):
                      lambda _p: service.create_proofs_folder(self.win.session), done)
 
     # ------------------------------------------------------------------
+    # Housekeeping
+    # ------------------------------------------------------------------
+    def _clear_register(self) -> None:
+        if not settings.get("register_sheet_id"):
+            self.win.toast("Set the payout register first.")
+            return
+        typed, ok = QInputDialog.getText(
+            self, "Clear the register",
+            "This empties the register's Payouts, Invoices and Log tabs - every "
+            "payout line, every recorded payment and every invoice read.\n"
+            "Matches and the proofs folder are kept. A backup copy of the register "
+            "is made first.\n\n"
+            f"Type {service.CLEAR_WORD} to go ahead:")
+        if ok:
+            self.clear_register(typed)
+
+    def clear_register(self, typed: str) -> None:
+        def done(result) -> None:
+            backup, removed = result
+            self.housekeeping.setText(
+                f"Register cleared: {removed[register.PAYOUTS]} payout line(s), "
+                f"{removed[register.INVOICES]} invoice(s) and {removed[register.LOG]} "
+                f"log entries removed. <a href='{escape(backup)}'>Open the backup "
+                "copy</a>. Set the start date below to the go-live date before the "
+                "next scan.")
+            self.win.toast("Register cleared.")
+            self.changed.emit()
+
+        self.win.run("Making a backup and clearing the register…",
+                     lambda _p: service.clear_register(self.win.session, typed), done)
+
+    def _find_duplicates(self) -> None:
+        def done(files: list[dict]) -> None:
+            extras = [f for f in files if not f["in_use"]]
+            if not extras:
+                self.housekeeping.setText(
+                    f"No duplicates: {len(files)} file(s) with these names, all in use.")
+                self.win.toast("No duplicate sheets found.")
+                return
+            dialog = DuplicatesDialog(files, self)
+            if dialog.exec() == QDialog.Accepted and dialog.chosen():
+                self.trash(dialog.chosen())
+
+        self.win.run("Looking in Google Drive…",
+                     lambda _p: service.find_duplicates(self.win.session), done)
+
+    def trash(self, files: list[dict]) -> None:
+        def done(count: int) -> None:
+            self.housekeeping.setText(
+                f"{count} duplicate(s) moved to Google Drive's trash, where they stay "
+                "for 30 days.")
+            self.win.toast(f"{count} file(s) moved to the trash.")
+            self.changed.emit()
+
+        self.win.run("Moving the files to the trash…",
+                     lambda _p: service.trash_duplicates(self.win.session, files), done)
+
+    # ------------------------------------------------------------------
     def _folder_changed(self, path: str) -> None:
         settings.save(invoice_folder=path)
         self.changed.emit()
@@ -303,3 +393,47 @@ class SetupPage(ScrollPage):
         self.start_note.setText("")
         settings.save(start_date=text)
         self.changed.emit()
+
+
+class DuplicatesDialog(QDialog):
+    """Tick the extra copies that should go to Google Drive's trash."""
+
+    def __init__(self, files: list[dict], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Duplicate sheets")
+        self.files = files
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(22, 20, 22, 16)
+        lay.setSpacing(12)
+        lay.addWidget(label(
+            "Files in this Google Drive with the names the app uses. The ones marked "
+            "“in use” are the sheets this PC works with and cannot be ticked. Ticked "
+            "files go to Drive's trash and can be restored from there for 30 days.",
+            "Muted", wrap=True))
+        self.table = make_table(["Trash", "Name", "Kind", "Created", "Status"], 1,
+                                {0: 60, 2: 80, 3: 150, 4: 90})
+        fill(self.table, [["", f["name"], f["kind"], f["created"],
+                           "in use" if f["in_use"] else "extra"] for f in files])
+        for row, f in enumerate(files):
+            box = QTableWidgetItem()
+            if f["in_use"]:
+                box.setFlags(Qt.ItemIsSelectable)             # cannot be ticked
+            else:
+                box.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+                box.setCheckState(Qt.Unchecked)
+            self.table.setItem(row, 0, box)
+        lay.addWidget(self.table, 1)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        close = button("Close", "Secondary")
+        close.clicked.connect(self.reject)
+        row.addWidget(close)
+        move = button("Move ticked files to the trash", "Danger")
+        move.clicked.connect(self.accept)
+        row.addWidget(move)
+        lay.addLayout(row)
+        fit_to_screen(self, 820, 480)
+
+    def chosen(self) -> list[dict]:
+        return [f for row, f in enumerate(self.files)
+                if not f["in_use"] and self.table.item(row, 0).checkState() == Qt.Checked]

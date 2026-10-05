@@ -6,6 +6,30 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.1] – 2026-10-05 – Payout app: a clean start for the Google Sheets
+
+Brinda asked for the trial data and extra sheets to be cleaned up before
+the installer is made. Both are on Set-up, under "Housekeeping (owner only)".
+
+### Added
+- **Clear the register…** empties the Payouts, Invoices and Log tabs
+  (headings stay): every trial line, test payment and invoice read.
+  Matches, Setup (proofs folder) and Summary are kept. A **backup copy** of
+  the register is made first in the owner's Drive
+  ("… - backup dd-mm-yyyy hh.mm"); the word CLEAR must be typed; only the
+  register's owner can do it. The fresh Log starts with one line saying
+  who cleared it and where the backup is.
+- **Find duplicate sheets…** lists the owner's files named like the masters
+  sheet, the register or the proofs folder, with the ones this PC uses
+  marked "in use". Ticked extras are moved to Google Drive's **trash** (kept
+  30 days); a file in use can never be ticked. Logged.
+
+### Pending
+- After clearing, every PDF counts as new: set the start date on Set-up to
+  the go-live date before the next scan.
+- Test proof files already uploaded stay in the proofs folder (delete them
+  in Google Drive if wanted).
+
 ## [0.17.0] – 2026-10-05 – Payout app, step 4b: Payouts, proofs, payout slip, History
 
 ### Added
