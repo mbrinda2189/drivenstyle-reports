@@ -14,7 +14,8 @@ import pytest
 
 from app.data.invoice_reader import InvoiceLine, ParsedInvoice, parse_amount, parse_date
 from app.data.invoices_repo import (
-    FileResult, InvoicesRepo, allocate_lines, check_totals, is_labour_marker,
+    FileResult, InvoicesRepo, allocate_lines, billed_lines, check_totals,
+    discount_base, is_labour_marker,
     split_salesperson, vehicle_key)
 from app.data.masters_repo import RowChange
 
@@ -54,6 +55,31 @@ def inv_226() -> ParsedInvoice:
         salesperson="Nandha Kumar", vehicle="PUNCH.EV",
         lines=[InvoiceLine(i + 1, n, "", 1, "", a, a) for i, (n, a) in enumerate(zip(names, amounts))],
         sub_total=21903, discount=1903, discount_base=21903, total=20000)
+
+
+def inv_237() -> ParsedInvoice:
+    """DNS-237-2627: only the Rs. 1 labour line carries GST; Rs. 301 discount."""
+    return ParsedInvoice(
+        file_name="Invoice_DNS-237-2627.pdf", gstin="33AAOFD7793F1Z2",
+        invoice_no="DNS-237-2627", invoice_date=date(2026, 9, 7),
+        lines=[InvoiceLine(1, "Exter - PVC Full Floor Mat + Labour Extra", "39181090", 1, "", 3300, 3300),
+               InvoiceLine(2, '14" WHEEL CUPS', "998729", 1, "", 2000, 2000),
+               InvoiceLine(3, "Labour Charges PVC/MLF/Luxury Floor Mat (Venue / Exter / Creta)",
+                           "39181090", 1, "", 1, 1)],
+        sub_total=5301, discount=301, discount_base=5300.84,
+        taxes={"CGST 9%": 0.07, "SGST 9%": 0.07}, tax_rate=18.0,
+        rounding=0.02, total=5000, payment_made=5000)
+
+
+def inv_313() -> ParsedInvoice:
+    """DNS-313-2627: one line at 18% GST, one without GST, no discount."""
+    return ParsedInvoice(
+        file_name="Invoice_DNS-313-2627.pdf", gstin="33AAOFD7793F1Z2",
+        invoice_no="DNS-313-2627", invoice_date=date(2026, 9, 22),
+        lines=[InvoiceLine(1, "Venue Seat Cover Nappa + Labour Extra", "87089900", 1, "", 8500, 8500),
+               InvoiceLine(2, "Consumables - Exp", "", 1, "", 500, 500, note="BOOT LIGHT")],
+        sub_total=9000, taxes={"CGST 9%": 648.31, "SGST 9%": 648.31}, tax_rate=18.0,
+        total=9000, payment_made=9000)
 
 
 @pytest.fixture
@@ -119,6 +145,45 @@ def test_non_gst_invoice_whole_amount_is_sales():
 def test_totals_that_agree_raise_nothing():
     assert check_totals(inv_0753()) == []
     assert check_totals(inv_226()) == []
+
+
+def test_invoice_with_gst_on_some_lines_only_is_accepted():
+    # v0.13.0: these two failed the single-rate check although Zoho's own
+    # figures agree (real September invoices).
+    assert check_totals(inv_237()) == []
+    assert check_totals(inv_313()) == []
+
+
+def test_mixed_gst_invoice_that_does_not_add_up_is_still_reported():
+    bad = inv_237()
+    bad.total = 5100
+    assert "Total is 5,100.00" in check_totals(bad)[0]
+    bad = inv_313()
+    bad.total = 9500
+    assert "Total is 9,500.00" in check_totals(bad)[0]
+
+
+def test_billed_per_line_needs_no_gst_split():
+    # Every line is reduced by the same fraction, taxed or not; the billed
+    # amounts add up to what the customer paid (before rounding).
+    inv = inv_237()
+    billed = billed_lines(inv)
+    assert billed == [pytest.approx(3112.62, abs=0.01), pytest.approx(1886.43, abs=0.01),
+                      pytest.approx(0.94, abs=0.01)]
+    assert sum(billed) == pytest.approx(inv.total - inv.rounding, abs=0.05)
+    assert billed_lines(inv_313()) == [8500, 500]            # no discount
+    # fully taxed invoice: same as net value + GST from allocate_lines
+    inv = inv_0753()
+    shares = allocate_lines([l.amount for l in inv.lines], 18.0, 1.0,
+                            inv.tax_total, inv.total, inv.rounding)
+    for b, s in zip(billed_lines(inv), shares):
+        assert b == pytest.approx(s["net"] + s["gst"], abs=0.02)
+
+
+def test_discount_base_is_worked_back_when_not_printed():
+    inv = inv_237()
+    inv.discount_base = 0
+    assert discount_base(inv) == pytest.approx(5300.84, abs=0.01)
 
 
 def test_totals_that_disagree_are_reported():

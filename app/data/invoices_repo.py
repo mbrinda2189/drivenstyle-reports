@@ -114,6 +114,23 @@ Export:
 PDF:
     * line amounts add up to the Sub Total
     * Sub Total (before GST) - discount + GST + rounding = Total
+    * (v0.13.0) an invoice where only SOME lines carry GST (e.g. a product
+      sold without GST plus a Rs. 1 labour line at 18%) cannot pass the
+      check above, because it assumes one GST rate on every line. Such an
+      invoice is accepted when the figures Zoho prints still agree:
+          discount given   "Applied on" value - discount + GST + rounding
+          no discount      Sub Total (tax inclusive) + rounding
+      must equal the Total.
+
+AMOUNT BILLED PER LINE (PDF, v0.13.0 - for the daily payout app)
+----------------------------------------------------------------
+The spot incentive needs each line's value after discount INCLUDING GST
+("billed"). `billed_lines()` gives it without splitting GST at all:
+    billed = line amount x (1 - discount / value the discount applies on)
+The discount is given as one amount on the whole invoice and Zoho spreads
+it over the lines in proportion, so every line is reduced by the same
+fraction whether it carries GST or not. This is why invoices with a mix
+of taxed and untaxed lines calculate correctly.
 Both:
     * quantity x rate = line amount
 Differences above Rs. 1 are shown on Scan review so a misread can never
@@ -274,6 +291,31 @@ def allocate_lines(amounts: list[float], tax_rate: float, discount: float,
     return out
 
 
+def discount_base(inv: ParsedInvoice) -> float:
+    """
+    The value the invoice discount applies on (all lines before GST).
+    Zoho prints it as "(Applied on 5,300.84)"; when it is not printed it
+    is worked back from the totals: Total - rounding - GST + discount.
+    """
+    if inv.discount_base:
+        return inv.discount_base
+    return round(inv.total - inv.rounding - inv.tax_total + inv.discount, 2)
+
+
+def billed_lines(inv: ParsedInvoice) -> list[float]:
+    """
+    Each line's value after its share of the discount, INCLUDING GST - the
+    "billed" figure the spot incentive rule uses (see module notes).
+    Export invoices: Zoho's own Item Total + Item Tax Amount.
+    PDF invoices: line amount x (1 - discount / discount base).
+    """
+    if inv.source == "export":
+        return [round((l.net_value or 0) + (l.gst or 0), 2) for l in inv.lines]
+    base = discount_base(inv)
+    keep = 1.0 - (inv.discount / base if inv.discount and base > 0 else 0.0)
+    return [round(l.amount * max(keep, 0.0), 2) for l in inv.lines]
+
+
 def _export_shares(inv: ParsedInvoice) -> list[dict]:
     """
     Per-line figures for an invoice from the export: Zoho's values as they
@@ -305,7 +347,7 @@ def check_totals(inv: ParsedInvoice) -> list[str]:
         expected = before - inv.discount + inv.tax_total + inv.rounding
     else:
         expected = inv.total                     # cannot rebuild: trust total
-    if abs(expected - inv.total) > TOLERANCE:
+    if abs(expected - inv.total) > TOLERANCE and not _mixed_gst_agrees(inv):
         problems.append(f"Sub Total, discount and GST give {expected:,.2f} "
                         f"but the Total is {inv.total:,.2f}.")
     qty_rate = [l for l in inv.lines if l.qty and l.rate
@@ -314,6 +356,22 @@ def check_totals(inv: ParsedInvoice) -> list[str]:
         problems.append(f"Line {l.line_no}: {l.qty:g} × {l.rate:,.2f} is not "
                         f"{l.amount:,.2f}.")
     return problems
+
+
+def _mixed_gst_agrees(inv: ParsedInvoice) -> bool:
+    """
+    True when a PDF invoice with GST on only some of its lines still adds
+    up (see module notes, v0.13.0). Only tried for invoices that show GST.
+    """
+    if not inv.taxes:
+        return False
+    if inv.discount:
+        if not inv.discount_base:
+            return False                 # nothing printed to check against
+        expected = inv.discount_base - inv.discount + inv.tax_total + inv.rounding
+    else:
+        expected = inv.sub_total + inv.rounding
+    return abs(expected - inv.total) <= TOLERANCE
 
 
 def _check_export(inv: ParsedInvoice) -> list[str]:

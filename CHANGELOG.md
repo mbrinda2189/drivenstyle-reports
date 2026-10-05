@@ -6,6 +6,43 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] – 2026-10-05 – PDF reader brought up to date (for the daily payout app)
+
+The monthly reports read Zoho's export and are **unchanged**. This version
+prepares the PDF reader for the separate daily labour / incentive payout
+app, which will read the invoice PDFs the staff save in a folder. Tested
+on the 126 September PDFs against the September export: every invoice
+reads, and item names, quantities, line amounts, discounts, totals and
+the amount billed per line agree.
+
+### Added
+- **Note under an item is kept apart from the item name.** Zoho prints the
+  item name in black and a typed note ("BOOT LIGHT", "SIDE & REAR") in
+  grey; the note was read as part of the name, so the item could not match
+  the Product master (3 invoices in September). It is now stored as the
+  line's note.
+- **"Branch" line** printed on newer invoices is read (stored only, as for
+  the export's CF.Branch).
+- **Amount billed per line without splitting GST** (`billed_lines`,
+  `discount_base` in `app/data/invoices_repo.py`): line amount × (1 −
+  discount ÷ value the discount applies on). This is the figure the spot
+  incentive rule uses; it is right for invoices with a mix of taxed and
+  untaxed lines too.
+- **Test: PDFs against the export** – set `DNS_SAMPLE_EXPORT` to the
+  Invoice.csv of the same period (with `DNS_SAMPLE_INVOICES`).
+
+### Fixed
+- **Invoices with GST on only some lines no longer fail the totals check**
+  (DNS-237-2627, DNS-313-2627). They are accepted when Zoho's printed
+  figures still agree: "Applied on" value − discount + GST + rounding (or,
+  with no discount, Sub Total + rounding) = Total. A real difference is
+  still reported.
+
+### Pending
+- Not printed on the PDF, so the daily app must handle them itself: SKU
+  (items match by name), payment mode, and whether an invoice was
+  cancelled or edited later in Zoho.
+
 ## [0.12.1] – 2026-10-04 – Incentive rounded up to the next ₹10
 
 ### Changed

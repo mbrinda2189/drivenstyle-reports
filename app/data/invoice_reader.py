@@ -51,6 +51,14 @@ Items      the item table. Column edges are taken from the table's own
            column belong to the same item (wrapped descriptions), and a word
            under the quantity (e.g. "no") is the unit. Items may continue on
            following pages.
+Item note  (v0.13.0) Staff sometimes type a note under an item, e.g.
+           "BOOT LIGHT" under "Consumables - Exp" or "SIDE & REAR" under a
+           sunfilm roll. Zoho prints the item NAME in black and the NOTE in
+           grey. The reader compares each word's colour with the colour of
+           the item's first word: same colour = part of the name (a long
+           name wrapped onto a second line), another colour = the note.
+           The note is kept separately (`InvoiceLine.note`) so the name
+           still matches the Product master exactly.
 Totals     the block right of the page centre below the items. Amounts are
            paired with the nearest label on (about) the same line; bracketed
            notes like "(Applied on 7,034.72)" belong to the label above.
@@ -93,6 +101,7 @@ HEADER_FIELDS = {
     "car": "vehicle",
     "vin / registration number": "vin",
     "vin#": "vin",
+    "branch": "branch",            # printed on newer invoices (v0.13.0)
     "payment mode": "payment_mode",
     "mode of payment": "payment_mode",
 }
@@ -119,6 +128,7 @@ class InvoiceLine:
     rate: float = 0.0
     amount: float = 0.0
     sku: str = ""                 # only if an "SKU : ..." line is printed
+    note: str = ""                # text typed under the item (printed in grey)
     # Filled only when the line comes from Zoho's invoice EXPORT
     # (invoice_export.py), which gives each line's value after discount
     # and its GST directly - then nothing has to be worked out.
@@ -160,7 +170,8 @@ class ParsedInvoice:
     # Set for invoices read from the export (v0.6.0):
     source: str = "pdf"            # "pdf" or "export"
     status: str = ""               # Zoho Invoice Status: Closed / Overdue ...
-    branch: str = ""               # Zoho custom field CF.Branch (stored only)
+    branch: str = ""               # Zoho custom field CF.Branch / the PDF's
+                                   # "Branch" line (stored only)
 
     @property
     def tax_total(self) -> float:
@@ -213,6 +224,19 @@ def _text(words: list[dict]) -> str:
     return " ".join(w["text"] for w in words)
 
 
+def _colour(word: dict) -> tuple:
+    """The word's ink colour as a plain tuple, so two words can be compared."""
+    c = word.get("non_stroking_color")
+    if c is None:
+        return ()
+    if isinstance(c, (int, float)):
+        return (round(float(c), 2),)
+    try:
+        return tuple(round(float(x), 2) for x in c)
+    except (TypeError, ValueError):
+        return (str(c),)
+
+
 def _find(words: list[dict], *sequence: str) -> dict | None:
     """First word starting the given word sequence (case-insensitive)."""
     for row in _lines(words):
@@ -234,7 +258,11 @@ def read_invoice(path: str | Path) -> ParsedInvoice:
     except Exception as exc:
         raise InvoiceReadError(f"not a readable PDF ({exc.__class__.__name__})") from exc
     with pdf:
-        pages = [p.extract_words(keep_blank_chars=False) for p in pdf.pages]
+        # The colour of each word is read too: it tells an item's name
+        # (black) from a note typed under it (grey) - see "Item note" above.
+        pages = [p.extract_words(keep_blank_chars=False,
+                                 extra_attrs=["non_stroking_color"])
+                 for p in pdf.pages]
         heights = [p.height for p in pdf.pages]
         widths = [p.width for p in pdf.pages]
     inv = ParsedInvoice(file_name=path.name, pages=len(pages))
@@ -324,16 +352,26 @@ def _read_items(inv: ParsedInvoice, words: list[dict], width: float) -> None:
     body = [w for w in words if head["top"] + 4 < w["top"] < end_y - 2]
 
     current: InvoiceLine | None = None
-    desc_parts: list[str] = []
+    desc_parts: list[str] = []        # words of the item's name
+    note_parts: list[str] = []        # words of a note typed under it
+    name_colour: tuple | None = None  # ink colour of the name's first word
 
     def close() -> None:
         if current is not None:
             text = " ".join(desc_parts)
+            note = " ".join(note_parts)
+            # An "SKU : ..." line may be printed in either colour.
             sku = re.search(r"\bSKU\s*:\s*(\S+)", text)
             if sku:
                 current.sku = sku.group(1)
                 text = text[:sku.start()].strip()
+            else:
+                sku = re.search(r"\bSKU\s*:\s*(\S+)", note)
+                if sku:
+                    current.sku = sku.group(1)
+                    note = (note[:sku.start()] + note[sku.end():]).strip()
             current.description = " ".join(text.split())
+            current.note = " ".join(note.split())
             inv.lines.append(current)
 
     for row in _lines(body):
@@ -343,6 +381,8 @@ def _read_items(inv: ParsedInvoice, words: list[dict], width: float) -> None:
             close()
             current = InvoiceLine(line_no=int(first["text"]), description="")
             desc_parts = []
+            note_parts = []
+            name_colour = None
             row = row[1:]
         if current is None:
             continue
@@ -350,7 +390,14 @@ def _read_items(inv: ParsedInvoice, words: list[dict], width: float) -> None:
             cx = (w["x0"] + w["x1"]) / 2
             t = w["text"]
             if cx < b_hsn:
-                desc_parts.append(t)
+                # First word of the item sets the name's colour; a word in
+                # another colour is the note typed under the item.
+                if name_colour is None:
+                    name_colour = _colour(w)
+                if _colour(w) == name_colour:
+                    desc_parts.append(t)
+                else:
+                    note_parts.append(t)
             elif cx < b_qty:
                 current.hsn_sac = (current.hsn_sac + " " + t).strip()
             elif cx < b_rate:

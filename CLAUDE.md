@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.12.1** (tags v0.1.0 … v0.12.1 on GitHub
+Current version: **v0.13.0** (tags v0.1.0 … v0.13.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -109,6 +109,19 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   `"*.PDF"` search (counted every file twice until v0.4.0).
 
 ## Business rules already agreed (do not change without asking)
+
+- **Daily payout app** (Brinda, 05-10-2026; plan approved, see project doc
+  `daily-payout-app-plan.md`): a SEPARATE small app in this repo that reads
+  the invoice PDFs staff save in a folder, calculates labour and incentive
+  with this tool's masters and rules (shared core), and posts to a Google
+  Sheet register where staff record payment + proof. Masters move to a
+  Google Sheet the client edits directly (dated rows); owner account
+  automation.drivenstyle@gmail.com; OAuth client JSON is in `data/`
+  (ignored - never commit). No approval step, no technician, labour one
+  line per invoice, NO daily rounding of incentive (month-end only).
+  Step 1 done in v0.13.0: PDF reader updated (`InvoiceLine.note`, Branch,
+  mixed-GST totals check, `invoices_repo.billed_lines`). Next: masters
+  sheet + validate-on-read, then Scan / Review / posting.
 
 - **Sales** = each line after its share of the invoice-level discount,
   **excluding GST**. Invoices showing no GST count in full as sales.

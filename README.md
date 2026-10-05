@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
+> **Current status: v0.13.0 – PDF reader brought up to date for the daily payout app (item notes, Branch line, invoices with GST on some lines, amount billed per line); earlier: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -371,6 +371,15 @@ $env:DNS_SAMPLE_INVOICES = "C:\path\to\sample invoices"
 python -m pytest tests/test_invoice_pdfs.py
 ```
 
+From v0.13.0 the same PDFs can also be checked against Zoho's invoice
+export of the same period (the daily payout app reads PDFs, the monthly
+reports read the export – both must give the same figures):
+
+```powershell
+$env:DNS_SAMPLE_EXPORT = "C:\path\to\Invoice.csv"
+python -m pytest tests/test_invoice_pdfs.py
+```
+
 ## Project structure
 
 ```
@@ -397,7 +406,7 @@ drivenstyle-reports/
     │   ├── database.py      SQLite tables and schema upgrades
     │   ├── masters_repo.py  Reading/saving masters, rate history, duplicates, audit log
     │   ├── invoice_export.py  Reads Zoho's invoice export (one invoice per number) - v0.6.0
-    │   ├── invoice_reader.py  Reads one Carkrafts invoice PDF (kept; not used on screen)
+    │   ├── invoice_reader.py  Reads one Carkrafts invoice PDF (monthly: not used on screen; daily payout app: yes)
     │   ├── invoices_repo.py   Stores scans, matches to masters, Scan review issues and fixes
     │   ├── inputs_repo.py     Monthly inputs (indirect costs, threshold) and report history
     │   └── payments_io.py     Reads Zoho's Payments Received export
