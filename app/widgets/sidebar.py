@@ -70,7 +70,10 @@ class Sidebar(QFrame):
 
     pageRequested = Signal(int)
 
-    def __init__(self, items: list[str], parent=None):
+    def __init__(self, items: list[str], parent=None,
+                 subtitle: str = "Monthly reports"):
+        # `subtitle` (v0.16.0): the line under the brand name. The daily
+        # payout app uses the same sidebar with "Daily payouts".
         super().__init__(parent)
         self.setObjectName("Sidebar")
         self.setFixedWidth(232)
@@ -96,7 +99,7 @@ class Sidebar(QFrame):
         rule_row.addStretch(1)
         lay.addLayout(rule_row)
 
-        sub = QLabel("Monthly reports")
+        sub = QLabel(subtitle)
         sub.setObjectName("BrandSubtitle")
         sub.setContentsMargins(22, 0, 0, 0)
         lay.addWidget(sub)

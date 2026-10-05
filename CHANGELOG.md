@@ -6,6 +6,51 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.16.0] – 2026-10-05 – Payout app, step 4a: the app window (Scan, Review, Set-up)
+
+The daily payout app now has its own window: `python -m payout_app`.
+Same blue theme as the monthly tool, which is **unchanged**.
+
+### Added
+- **Set-up screen** (once per PC): Google sign-in / sign-out, the links of
+  the masters sheet and the payout register with "Save and check" (really
+  opens both and reports the result), "Create a new register", the invoice
+  folder and an optional start date.
+- **Scan screen**: "Scan now" with progress, tiles (Posted now / Already
+  posted / In review / Re-issued / Not used) that add up to the PDF files,
+  messages (anything that stopped the run, hand edits put back, payments
+  without reference or proof, files not used) and the lines just posted
+  with their workings. **Trial run** writes nothing.
+- **Review screen**: each unknown name ONCE with the invoices it holds up.
+  For the selected row: choose the master record (likely ones first) or
+  "Others" and "Save match and scan again"; or **cancel an invoice** with a
+  reason (unpaid lines are cancelled, paid lines left alone and named).
+  **Copy matches from the monthly tool** lists that tool's saved matches
+  on the same PC; only the ticked ones are copied.
+- `payout_app/service.py`: the scan, save-match and cancel actions in one
+  place, used by the screens and the commands alike.
+- **Two PCs scanning at once**: the register is read again just before
+  writing and the plan remade if another PC has posted meanwhile.
+- PDFs unchanged since the last scan in the same session are not read
+  again (a scan after fixing a match is immediate).
+
+### Changed
+- **Google sign-in opens in Microsoft Edge** when installed (other Google
+  accounts usually live in Chrome). Ctrl+C during a sign-in from the
+  command window now ends with a plain message.
+- **Google permission widened to Drive** (was: only files made by the
+  app). Needed for payment proofs in ONE shared folder (Brinda's choice
+  A). **Everyone signs in once more**; the older sign-in is noticed and
+  asked for again automatically.
+- `Sidebar` takes an optional subtitle (the payout app shows "Daily
+  payouts"); the monthly tool's sidebar is as before.
+
+### Pending
+- Payouts screen (recording payments, proofs upload, payout slip) and
+  History - next version. Until then payments are typed in the register.
+- Screens were tested without a display against a stand-in for Google;
+  the first run on a real screen with real Google is Brinda's.
+
 ## [0.15.0] – 2026-10-05 – Payout app, step 3: scan, calculate, post to the register
 
 The engine of the daily payout app, used through commands for now (screens

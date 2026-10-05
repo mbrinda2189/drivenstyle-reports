@@ -40,6 +40,11 @@ THE MODULES (built step by step)
                            python -m payout_app.payout_cli create-register
                            python -m payout_app.payout_cli scan "<folder>"
                            python -m payout_app.payout_cli status
-Still to come: the screens (Scan, Review, Payouts, History), recording
-payments and proofs from the app, cancelling an invoice.
+    service.py         The app's actions in one place - the daily scan,
+                       saving a match, cancelling an invoice - used by
+                       both the screens and the commands.
+    ui/                The screens (PySide6):  python -m payout_app
+                       Scan, Review and Set-up so far.
+Still to come: the Payouts screen (recording payments and proofs) and
+History.
 """

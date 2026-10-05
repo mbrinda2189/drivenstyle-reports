@@ -39,12 +39,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
-from pathlib import Path
-
 from app.utils import format_inr
-from payout_app import engine, masters_sheet, register, settings
-from payout_app.google_api import GoogleError, SheetsClient, sign_in, who
+from payout_app import register, service, settings
+from payout_app.google_api import GoogleError, SheetsClient, sign_in
 from payout_app.masters_sheet import parse_sheet_date
 
 
@@ -98,10 +95,6 @@ def _show(title: str, items: list[str]) -> None:
 
 
 def cmd_scan(args) -> int:
-    folder = Path(args.folder)
-    if not folder.is_dir():
-        print(f"“{folder}” is not a folder.")
-        return 1
     start = None
     if args.start:
         try:
@@ -109,78 +102,26 @@ def cmd_scan(args) -> int:
         except Exception:
             print(f"--from “{args.start}” is not a date (use dd-mm-yyyy).")
             return 1
-    masters_id = settings.get("masters_sheet_id")
-    if not masters_id:
-        print("No masters sheet is remembered on this PC. See masters_cli.")
+    print(f"Reading the PDF files in {args.folder} ...")
+    report = service.scan(service.Session(), args.folder, args.dry_run, start)
+    dry = " (dry run - nothing is written)" if report.dry_run else ""
+    _show("Notes:", report.notes)
+    if report.stopped:
+        _show(report.stopped, report.problems)
         return 1
-    register_id = _register_id()
-    creds = sign_in()
-    client = SheetsClient(creds)
-    user, now = who(creds), datetime.now()
-    dry = " (dry run - nothing is written)" if args.dry_run else ""
-
-    # 1. masters
-    masters = masters_sheet.refresh(lambda: client.read_tabs(masters_id))
-    _show("Masters sheet:", masters.notes if masters.from_cache else [])
-    if not masters.ok:
-        _show(f"The masters sheet has {len(masters.problems)} problem(s) - nothing "
-              "was calculated:", masters.problems)
-        return 1
-
-    # 2. register: put back anything changed by hand
-    tabs = client.read_tabs(register_id)
-    payouts = tabs.get(register.PAYOUTS) or [list(register.PAYOUT_HEADERS)]
-    invoices = tabs.get(register.INVOICES) or [list(register.INVOICE_HEADERS)]
-    check = register.verify(payouts, user, now)
-    if check.problems:
-        _show("The register has lines that cannot be verified - nothing was "
-              "posted. Please look at these rows:", check.problems)
-        return 1
-    if check.payout_updates:
-        print(f"\n{len(check.payout_updates)} payout line(s) had calculated cells "
-              f"changed by hand; restored{dry}:")
-        for entry in check.log:
-            print(f"  - {entry[3]}: “{entry[4]}” put back to “{entry[5]}”")
-        for row, cells in check.payout_updates:            # use the restored values
-            payouts[row - 1][:len(cells)] = cells
-        if not args.dry_run:
-            client.update_rows(register_id, [(register.PAYOUTS, r, c)
-                                             for r, c in check.payout_updates])
-            client.append_rows(register_id, register.LOG, check.log)
-    _show("Please check:", check.warnings)
-
-    # 3. read the PDFs and calculate
-    pdfs = sorted(folder.glob("*.pdf"))
-    print(f"\nReading {len(pdfs)} PDF file(s) in {folder} ...")
-    outcome = engine.calculate(masters.masters, engine.read_files(pdfs),
-                               register.matches_from(tabs.get(register.MATCHES) or []))
-    _show("Saved matches:", outcome.notes)
-
-    # 4. post
-    todo = register.plan(payouts, invoices, outcome, user, now, start)
-    if not args.dry_run:
-        client.append_rows(register_id, register.PAYOUTS, todo.payout_appends)
-        client.update_rows(register_id,
-                           [(register.PAYOUTS, r, c) for r, c in todo.payout_updates]
-                           + [(register.INVOICES, r, c) for r, c in todo.invoice_updates])
-        client.append_rows(register_id, register.INVOICES, todo.invoice_appends)
-        client.append_rows(register_id, register.LOG, todo.log)
-
-    new_lines = todo.payout_appends
-    print(f"\nPosted{dry}: {len(new_lines)} new line(s), "
-          f"{format_inr(sum(r[register.P['Amount']] for r in new_lines))}")
-    for row in new_lines:
-        p = register.P
-        print(f"  {row[p['Line ID']]:<24} {row[p['Type']]:<15} "
-              f"{(row[p['Payee']] or '-'):<28} {format_inr(row[p['Amount']]):>12}")
-    review = [r for r in outcome.of(engine.REVIEW)
-              if not (start and r.invoice_date and r.invoice_date < start)]
-    _show(f"In review ({len(review)}) - not posted until fixed:",
-          [f"{r.invoice_no}: {' '.join(r.reasons)}" for r in review])
-    _show("Not used:", [f"{r.file_name}: {' '.join(r.reasons)}"
-                        for r in outcome.of(engine.NOT_USED)])
-    _show("Please note:", todo.warnings)
-    t = todo.tally
+    _show(f"Calculated cells changed by hand; restored{dry}:", report.restored)
+    _show("Please check:", report.warnings)
+    print(f"\nPosted{dry}: {len(report.posted)} new line(s), "
+          f"{format_inr(report.posted_total)}")
+    for line in report.posted:
+        print(f"  {line['line_id']:<24} {line['type']:<15} "
+              f"{(line['payee'] or '-'):<28} {format_inr(line['amount']):>12}")
+    if report.corrected:
+        print(f"{report.corrected} existing line(s) corrected (re-issued invoices).")
+    _show(f"In review ({len(report.review)}) - not posted until fixed:",
+          [f"{r.invoice_no}: {' '.join(r.reasons)}" for r in report.review])
+    _show("Not used:", [f"{r.file_name}: {' '.join(r.reasons)}" for r in report.not_used])
+    t = report.tally
     parts = [f"{t[k]} {k}" for k in ("posted", "already posted", "re-issued", "in review",
                                      "cancelled", "not used", "before start date") if t[k]]
     print(f"\nTally: {t['files']} file(s) = " + (" + ".join(parts) or "0"))

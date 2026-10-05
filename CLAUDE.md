@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.15.0** (tags v0.1.0 … v0.15.0 on GitHub
+Current version: **v0.16.0** (tags v0.1.0 … v0.16.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -144,9 +144,23 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   [--from] / status. Saved matches live in the register's Matches tab.
   First real `create` of the masters sheet worked on Brinda's PC
   (sheet id in payout_settings.json); register calls not yet run for real.
-  Next: step 4 - screens (Scan, Review, Payouts, History), payments +
-  proofs, cancel invoice; open: publish Google app vs service account,
-  open sign-in in Edge (Brinda keeps other accounts in Chrome).
+  Step 4a done in v0.16.0: window `python -m payout_app` (payout_app/ui:
+  main_window, setup_page, scan_page, review_page, tables, workers) on top
+  of `service.py` (scan / save_match / cancel_invoice /
+  monthly_tool_matches). Pages never call Google directly: they ask
+  `window.run(what, function, on_done)`, ONE background task at a time.
+  IMPORTANT (bug found while testing): a Qt signal connected to a plain
+  Python function runs in the EMITTING thread - callbacks from the
+  worker go through `workers._Relay` (a QObject on the screen's thread).
+  Sign-in opens in Edge; Google scope is now full `drive` (proofs in one
+  shared folder, Brinda's choice A) - older tokens are re-asked.
+  Screen tests: tests/test_payout_ui.py (offscreen, fake Google; skipped
+  without PySide6 - run them in the cloud workspace).
+  Next: step 4b (v0.17.0) - Payouts screen: record payment (date, mode,
+  reference, proof file -> shared Drive folder, one proof for many
+  lines), Paid needs reference or proof, correct/reopen with reason,
+  payout slip per day, History (Log) screen. Then installer.
+  Open: publish the Google app vs service account.
   In the Cowork VM git cannot delete files: set GIT_OPTIONAL_LOCKS=0 and
   rename a leftover `.git/*.lock` out of the way (`*.stale`).
 

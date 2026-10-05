@@ -37,13 +37,22 @@ Google needs two files:
 While the Google project is in "Testing", only the accounts listed there as
 test users can sign in, and Google asks for the sign-in again every 7 days.
 
+The sign-in page is opened in MICROSOFT EDGE when it is installed (Brinda,
+05-10-2026: Chrome holds people's other Google accounts, so the wrong
+account was easily picked there); otherwise in the default browser.
+
 WHAT THE APP MAY DO IN GOOGLE (scopes)
 --------------------------------------
     spreadsheets   read and write Google Sheets the signed-in person can
-                   open (the masters sheet, later the payout register)
-    drive.file     only files this app itself created or was given
-                   (later: the payment proofs it uploads) - never the
-                   person's other Drive files
+                   open (the masters sheet, the payout register)
+    drive          the person's Google Drive. Needed for the payment
+                   proofs (v0.16.0, Brinda's choice "A"): they are kept in
+                   ONE shared folder owned by the automation account, and
+                   Google's narrower "only this app's own files" permission
+                   cannot write into a folder someone else created. The app
+                   only ever touches that one folder.
+A sign-in saved before the permissions changed is noticed (its list of
+permissions is shorter) and asked for again, once.
 
 HOW CELLS ARE READ
 ------------------
@@ -65,7 +74,10 @@ from pathlib import Path
 from app.data.paths import data_dir
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
-          "https://www.googleapis.com/auth/drive.file"]
+          "https://www.googleapis.com/auth/drive"]
+SIGN_IN_WAIT_SECONDS = 300      # give up waiting for the browser after 5 minutes
+EDGE_PATHS = (r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+              r"C:\Program Files\Microsoft\Edge\Application\msedge.exe")
 TOKEN_FILE = "google_token.json"
 SECRET_PATTERN = "client_secret*.json"
 # Header row colours: the tool's blue (app/theme.py Colors.BLUE, #1F5FBF)
@@ -114,6 +126,43 @@ def token_path() -> Path:
     return data_dir() / TOKEN_FILE
 
 
+def _saved_scopes() -> set[str]:
+    """The permissions the saved sign-in was given (empty if none saved)."""
+    import json
+    try:
+        data = json.loads(token_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    scopes = data.get("scopes") or []
+    return set(scopes.split() if isinstance(scopes, str) else scopes)
+
+
+def is_signed_in() -> bool:
+    """True when a sign-in with all the needed permissions is saved on this PC."""
+    return token_path().is_file() and set(SCOPES) <= _saved_scopes()
+
+
+def sign_out() -> None:
+    """Forget the saved sign-in on this PC (the next use asks again)."""
+    try:
+        token_path().unlink()
+    except OSError:
+        pass
+
+
+def _prefer_edge() -> None:
+    """Make Edge the browser Python opens, when Edge is installed (Windows)."""
+    import webbrowser
+    for path in EDGE_PATHS:
+        if Path(path).is_file():
+            try:
+                webbrowser.register("edge", None, webbrowser.BackgroundBrowser(path),
+                                    preferred=True)
+            except Exception:
+                pass
+            return
+
+
 def sign_in(interactive: bool = True):
     """
     The signed-in person's Google credentials.
@@ -123,7 +172,7 @@ def sign_in(interactive: bool = True):
     """
     Request, Credentials, InstalledAppFlow, _ = _libraries()
     creds = None
-    if token_path().is_file():
+    if token_path().is_file() and set(SCOPES) <= _saved_scopes():
         try:
             creds = Credentials.from_authorized_user_file(str(token_path()), SCOPES)
         except ValueError:
@@ -140,10 +189,20 @@ def sign_in(interactive: bool = True):
     if not interactive:
         raise GoogleError("This PC is not signed in to Google.")
     flow = InstalledAppFlow.from_client_secrets_file(str(find_client_secret()), SCOPES)
+    _prefer_edge()
     try:
-        creds = flow.run_local_server(port=0, prompt="consent")
+        creds = flow.run_local_server(port=0, prompt="consent",
+                                      timeout_seconds=SIGN_IN_WAIT_SECONDS)
+    except KeyboardInterrupt:
+        # Ctrl+C in the command window (often pressed to copy the link)
+        raise GoogleError(
+            "The sign-in was stopped (Ctrl+C). Run the command again and leave "
+            "the window alone until the browser says the sign-in has completed. "
+            "To copy the link, select it and right-click.") from None
     except Exception as exc:
-        raise GoogleError(f"Google sign-in did not finish ({exc}).") from exc
+        raise GoogleError(
+            "Google sign-in did not finish. Please try again and complete it in "
+            f"the browser window that opens. ({exc.__class__.__name__})") from exc
     token_path().write_text(creds.to_json(), encoding="utf-8")
     return creds
 

@@ -413,3 +413,47 @@ def test_register_layout_matches_its_headings():
               if "updateDimensionProperties" in r]
     assert hidden == [rg.P["Check"]]
     assert rg.summary_formulas()[rg.SUMMARY_SECOND_TABLE_ROW + 1][0].startswith("=IFERROR(QUERY(")
+
+
+# --- v0.16.0: what the screens need ------------------------------------------
+def test_issues_are_listed_once_with_their_invoices_and_choices(repo):
+    a = with_vehicle(inv_0753(), "NIOS", "Edhayan - Ooty")
+    b = with_vehicle(inv_226(), "Nios")
+    b.invoice_date = date(2026, 10, 2)                  # another month, same name
+    out = engine.calculate(build_masters(repo), files(a, b))
+    (issue,) = out.issues
+    assert (issue.kind, issue.printed) == ("Car", "NIOS")
+    assert sorted(issue.invoices) == ["DNS-226-2627", "DNS26-GST-0753"]
+    assert out.choices["Car"] == ["Hyundai Exter", "Hyundai i20", "Tata Punch EV"]
+    assert "Edhayan (9000000004)" in out.choices["Salesperson"]
+    assert "Horn" in out.choices["Item"]
+
+
+def test_unchanged_files_are_not_read_again(tmp_path, monkeypatch):
+    one, two = tmp_path / "a.pdf", tmp_path / "b.pdf"
+    one.write_text("x")
+    two.write_text("y")
+    read = []
+    monkeypatch.setattr(engine, "_read_one",
+                        lambda path: read.append(path.name) or (path.name, None, "no"))
+    cache, seen = {}, []
+    engine.read_files([one, two], lambda *p: seen.append(p), cache)
+    engine.read_files([one, two], None, cache)
+    assert read == ["a.pdf", "b.pdf"] and seen == [(1, 2, "a.pdf"), (2, 2, "b.pdf")]
+    two.write_text("changed")
+    assert engine.read_files([one, two], None, cache)[1] == ("b.pdf", None, "no")
+    assert read == ["a.pdf", "b.pdf", "b.pdf"]
+
+
+def test_saved_sign_in_needs_every_permission():
+    import json
+    from payout_app import google_api
+    assert not google_api.is_signed_in()
+    google_api.token_path().write_text(json.dumps(
+        {"scopes": ["https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive.file"]}))
+    assert not google_api.is_signed_in()                # the older, narrower sign-in
+    google_api.token_path().write_text(json.dumps({"scopes": google_api.SCOPES}))
+    assert google_api.is_signed_in()
+    google_api.sign_out()
+    assert not google_api.is_signed_in()

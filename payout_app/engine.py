@@ -69,6 +69,14 @@ same ones) and passed in as `matches`:
 A match that cannot be applied (target not in the masters) is reported in
 `Outcome.notes` and otherwise ignored.
 
+WHAT NEEDS REVIEW, FOR THE REVIEW SCREEN (v0.16.0)
+--------------------------------------------------
+Besides the reasons on each invoice, `Outcome.issues` lists every thing
+that needs a decision ONCE, with the invoices it holds up - "Vehicle NIOS
+is not in the Car master (3 invoices)" is one issue, fixed by one saved
+match. `Outcome.choices` gives the names that can be chosen for each kind
+(every product, executive and car of the masters).
+
 WORKING
 -------
 Every payout line carries a short text showing how the amount was reached,
@@ -133,9 +141,21 @@ class InvoiceResult:
 
 
 @dataclass
+class ReviewIssue:
+    """One thing that keeps invoices in review."""
+    kind: str                    # Item / Salesperson / Car / Totals
+    printed: str                 # the text as printed on the invoice(s)
+    message: str
+    invoices: list[str] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)   # likely master records
+
+
+@dataclass
 class Outcome:
     results: list[InvoiceResult] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)     # e.g. unusable matches
+    issues: list[ReviewIssue] = field(default_factory=list)
+    choices: dict[str, list[str]] = field(default_factory=dict)  # kind -> names
 
     def of(self, state: str) -> list[InvoiceResult]:
         return [r for r in self.results if r.state == state]
@@ -162,31 +182,54 @@ def invoice_print(inv: ParsedInvoice) -> str:
 # ---------------------------------------------------------------------------
 # Reading the files
 # ---------------------------------------------------------------------------
-def read_files(paths: list[str | Path]) -> list[tuple[str, ParsedInvoice | None, str]]:
+def read_files(paths: list[str | Path], progress=None, cache: dict | None = None
+               ) -> list[tuple[str, ParsedInvoice | None, str]]:
     """
     Read each PDF. Returns (file name, invoice or None, reason if not used).
     Another firm's invoice (different GSTIN) and files that are not readable
     invoices are "not used", with the reason in plain words.
+
+    progress   called as progress(done, total, file name) after each file
+    cache      a dict kept by the caller between scans: a file whose size
+               and modified time are unchanged is not read again (reading
+               is the slow part - about 12 files a second)
     """
     out = []
-    for path in paths:
-        path = Path(path)
-        try:
-            inv = read_invoice(path)
-        except InvoiceReadError as exc:
-            out.append((path.name, None, f"Could not be read: {exc}."))
-            continue
-        except Exception as exc:                      # damaged / locked file
-            out.append((path.name, None,
-                        f"Could not be read ({exc.__class__.__name__})."))
-            continue
-        if inv.gstin and inv.gstin != FIRM_GSTIN:
-            out.append((path.name, None, f"Another firm's invoice (GSTIN {inv.gstin})."))
-        elif inv.invoice_date is None:
-            out.append((path.name, None, "No invoice date found."))
-        else:
-            out.append((path.name, inv, ""))
+    paths = [Path(p) for p in paths]
+    for i, path in enumerate(paths, start=1):
+        key = stamp = None
+        if cache is not None:
+            try:
+                stat = path.stat()
+                key, stamp = str(path), (stat.st_size, stat.st_mtime_ns)
+            except OSError:
+                key = None
+            if key and cache.get(key, (None,))[0] == stamp:
+                out.append(cache[key][1])
+                if progress:
+                    progress(i, len(paths), path.name)
+                continue
+        out.append(_read_one(path))
+        if key:
+            cache[key] = (stamp, out[-1])
+        if progress:
+            progress(i, len(paths), path.name)
     return out
+
+
+def _read_one(path: Path) -> tuple[str, ParsedInvoice | None, str]:
+    """Read one PDF (see read_files)."""
+    try:
+        inv = read_invoice(path)
+    except InvoiceReadError as exc:
+        return path.name, None, f"Could not be read: {exc}."
+    except Exception as exc:                          # damaged / locked file
+        return path.name, None, f"Could not be read ({exc.__class__.__name__})."
+    if inv.gstin and inv.gstin != FIRM_GSTIN:
+        return path.name, None, f"Another firm's invoice (GSTIN {inv.gstin})."
+    if inv.invoice_date is None:
+        return path.name, None, "No invoice date found."
+    return path.name, inv, ""
 
 
 def _with_billed_values(inv: ParsedInvoice) -> ParsedInvoice:
@@ -327,8 +370,34 @@ def calculate(masters: MastersRepo,
         by_month.setdefault(month, []).append(
             FileResult(file_name, "read", "", _with_billed_values(inv)))
 
+    outcome.choices = {
+        "Item": sorted(p["name"] for p in masters.list_rows("products") if p["active"]),
+        "Salesperson": sorted(MastersRepo.display_name("executives", e)
+                              for e in masters.list_rows("executives") if e["active"]),
+        "Car": sorted(MastersRepo.display_name("cars", c)
+                      for c in masters.list_rows("cars") if c["active"])}
+    names = {"salesperson": ("Salesperson", "executives"), "car": ("Car", "cars")}
+
     for (year, month), results in sorted(by_month.items()):
         invoices.store_scan(year, month, "payout app", results)
+        for issue in invoices.issues(year, month):
+            if issue.status != "open":
+                continue
+            if issue.kind == "product":
+                kind, suggestions = "Item", []
+            elif issue.kind in names:
+                kind, master = names[issue.kind]
+                suggestions = [MastersRepo.display_name(master, masters.get(master, i))
+                               for i in issue.options if masters.get(master, i)]
+            else:
+                kind, suggestions = "Totals", []
+            same = next((x for x in outcome.issues if x.kind == kind and issue.printed
+                         and name_key(x.printed) == name_key(issue.printed)), None)
+            if same:                       # the same name in another month
+                same.invoices += [n for n in issue.invoices if n not in same.invoices]
+            else:
+                outcome.issues.append(ReviewIssue(kind, issue.printed, issue.message,
+                                                  list(issue.invoices), suggestions))
         data = build_month(masters, invoices, inputs, year, month)
         for left in data.left_out:
             by_number[left.invoice_no].reasons = list(dict.fromkeys(left.reasons))
