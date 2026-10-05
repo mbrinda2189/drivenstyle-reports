@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.14.0** (tags v0.1.0 … v0.14.0 on GitHub
+Current version: **v0.15.0** (tags v0.1.0 … v0.15.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -132,7 +132,21 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   own database masters (switch later). Google calls NOT yet run with a
   real sign-in - first real run is Brinda's `create`. Google project is in
   Testing (7-day sign-in); publish vs service account still open.
-  Next: step 3 - Scan the PDF folder, Review, post to the payout register.
+  Step 3 done in v0.15.0 (commands only): `engine.py` stores the PDFs in
+  the in-memory database (InvoicesRepo.store_scan, lines given net + GST =
+  billed) and values them with reports/data.build_month -> PayoutLine
+  (IDs `<invoice>-LAB / -INC / -INT`, adjustments `-ADJn`); `register.py`
+  plans the writes (post once by invoice "Print" fingerprint, In review,
+  Re-issued, Cancelled, tally) and `verify` restores calculated cells
+  from the hidden sealed "Check" cell (option A: staff sign in as
+  themselves, so cells cannot be locked - agreed 05-10-2026);
+  `payout_cli.py` = create-register / use-register / scan [--dry-run]
+  [--from] / status. Saved matches live in the register's Matches tab.
+  First real `create` of the masters sheet worked on Brinda's PC
+  (sheet id in payout_settings.json); register calls not yet run for real.
+  Next: step 4 - screens (Scan, Review, Payouts, History), payments +
+  proofs, cancel invoice; open: publish Google app vs service account,
+  open sign-in in Edge (Brinda keeps other accounts in Chrome).
   In the Cowork VM git cannot delete files: set GIT_OPTIONAL_LOCKS=0 and
   rename a leftover `.git/*.lock` out of the way (`*.stale`).
 

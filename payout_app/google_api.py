@@ -14,6 +14,10 @@ app works with plain rows and can be tested without the internet.
                                        tabs and format them
         .read_tabs(sheet_id)           every tab's rows, as typed
         .title(sheet_id)               the sheet's name
+        .append_rows(sheet_id, tab, rows)      add rows below the last one
+        .update_rows(sheet_id, updates)        overwrite given rows from column A
+        .write_formulas(sheet_id, tab, rows)   cells Google should work out
+    who(credentials)              name of the signed-in person, for the log
 
 SIGNING IN
 ----------
@@ -192,6 +196,19 @@ def format_requests(sheet_id: int, columns: list[dict], header_count: int) -> li
                 "range": col(i),
                 "cell": {"userEnteredFormat": {"numberFormat": {"type": "TEXT"}}},
                 "fields": "userEnteredFormat.numberFormat"}})
+        # "warn": Google asks "are you sure?" before the cell is edited by
+        # hand (it cannot refuse - see register.py). "hidden": column hidden.
+        if layout.get("warn"):
+            requests.append({"addProtectedRange": {"protectedRange": {
+                "range": {"sheetId": sheet_id, "startColumnIndex": i,
+                          "endColumnIndex": i + 1},
+                "description": "Calculated by the payout app - do not edit",
+                "warningOnly": True}}})
+        if layout.get("hidden"):
+            requests.append({"updateDimensionProperties": {
+                "range": {"sheetId": sheet_id, "dimension": "COLUMNS",
+                          "startIndex": i, "endIndex": i + 1},
+                "properties": {"hiddenByUser": True}, "fields": "hiddenByUser"}})
     requests.append({"autoResizeDimensions": {"dimensions": {
         "sheetId": sheet_id, "dimension": "COLUMNS",
         "startIndex": 0, "endIndex": header_count}}})
@@ -288,6 +305,57 @@ class SheetsClient:
         ranges = got.get("valueRanges", [])
         return {name: (ranges[i].get("values", []) if i < len(ranges) else [])
                 for i, name in enumerate(names)}
+
+
+    def append_rows(self, sheet_id: str, tab: str, rows: list[list]) -> None:
+        """Add rows below the last filled row of a tab."""
+        if not rows:
+            return
+        self._run(self.sheets.values().append(
+            spreadsheetId=sheet_id, range=f"{_quoted(tab)}!A1",
+            valueInputOption="RAW", insertDataOption="INSERT_ROWS",
+            body={"values": rows}), f"add rows to {tab}")
+
+    def update_rows(self, sheet_id: str, updates: list[tuple[str, int, list]]) -> None:
+        """Overwrite rows: (tab, sheet row number, cells from column A)."""
+        if not updates:
+            return
+        self._run(self.sheets.values().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={"valueInputOption": "RAW",
+                  "data": [{"range": f"{_quoted(tab)}!A{row}", "values": [cells]}
+                           for tab, row, cells in updates]}), "update the sheet")
+
+    def write_formulas(self, sheet_id: str, tab: str, rows: list[list]) -> None:
+        """Write cells that Google should interpret (formulas), from A1."""
+        self._run(self.sheets.values().update(
+            spreadsheetId=sheet_id, range=f"{_quoted(tab)}!A1",
+            valueInputOption="USER_ENTERED", body={"values": rows}),
+            f"fill {tab}")
+
+
+def who(credentials) -> str:
+    """
+    The signed-in person's Google e-mail address, for "Scanned by" and the
+    Log. Asked from Google Drive ("about me"); if that fails for any reason
+    the Windows user name is used instead - the name is for information and
+    must never stop a scan.
+    """
+    try:
+        _, _, _, build = _libraries()
+        about = build("drive", "v3", credentials=credentials, cache_discovery=False
+                      ).about().get(fields="user(displayName,emailAddress)").execute()
+        user = about.get("user", {})
+        name = user.get("emailAddress") or user.get("displayName") or ""
+        if name:
+            return name
+    except Exception:
+        pass
+    import getpass
+    try:
+        return getpass.getuser()
+    except Exception:
+        return "unknown"
 
 
 def _reason(exc: Exception) -> str:

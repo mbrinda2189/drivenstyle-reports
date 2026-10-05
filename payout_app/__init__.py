@@ -29,6 +29,17 @@ THE MODULES (built step by step)
     masters_cli.py     Commands to create the masters sheet and to check it:
                            python -m payout_app.masters_cli create
                            python -m payout_app.masters_cli check
-Still to come: reading the day's PDFs, the Review list, posting to the
-payout register, recording payments and proofs.
+    engine.py          Invoice PDFs -> payout lines (labour, spot incentive,
+                       internal team) with their workings, or the reasons
+                       an invoice needs review. Uses the monthly tool's
+                       own matching and valuation code.
+    register.py        The payout register sheet: layout, what a scan has
+                       to write (post once, in review, re-issued invoices),
+                       and finding calculated cells changed by hand.
+    payout_cli.py      The daily commands:
+                           python -m payout_app.payout_cli create-register
+                           python -m payout_app.payout_cli scan "<folder>"
+                           python -m payout_app.payout_cli status
+Still to come: the screens (Scan, Review, Payouts, History), recording
+payments and proofs from the app, cancelling an invoice.
 """

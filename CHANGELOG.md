@@ -6,6 +6,48 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.0] – 2026-10-05 – Payout app, step 3: scan, calculate, post to the register
+
+The engine of the daily payout app, used through commands for now (screens
+come next). The monthly reports tool is **unchanged**.
+
+### Added
+- **Payout register Google Sheet "Drive N Style Payout Register"** with the
+  tabs Payouts (one row per payout line: calculated columns, then Status /
+  Paid date / Mode / Reference / Proof / Remarks for the staff), Invoices
+  (every invoice seen and its state), Matches, Log and Summary (live
+  totals by payee and by month).
+- **Calculation from the invoice PDFs** (`payout_app/engine.py`) with the
+  monthly tool's own matching and valuation code: one Labour line per
+  invoice, one Spot incentive line for the sales executive (discount rule,
+  packages, "Gets incentive = No", "Others"), one Internal team line (car
+  PPF). Exact amounts - no rounding. Every line shows its working.
+- **Posting rules** (`payout_app/register.py`): an invoice is posted once
+  and never calculated again, so a master changed later cannot alter a
+  posted line; an invoice that cannot be calculated is recorded "In review"
+  with the reasons and retried on every scan; a **re-issued** invoice (same
+  number, PDF says something else) corrects unpaid lines in place and adds
+  **adjustment lines** for lines already paid; an invoice marked Cancelled
+  in the Invoices tab is never posted. The tally always adds up.
+- **Lines changed by hand are put back**: each payout row carries a hidden
+  sealed copy of its calculated cells; every scan compares, restores and
+  logs. Calculated columns also show Google's "protected cell" warning.
+  A line marked Paid without reference or proof is listed as a warning.
+- **Saved matches** (Matches tab): a printed item / salesperson / car name
+  matched to a master record, or to "Others", used by every PC.
+- **Commands**: `python -m payout_app.payout_cli create-register |
+  use-register <link> | scan "<folder>" [--dry-run] [--from dd-mm-yyyy] |
+  status`.
+
+### Pending
+- Screens (Scan, Review, Payouts, History); recording payments and
+  uploading proofs from the app; cancelling an invoice from the app (for
+  now: type Cancelled in the Invoices tab's State column).
+- Every scan reads every PDF in the folder (about 1 second per 12 files);
+  keep one folder per month, or this will be made smarter later.
+- Two PCs scanning at the very same moment could post an invoice twice;
+  the next scan reports the duplicate line. To be closed with the screens.
+
 ## [0.14.0] – 2026-10-05 – Payout app, step 2: the masters as a Google Sheet
 
 First part of the separate **daily payout app** (`payout_app/`). The

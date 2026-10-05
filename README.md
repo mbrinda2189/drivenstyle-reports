@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.14.0 – daily payout app started: the masters as a Google Sheet, checked on every read (`payout_app/`); earlier: v0.13.0 – PDF reader brought up to date for the daily payout app (item notes, Branch line, invoices with GST on some lines, amount billed per line); earlier: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
+> **Current status: v0.15.0 – daily payout app: invoice PDFs are calculated and posted to the payout register Google Sheet (commands; screens next); earlier: v0.14.0 – daily payout app started: the masters as a Google Sheet, checked on every read (`payout_app/`); earlier: v0.13.0 – PDF reader brought up to date for the daily payout app (item notes, Branch line, invoices with GST on some lines, amount billed per line); earlier: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -360,6 +360,42 @@ python -m payout_app.masters_cli check          # read the sheet and check it
 python -m payout_app.masters_cli use <link>     # on another PC: use the existing sheet
 ```
 
+**The payout register (v0.15.0).** A second Google Sheet, "Drive N Style
+Payout Register". Share it with the staff as Editor.
+
+| Tab | What it holds |
+|---|---|
+| Payouts | One row per payout line. Calculated by the app: Line ID, Invoice no, Invoice date, Customer, Car, Type, Payee, Amount, Working, Calculated on. Filled when paid: Status, Paid date, Mode, Reference, Proof, Remarks, Entered by, Entered at. |
+| Invoices | Every invoice the app has seen: Posted / In review (with the reason) / Re-issued / Cancelled. |
+| Matches | A name printed on invoices matched to a master record: Kind (Item / Salesperson / Car), Printed on invoice, Master record (or "Others"). |
+| Log | Every change the app makes. |
+| Summary | Pending and paid totals by payee and by month (live formulas). |
+
+```powershell
+python -m payout_app.payout_cli create-register                 # once (sign in as the owner account)
+python -m payout_app.payout_cli scan "D:\Invoices\2026-10" --dry-run   # see what would be posted
+python -m payout_app.payout_cli scan "D:\Invoices\2026-10"             # the daily run
+python -m payout_app.payout_cli scan "..." --from 01-10-2026    # leave earlier invoices alone
+python -m payout_app.payout_cli status                          # pending / paid per payee
+python -m payout_app.payout_cli use-register <link>             # on another PC
+```
+
+*Types of line:* **Labour** (one per invoice: labour charge × quantity of
+the items with labour), **Spot incentive** (one per invoice, payable to its
+sales executive; incentive × qty × min(1, billed ÷ bill value); package
+incentive when a whole package is on the invoice) and **Internal team**
+(car PPF). Amounts are exact - rounding to ₹10 stays a month-end figure.
+The "Working" column shows how each amount was reached.
+
+*Rules:* an invoice is posted once and never recalculated, so changing a
+master later does not alter a posted line. An invoice with an unknown item,
+salesperson or car waits "In review" and is retried on every scan - fix
+the masters sheet or add a row to the Matches tab. If an invoice is edited
+in Zoho, save its PDF again in the folder: unpaid lines are corrected,
+paid lines get an adjustment line for the difference. To keep an invoice
+out, type Cancelled in the Invoices tab's State column. A calculated cell
+typed over by hand is put back at the next scan and logged.
+
 The app's Google key file (`client_secret_....json`) is looked for in
 `%LOCALAPPDATA%\Drive N Style Reports` and in the project's `data` folder;
 the sign-in is saved as `google_token.json` in the first. Neither is ever
@@ -479,7 +515,10 @@ payout_app/                Daily payout app (separate app, same rules)
     ├── masters_sheet.py   Masters sheet: layout, write, read + every check
     ├── google_api.py      Google sign-in and the Sheets calls
     ├── settings.py        Which sheet this PC uses
-    └── masters_cli.py     create / check / use / preview commands
+    ├── masters_cli.py     create / check / use / preview commands
+    ├── engine.py          Invoice PDFs -> labour / incentive payout lines
+    ├── register.py        Payout register: layout, posting rules, hand-edit check
+    └── payout_cli.py      create-register / scan / status commands
 ```
 
 ## Look and feel
