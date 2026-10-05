@@ -6,6 +6,29 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.0] – 2026-10-05 – Monthly reports PDF: the client's order, no descriptions
+
+### Changed (monthly reports PDF only; the Excel workbook is unchanged)
+- **New order, from the client's note** – Profit & loss is now the first
+  page, followed by: New-car business (five lines: cars delivered, cars
+  that took DNS, penetration %, DNS value as per list, DNS value per car
+  delivered) · Top 10 products and top 10 services by gross profit ·
+  Penetration by location · OE accessories by location and by model ·
+  Branches by gross profit · Packages vs sales · Labour calculation ·
+  Vehicle-wise average per car · Spot incentive · Payment modes.
+- **No descriptions under the headings** (e.g. "Labour cost = labour charge
+  in the Product master × quantity…") and no "Prepared on … by …" line:
+  each section shows its heading, the month and the table.
+- **Removed from the PDF**: headline figures and the rest of the executive
+  summary, Service vs product, Indirect vs direct, New-car vs other, DNS
+  penetration by model, Trend.
+- The top 10 products / services are ranked by **gross profit** again (in
+  v0.11.1 they were ranked by margin %); branches likewise.
+
+### Added
+- "Packages vs sales" in the PDF: each package's count and sales against
+  the month's total sales.
+
 ## [0.18.1] – 2026-10-05 – Payout app build: fix for the first Windows build
 
 ### Fixed

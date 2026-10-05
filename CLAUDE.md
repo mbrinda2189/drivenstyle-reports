@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.18.1** (tags v0.1.0 … v0.18.1 on GitHub
+Current version: **v0.19.0** (tags v0.1.0 … v0.19.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -229,6 +229,13 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
 - **PDF: every % column runs highest first** (Brinda, 04-10-2026): incl.
   margin % - from v0.11.1 the client wants the PDF's top lists RANKED by
   profit margin % (Excel still by gross profit).
+- **Monthly PDF order** (client's handwritten note via Brinda, 05-10-2026,
+  v0.19.0): P&L first; New-car business 5 lines; top 10 products / services
+  by GROSS PROFIT (not margin %); Penetration by location; OE accessories by
+  location and model; Branches by gross profit; Packages vs sales; Labour;
+  Vehicle-wise; Spot incentive; Payment modes. No descriptions under
+  headings, no "Prepared on". Everything else is out of the PDF (still in
+  Excel). `pdf_book._append` drops title() note rows (font size 9).
 - **PDF layout** (Brinda, 04-10-2026, v0.10.3): NO graphs in the PDF, no
   empty white space, page numbers in the footer, print must be readable.
   `pdf_book.py` writes each section, then copies them onto ONE "Report"

@@ -15,25 +15,23 @@ So the tool writes a second, temporary workbook laid out for reading -
 this module - and Excel turns THAT into the PDF (pdf_export.py). The
 temporary workbook is deleted afterwards.
 
-WHAT IS IN THE PDF, in this order
----------------------------------
-    Summary              executive summary WITHOUT "Points needing attention"
-                         (the Cover block - "Monthly reports ... Notes" -
-                         was dropped from the PDF in v0.10.5)
-    Service vs product   summary table only
-    Labour               "By product" table only
-    Vehicle-wise         "By segment" table only
-    Spot incentive       "By executive" only, highest payable first
-    High-profit          top 10 products and top 10 services
-    Indirect vs direct   as in the workbook
-    Payment modes        by mode, by account deposited to
-    Profit & loss        as in the workbook
-    New-car penetration  as in the workbook (needs the delivery list)
-    New-car vs other     "Where the month's business came from"
-    Trend                only when two or more months are read (trend.py)
-NOT in the PDF: invoice profitability, packages, executive-wise sales,
-missed opportunity, RTO list vs invoices, consultant scorecard, not
-included. They remain in the Excel workbook.
+WHAT IS IN THE PDF, in this order (the client's note of 05-10-2026, v0.13.0)
+----------------------------------------------------------------------------
+     1. Profit & loss                          (first page)
+     2. New-car business                       five lines (needs the list)
+     3. Top 10 products / top 10 services by gross profit (high-profit items)
+     4. Penetration by location                (needs the delivery list)
+     5. OE accessories by location, by model   (needs the delivery list)
+     6. Branches by gross profit
+     7. Packages vs sales
+     8. Labour calculation                     by product
+     9. Vehicle-wise average per car           by segment
+    10. Spot incentive                         by executive + "Internal team"
+    11. Payment modes                          by mode, by account
+Nothing else: no headline figures, no descriptions under the headings, no
+"Prepared on" line, and none of the sections left off the note (executive
+summary, service vs product, indirect vs direct, new-car vs other, DNS
+penetration by model, trend). All of those remain in the Excel workbook.
 
 LAYOUT (v0.10.3)
 ----------------
@@ -90,10 +88,14 @@ from openpyxl.worksheet.worksheet import Worksheet
 from app.data.payments_io import Payment
 from app.reports import rto_reports as rr
 from app.reports.data import MonthData, round_up_10
-from app.reports.trend import trend_sheet
+from openpyxl.styles import PatternFill
+
 from app.reports.workbook import (
-    Col, _by_product, _finish, cost_split_sheet, exec_label, pnl_sheet,
+    MONEY, NAVY, PCT, Col, _by_product, _finish, _font, exec_label, pnl_sheet,
     section, table, title)
+
+HEAD_FONT = _font(True, "FFFFFF")
+HEAD_FILL = PatternFill("solid", fgColor=NAVY)
 
 MARGIN = '=IF({sales}{r}=0,"",{gp}{r}/{sales}{r})'
 GP = "={sales}{r}-{cost}{r}-{labour}{r}"
@@ -263,10 +265,10 @@ def _high_profit(ws, d):
         r["_gp"] = round(r["sales"] - r["cost"] - r["labour"], 2)
         if r["sales"] > 0 and r["_gp"] / r["sales"] * 100 >= th - 1e-9:
             good.append(r)
-    # v0.11.1 (the client's request): ranked by profit margin % - the ten
-    # shown are the ten highest margins (ties: the larger gross profit first)
-    by_margin = lambda r: (-(r["_gp"] / r["sales"]), -r["_gp"])
-    good.sort(key=by_margin)
+    # v0.13.0 (the client's note of 05-10-2026): the ten with the highest
+    # GROSS PROFIT. (v0.11.1 ranked them by margin %, which put small
+    # high-margin items ahead of the real earners.)
+    good.sort(key=lambda r: -r["_gp"])
     cols = lambda first: [
         Col(first, "product", width=46),
         Col("Qty", "qty", "qty", 8, total="sum"),
@@ -277,8 +279,8 @@ def _high_profit(ws, d):
         Col("Margin %", "margin", "pct", 10, formula=MARGIN, total=MARGIN),
     ]
     p = Page(ws, row)
-    for category, heading in (("Product", "Top 10 products by profit margin %"),
-                              ("Service", "Top 10 services by profit margin %")):
+    for category, heading in (("Product", "Top 10 products by gross profit"),
+                              ("Service", "Top 10 services by gross profit")):
         rows = [r for r in good if r["category"] == category][:10]
         r0 = section(ws, p.row, heading)
         t = table(ws, r0, cols("Product" if category == "Product" else "Service"), rows,
@@ -378,6 +380,115 @@ def _penetration(ws, d, link):
     _finish(ws)
 
 
+def _new_car(ws, d, link):
+    """New-car business: the five lines the client asked for (v0.13.0)."""
+    row = title(ws, "New-car business", d.label)
+    cars = len(link.cars)
+    took = sum(link.took_dns(c) for c in link.cars)
+    listed = round(sum(c.dns_value for c in link.cars), 2)
+    for c, (text, width) in enumerate((("Particulars", 42), ("", 14.5)), start=1):
+        cell = ws.cell(row, c, text)
+        cell.font, cell.fill = HEAD_FONT, HEAD_FILL
+        ws.column_dimensions[get_column_letter(c)].width = width
+    for label, value, fmt in (
+            ("Cars delivered", cars, "0"),
+            ("Cars that took DNS accessories", took, "0"),
+            ("DNS penetration %", took / cars if cars else "", PCT),
+            ("DNS value as per list", listed, MONEY),
+            ("DNS value per car delivered", round(listed / cars, 2) if cars else 0.0, MONEY)):
+        row += 1
+        ws.cell(row, 1, label).font = _font()
+        cell = ws.cell(row, 2, value)
+        cell.font, cell.number_format = _font(True), fmt
+    _finish(ws)
+
+
+def _penetration_location(ws, d, link):
+    """DNS penetration by location, highest penetration % first."""
+    row = title(ws, "Penetration by location", d.label)
+    pen = '=IF({cars}{r}=0,"",{dns}{r}/{cars}{r})'
+    per = '=IF({cars}{r}=0,"",{dns_value}{r}/{cars}{r})'
+    rows = sorted(rr._group_rows(link, lambda c: c.location),
+                  key=lambda g: -(g["dns"] / g["cars"] if g["cars"] else 0))
+    table(ws, row, [
+        Col("Location", "name", width=24),
+        Col("Cars delivered", "cars", "qty", 12, total="sum"),
+        Col("Took DNS", "dns", "qty", 12, total="sum"),
+        Col("Penetration %", "pen", "pct", 12, formula=pen, total=pen),
+        Col("DNS value (list)", "dns_value", "money", 14, total="sum"),
+        Col("DNS value per car delivered", "per", "money", 14, formula=per, total=per),
+        Col("Invoiced (with GST)", "invoiced", "money", 14, total="sum"),
+    ], rows)
+    _finish(ws)
+
+
+def _oe(ws, d, link):
+    """OE (car maker's) accessories by location and by model."""
+    row = title(ws, "OE accessories", d.label)
+    for heading, key in (("location", lambda c: c.location),
+                         ("model", lambda c: c.model_group)):
+        row = section(ws, row, f"By {heading} - OE accessories")
+        t = table(ws, row, [
+            Col(heading.capitalize(), "name", width=24),
+            Col("Cars delivered", "cars", "qty", 12, total="sum"),
+            Col("Took OE", "oe", "qty", 12, total="sum"),
+            Col("OE value (list)", "oe_value", "money", 14, total="sum"),
+            Col("OE listed, value blank", "oe_blank", "qty", 14, total="sum"),
+            Col("Neither OE nor DNS", "none", "qty", 14, total="sum"),
+        ], rr._group_rows(link, key))
+        row = t["next"]
+    _finish(ws)
+
+
+def _branches(ws, d):
+    """Branches ranked by gross profit (v0.13.0)."""
+    row = title(ws, "Branches by gross profit", d.label)
+    groups: dict[str, dict] = {}
+    for i in d.invoices:
+        g = groups.setdefault(i.branch or "(no branch)", dict(
+            branch=i.branch or "(no branch)", invoices=0, sales=0.0, cost=0.0, labour=0.0))
+        g["invoices"] += 1
+        for k in ("sales", "cost", "labour"):
+            g[k] = round(g[k] + getattr(i, k), 2)
+    rows = sorted(groups.values(), key=lambda g: -(g["sales"] - g["cost"] - g["labour"]))
+    table(ws, row, [
+        Col("Branch", "branch", width=26),
+        Col("Invoices", "invoices", "qty", 10, total="sum"),
+        Col("Sales", "sales", "money", 15, total="sum"),
+        Col("Product cost", "cost", "money", 15, total="sum"),
+        Col("Labour", "labour", "money", 13, total="sum"),
+        Col("Gross profit", "gp", "money", 15, formula=GP, total="sum"),
+        Col("Margin %", "margin", "pct", 10, formula=MARGIN, total=MARGIN),
+    ], rows)
+    _finish(ws)
+
+
+def _packages_vs_sales(ws, d):
+    """Package sales against the month's total sales (v0.13.0)."""
+    row = title(ws, "Packages vs sales", d.label)
+    groups: dict[str, dict] = {}
+    for i in d.invoices:
+        if i.package:
+            g = groups.setdefault(i.package.package, dict(name=i.package.package, n=0,
+                                                          sales=0.0))
+            g["n"] += 1
+            g["sales"] = round(g["sales"] + i.package.sales, 2)
+    packs = sorted(groups.values(), key=lambda g: -g["sales"])
+    in_packs = round(sum(g["sales"] for g in packs), 2)
+    rows = packs + [dict(name="Other sales (not in a package)", n="",
+                         sales=round(d.sales - in_packs, 2))]
+    for g in rows:
+        g["share"] = g["sales"] / d.sales if d.sales else ""
+    table(ws, row, [
+        Col("Package", "name", width=36),
+        Col("Times sold", "n", "qty", 12, total="sum"),
+        Col("Sales (excl. GST)", "sales", "money", 15, total="sum"),
+        Col("% of total sales", "share", "pct", 14,
+            total='=IF({sales}{r}=0,"",SUM({share}{first}:{share}{last}))'),
+    ], rows, total_label="Total sales of the month")
+    _finish(ws)
+
+
 def _source(ws, d, link):
     row = title(ws, "New-car vs other business", d.label, [
         "New-car business = invoices linked to a car in this month's delivery list. Other = "
@@ -443,11 +554,22 @@ def _append(report: Worksheet, part: Worksheet, at: int) -> int:
     each column becomes as wide as the widest section needs (capped).
     """
     last_row, last_col = _used(part)
-    shift = at - 1
+    # v0.13.0 (the client): no descriptions under the headings. Every
+    # section starts with its heading (row 1), the month (row 2) and then
+    # the small grey note lines written by title() - font size 9 - from row
+    # 3. Those note rows are left out; what follows moves up to close the
+    # gap (and its formulas with it).
+    notes = 0
+    while part.cell(3 + notes, 1).value is not None \
+            and part.cell(3 + notes, 1).font.sz == 9:
+        notes += 1
     for row in part.iter_rows(min_row=1, max_row=last_row, max_col=last_col):
         for cell in row:
+            if 3 <= cell.row < 3 + notes:
+                continue
             if cell.value is None and not cell.has_style:
                 continue
+            shift = at - 1 - (notes if cell.row >= 3 + notes else 0)
             target = report.cell(cell.row + shift, cell.column)
             value = cell.value
             if isinstance(value, str) and value.startswith("="):
@@ -458,8 +580,9 @@ def _append(report: Worksheet, part: Worksheet, at: int) -> int:
             target.hyperlink = None
     for r in range(1, last_row + 1):
         height = part.row_dimensions[r].height
-        if height:
-            report.row_dimensions[r + shift].height = height
+        if height and not 3 <= r < 3 + notes:
+            report.row_dimensions[r + at - 1 - (notes if r >= 3 + notes else 0)].height = height
+    last_row -= notes
     for c in range(1, last_col + 1):
         letter = get_column_letter(c)
         cap = FIRST_COL if c == 1 else OTHER_COL
@@ -479,22 +602,21 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
     wb = Workbook()
     report = wb.active
     report.title = "Report"
-    plan = [("Summary", lambda ws: rr.summary_sheet(ws, data, previous, link, user,
-                                                    attention=False, highest_first=True)),
-            ("Service vs product", lambda ws: _category(ws, data)),
-            ("Labour", lambda ws: _labour(ws, data)),
-            ("Vehicle-wise", lambda ws: _vehicle(ws, data)),
-            ("Spot incentive", lambda ws: _incentive(ws, data)),
-            ("High-profit products", lambda ws: _high_profit(ws, data)),
-            ("Indirect vs direct", lambda ws: cost_split_sheet(ws, data, largest_first=True)),
-            ("Payment modes", lambda ws: _payments(ws, data, payments)),
-            ("Profit & loss", lambda ws: pnl_sheet(ws, data, largest_first=True))]
-    if link is not None:
-        plan += [("New-car penetration", lambda ws: _penetration(ws, data, link)),
-                 ("New-car vs other", lambda ws: _source(ws, data, link))]
-    if len(months) >= 2:
-        plan.append(("Trend", lambda ws: trend_sheet(ws, data, months, rto_by_month,
-                                                     charts=False)))
+    with_list = link is not None
+    plan = [("Profit & loss", lambda ws: pnl_sheet(ws, data, largest_first=True))]
+    if with_list:
+        plan.append(("New-car business", lambda ws: _new_car(ws, data, link)))
+    plan.append(("High-profit products", lambda ws: _high_profit(ws, data)))
+    if with_list:
+        plan += [("Penetration by location",
+                  lambda ws: _penetration_location(ws, data, link)),
+                 ("OE accessories", lambda ws: _oe(ws, data, link))]
+    plan += [("Branches", lambda ws: _branches(ws, data)),
+             ("Packages vs sales", lambda ws: _packages_vs_sales(ws, data)),
+             ("Labour", lambda ws: _labour(ws, data)),
+             ("Vehicle-wise", lambda ws: _vehicle(ws, data)),
+             ("Spot incentive", lambda ws: _incentive(ws, data)),
+             ("Payment modes", lambda ws: _payments(ws, data, payments))]
     row = 1
     for name, writer in plan:
         part = wb.create_sheet(name)

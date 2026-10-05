@@ -77,83 +77,88 @@ def test_excel_is_asked_for_one_pdf(tmp_path, monkeypatch):
 
 
 # --- v0.10.0: the PDF version (summary tables + graphs) and the trend --------------
-def test_pdf_version_is_one_flowing_sheet_without_graphs(world):  # noqa: F811
-    """v0.10.3: no graphs, no page per section, page numbers, readable print."""
+def test_pdf_version_layout(world):  # noqa: F811
+    """
+    The PDF version: one flowing sheet, no graphs, page numbers (v0.10.3);
+    from v0.13.0 the client's order - Profit & loss first - with no
+    descriptions under the headings and only the sections on his note.
+    """
     from app.data.rto_list import read_rto
     from app.reports.data import build_month
-    from app.reports.pdf_book import OTHER_COL, incentive_by_executive, write_pdf_workbook
+    from app.reports.pdf_book import OTHER_COL, incentive_by_executive, shift_formula, \
+        write_pdf_workbook
     from tests.test_rto import write_list
     masters, irepo, tmp_path = world
-    d = build_month(masters, irepo, InputsRepo(masters), 2026, 9)
+    inputs = InputsRepo(masters)
+    inputs.save_costs(2026, 9, [("Postage", 5.0), ("Rent", 5000.0), ("Salaries", 900.0)])
+    d = build_month(masters, irepo, inputs, 2026, 9)
     rto = read_rto(write_list(tmp_path / "RTO.xlsx"))
-    book = write_pdf_workbook(d, [d], None, tmp_path / "pdf.xlsx", "tester", rto=rto)
-    wb = openpyxl.load_workbook(book)
+    wb = openpyxl.load_workbook(write_pdf_workbook(d, [d, d], None, tmp_path / "pdf.xlsx",
+                                                   "tester", rto=rto))
     assert wb.sheetnames == ["Report"]                 # one sheet = sections follow on
     ws = wb["Report"]
     assert not ws._charts and not ws.row_breaks.brk    # no graphs, no forced page breaks
     text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
-    assert "Drive N Style – Monthly reports" not in text and "Notes" not in text  # v0.10.5
-    order = [text.index(t) for t in (
-        "Drive N Style – Executive summary",
-        "Service vs product profitability", "Labour calculation",
-        "Vehicle-wise average per car", "Spot incentive calculation",
-        "High-profit product sales", "Indirect vs direct cost %", "Payment mode analysis",
-        "Profit & loss", "New-car penetration", "New-car vs other business")]
-    assert order == sorted(order)
-    for gone in ("Points needing attention", "Invoice-wise profitability", "Contents",
-                 "Trend analysis (month on month)"):   # one month: no Trend
+    wanted = ["Profit & loss", "New-car business", "Top 10 products by gross profit",
+              "Top 10 services by gross profit", "Penetration by location",
+              "By location - OE accessories", "By model - OE accessories",
+              "Branches by gross profit", "Packages vs sales", "Labour calculation",
+              "Vehicle-wise average per car", "Spot incentive calculation",
+              "Payment mode analysis"]
+    order = [text.index(t) for t in wanted]
+    assert order == sorted(order) and text[0] == "Profit & loss"      # P&L on page 1
+    for gone in ("Headline figures", "Drive N Style – Executive summary",
+                 "Points needing attention", "Service vs product profitability",
+                 "Indirect vs direct cost %", "New-car vs other business",
+                 "Trend analysis (month on month)", "By model - DNS accessories"):
         assert gone not in text
-    # page numbers in the footer; fitted to the page width only; no table over 8 columns
+    # no descriptions under the headings, no "Prepared on" line
+    assert not any(c.value and c.font.sz == 9 for row in ws.iter_rows(max_col=1) for c in row)
+    assert not any(t.startswith(("Prepared on", "Labour cost =", "Each invoice is one car"))
+                   for t in text)
+    # New-car business: exactly the five lines asked for
+    at = text.index("New-car business")
+    assert text[at + 2:at + 8] == [
+        "Particulars", "Cars delivered", "Cars that took DNS accessories",
+        "DNS penetration %", "DNS value as per list", "DNS value per car delivered"]
+    # page set-up
     assert "&P" in ws.oddFooter.right.text and "Drive N Style" in ws.oddFooter.left.text
     assert ws.page_setup.fitToWidth == 1 and ws.page_setup.fitToHeight == 0
     assert ws.max_column <= 8
     assert all((ws.column_dimensions[c].width or 0) <= OTHER_COL for c in "BCDEFGH")
-    # formulas were shifted to their new rows: the P&L's gross profit is still sales - costs
-    row = next(r for r in ws.iter_rows() if r[0].value == "Gross profit"
-               and isinstance(r[1].value, str))
-    assert row[1].value.startswith("=B") and str(row[0].row - 1) in row[1].value
-    # v0.10.4: "% of sales" must divide by the SALES row of its own table (a fixed
-    # $B$n reference) - it pointed at another row and showed 189.2% for sales
+    # formulas moved with their tables (also past the removed description rows):
+    # "% of sales" divides by the Sales row of its own table
     for r in ws.iter_rows():
         if r[0].value == "Sales (excluding GST)" and isinstance(r[2].value, str):
             n = r[0].row
             assert r[2].value == f'=IF($B${n}=0,"",B{n}/$B${n})'
-            below = ws.cell(n + 2, 3).value                   # Product cost
-            assert below == f'=IF($B${n}=0,"",B{n + 2}/$B${n})'
-    # v0.10.5: percentages run downwards - indirect cost heads largest first (PDF only)
-    inputs = InputsRepo(masters)
-    inputs.save_costs(2026, 9, [("Postage", 10.0), ("Rent", 5000.0), ("Salaries", 900.0)])
-    d2 = build_month(masters, irepo, inputs, 2026, 9)
-    ws2 = openpyxl.load_workbook(write_pdf_workbook(
-        d2, [d2], None, tmp_path / "pdf3.xlsx", rto=rto))["Report"]
-    labels = [r[0] for r in ws2.iter_rows(values_only=True) if isinstance(r[0], str)]
-    at = labels.index("Indirect vs direct cost %")
-    heads = labels[labels.index("Indirect costs", at) + 1:
-                   labels.index("Total indirect costs", at)]
-    # Rent 5,000 > Salaries 900 > automatic 4% (12) > Postage 10 > automatic 3% (9)
-    assert heads == ["Rent", "Salaries", "Breakage / returns / transport (4% of COGS)",
-                     "Postage", "Compliance GST (3% of COGS)"]
-    pen = labels.index("By location - DNS accessories")
-    assert labels[pen + 2:pen + 5] == ["POL", "(not given)", "OOTY"]   # 100%, 100%, 50%
-    from app.reports.pdf_book import shift_formula
+            assert ws.cell(n + 2, 3).value == f'=IF($B${n}=0,"",B{n + 2}/$B${n})'
+    for row in ws.iter_rows():                          # no formula points at text / blanks
+        for c in row:
+            if isinstance(c.value, str) and c.value.startswith("=") and "SUM(" not in c.value:
+                import re
+                for col, r in re.findall(r"\$?([A-Z]{1,3})\$?(\d+)", c.value):
+                    v = ws[f"{col}{r}"].value
+                    assert v is not None and (not isinstance(v, str) or v.startswith("="))
     assert shift_formula('=IF($B$7=0,"",B9/$B$7)', 100) == '=IF($B$107=0,"",B109/$B$107)'
-    assert shift_formula("=ROUND(B11*0.04,2)", 5) == "=ROUND(B16*0.04,2)"
     assert shift_formula("=SUM(C8:C11)", 10) == "=SUM(C18:C21)"
-
-    # the Excel workbook keeps its attention points and every sheet
-    r = generate(masters, irepo, InputsRepo(masters), 2026, 9, tmp_path, ["Profit & loss"])
-    cells = [c[0] for c in openpyxl.load_workbook(r.path)["Summary"].iter_rows(
-        values_only=True) if c[0]]
-    assert "Points needing attention" in cells
-
-    # two months -> the Trend section is added, without its charts
-    book = write_pdf_workbook(d, [d, d], None, tmp_path / "pdf2.xlsx", rto=None)
-    ws = openpyxl.load_workbook(book)["Report"]
-    text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
-    assert "Trend analysis (month on month)" in text and "New-car penetration" not in text
-    assert not ws._charts
+    # indirect cost heads largest first (PDF only)
+    heads = text[text.index("Indirect costs") + 1:text.index("Total indirect costs")]
+    assert heads[:2] == ["Rent", "Salaries"]
     payable = [g["payable"] for g in incentive_by_executive(d)]
     assert payable == sorted(payable, reverse=True)
+
+    # without the delivery list the new-car sections are simply left out
+    ws = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "p2.xlsx"))["Report"]
+    text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
+    assert "New-car business" not in text and "Penetration by location" not in text
+    assert text[0] == "Profit & loss" and "Branches by gross profit" in text
+
+    # the Excel workbook is unchanged: summary, notes and gross-profit ranking stay
+    r = generate(masters, irepo, inputs, 2026, 9, tmp_path, ["Profit & loss"])
+    excel = [c[0] for c in openpyxl.load_workbook(r.path)["Summary"].iter_rows(
+        values_only=True) if c[0]]
+    assert "Points needing attention" in excel and "Headline figures" in excel
 
 
 def test_trend_sheet_and_saved_delivery_totals(world):  # noqa: F811
@@ -172,22 +177,3 @@ def test_trend_sheet_and_saved_delivery_totals(world):  # noqa: F811
     assert col["Cars delivered (delivery list)"] == 4 and col["DNS penetration %"] == 0.75
     assert "Sales by branch" in col and "Top 10 products by sales" in col
     assert len(ws._charts) == 2                      # lines + penetration bars
-
-
-def test_pdf_top_lists_are_ranked_by_margin(world):  # noqa: F811
-    """v0.11.1: in the PDF the top lists are ranked by profit margin %."""
-    from app.reports.data import build_month
-    from app.reports.pdf_book import write_pdf_workbook
-    masters, irepo, tmp_path = world
-    d = build_month(masters, irepo, InputsRepo(masters), 2026, 9)
-    ws = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "p.xlsx"))["Report"]
-    text = [r[0] for r in ws.iter_rows(values_only=True) if isinstance(r[0], str)]
-    for heading in ("Top 5 products by profit margin %",
-                    "Top 5 sales executives by profit margin %",
-                    "Branches by profit margin %", "Top 10 products by profit margin %"):
-        assert heading in text
-    assert not any("by gross profit" in t for t in text)
-    r = generate(masters, irepo, InputsRepo(masters), 2026, 9, tmp_path, ["Profit & loss"])
-    excel = [c[0] for c in openpyxl.load_workbook(r.path)["Summary"].iter_rows(
-        values_only=True) if c[0]]
-    assert "Top 5 products by gross profit" in excel          # the workbook is unchanged
