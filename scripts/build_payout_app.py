@@ -172,8 +172,18 @@ def prune_google_documents(folder: Path) -> float:
 
 
 def write_guide(folder: Path) -> None:
-    """Step 3: the staff guide as a PDF, made with Qt (no other program)."""
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    """
+    Step 3: the staff guide as a PDF, made with Qt (no other program).
+
+    On Windows Qt must use its normal "windows" platform here: the
+    "offscreen" one has NO FONTS there, and a PDF written without fonts has
+    no readable text (v0.18.0 did this - the guide came out blank and the
+    built program, started with the same setting, failed its PDF check).
+    Elsewhere (Linux, no display) offscreen is needed and has fonts.
+    The finished PDF is read back; a guide without text raises an error.
+    """
+    if os.name != "nt":
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import QMarginsF
     from PySide6.QtGui import (
         QFont, QGuiApplication, QPageLayout, QPageSize, QPdfWriter, QTextDocument)
@@ -185,7 +195,13 @@ def write_guide(folder: Path) -> None:
     document.setDefaultFont(QFont("Segoe UI", 10))
     document.setMarkdown(GUIDE.read_text(encoding="utf-8"))
     document.print_(writer)
+    del writer
     del app
+    import pdfplumber
+    with pdfplumber.open(folder / "Staff guide.pdf") as pdf:
+        words = len(pdf.pages[0].extract_words())
+    if words < 50:
+        raise ValueError(f"the guide's first page has only {words} readable words")
 
 
 def program_path(folder: Path) -> Path:
@@ -197,7 +213,9 @@ def run_check(folder: Path) -> bool:
     result = ROOT / "build" / "payout_check.txt"
     result.unlink(missing_ok=True)
     env = dict(os.environ)
-    if os.name != "nt":
+    if os.name == "nt":
+        env.pop("QT_QPA_PLATFORM", None)      # the real Windows platform (fonts!)
+    else:
         env.setdefault("QT_QPA_PLATFORM", "offscreen")
     try:
         done = subprocess.run([str(program_path(folder)), "--check", str(result)],

@@ -6,6 +6,19 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.1] – 2026-10-05 – Payout app build: fix for the first Windows build
+
+### Fixed
+- **The build failed its own PDF check on Windows, and "Staff guide.pdf"
+  had no readable text.** One cause: the build script switched Qt to its
+  "offscreen" mode to write the guide, and on Windows that mode has no
+  fonts; the built program was then started with the same setting, so the
+  test PDF it writes for its self-check had no text either. The invoice
+  PDF reader itself was not at fault. On Windows the script now uses Qt's
+  normal mode for the guide and starts the built program without the
+  setting. The guide is read back after writing and reported if it has
+  no text.
+
 ## [0.18.0] – 2026-10-05 – Payout app: the program for the staff PCs
 
 ### Added
