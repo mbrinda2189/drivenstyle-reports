@@ -97,7 +97,12 @@ def test_pdf_version_layout(world):  # noqa: F811
                                                    "tester", rto=rto))
     assert wb.sheetnames == ["Report"]                 # one sheet = sections follow on
     ws = wb["Report"]
-    assert not ws._charts and not ws.row_breaks.brk    # no graphs, no forced page breaks
+    assert not ws._charts                              # no graphs
+    # v0.19.1: a page break is only ever placed BEFORE a heading, so a heading is
+    # never left at the foot of a page with its table on the next one
+    for brk in ws.row_breaks.brk:
+        top = ws.cell(brk.id + 1, 1)
+        assert top.value and top.font.b and top.font.sz in (11, 14), top.value
     text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
     wanted = ["Profit & loss", "New-car business", "Top 10 products by gross profit",
               "Top 10 services by gross profit", "Penetration by location",
@@ -147,6 +152,23 @@ def test_pdf_version_layout(world):  # noqa: F811
     assert heads[:2] == ["Rent", "Salaries"]
     payable = [g["payable"] for g in incentive_by_executive(d)]
     assert payable == sorted(payable, reverse=True)
+
+    # pieces that must stay together: heading + table; a sub-heading straight after
+    # the section heading stays with it
+    from app.reports.pdf_book import PAGE_POINTS, PAGE_USE, _blocks, _page_breaks
+    oe = next(c.row for row in ws.iter_rows(max_col=1) for c in row
+              if c.value == "OE accessories")
+    end = next(c.row for row in ws.iter_rows(max_col=1) for c in row
+               if c.value == "Branches by gross profit") - 3
+    pieces = _blocks(ws, oe, end)
+    assert len(pieces) == 2 and pieces[0][0] == oe
+    assert ws.cell(pieces[1][0], 1).value == "By model - OE accessories"
+    # a piece that does not fit the rest of the page starts the next page
+    sheet = openpyxl.Workbook().active
+    rows_per_page = int(PAGE_POINTS * PAGE_USE // 15)
+    second_end = 23 + rows_per_page - 15            # fills most of the second page
+    _page_breaks(sheet, [(1, 20), (23, second_end), (second_end + 3, second_end + 5)])
+    assert [b.id for b in sheet.row_breaks.brk] == [22]     # only before the second piece
 
     # without the delivery list the new-car sections are simply left out
     ws = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "p2.xlsx"))["Report"]

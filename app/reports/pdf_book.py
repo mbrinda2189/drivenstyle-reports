@@ -41,9 +41,10 @@ LAYOUT (v0.10.3)
   starts a new page for every sheet, so separate sheets meant a page per
   section with most of it empty; one sheet lets the sections follow each
   other with no gaps.
-* No forced page breaks: Excel moves to the next page only when a page is
-  full, so no page is left partly empty. (A long table can therefore
-  continue on the next page.)
+* A HEADING STAYS WITH ITS TABLE (v0.19.1): when a heading and the table
+  under it do not fit in what is left of a page, they start the next page
+  together (see _page_breaks). Otherwise sections simply follow on; only a
+  table longer than a whole page continues across pages.
 * PRINT SIZE: A4 landscape, fitted to the page WIDTH only (never squeezed
   to one page high). No table is wider than eight columns and column
   widths are capped (FIRST_COL / OTHER_COL), so the sheet is about as wide
@@ -83,6 +84,7 @@ from pathlib import Path
 from openpyxl import Workbook
 from openpyxl.formula.tokenizer import Tokenizer
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.pagebreak import Break
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.data.payments_io import Payment
@@ -102,6 +104,10 @@ GP = "={sales}{r}-{cost}{r}-{labour}{r}"
 
 FIRST_COL, OTHER_COL = 42, 14.5     # widest a column may be on the report sheet
 GAP_ROWS = 2                        # blank rows between two sections
+MARGINS_CM = dict(left=1.0, right=1.0, top=1.0, bottom=1.6)
+# A4 landscape is 21 cm high; what is left between the margins, in points
+PAGE_POINTS = (21.0 - MARGINS_CM["top"] - MARGINS_CM["bottom"]) / 2.54 * 72
+PAGE_USE = 0.94                     # assume a slightly shorter page (see _page_breaks)
 
 
 class Page:
@@ -592,6 +598,60 @@ def _append(report: Worksheet, part: Worksheet, at: int) -> int:
     return last_row
 
 
+def _blocks(report: Worksheet, first: int, last: int) -> list[tuple[int, int]]:
+    """
+    Split one section (rows first..last of the report sheet) into the pieces
+    that must stay together on a page: a heading with the table under it.
+    A new piece starts at every sub-heading ("By location - OE accessories":
+    bold, size 11); the section's own heading and month stay with its first
+    table.
+    """
+    subs = [r for r in range(first + 2, last + 1)
+            if report.cell(r, 1).value is not None
+            and report.cell(r, 1).font.b and report.cell(r, 1).font.sz == 11]
+    # A sub-heading that comes straight after the section heading (no table
+    # in between) belongs to the same piece: "OE accessories" must not be
+    # left behind when "By location - OE accessories" moves to a new page.
+    table_before = lambda r: any(report.cell(x, 1).fill.fgColor.rgb not in (None, "00000000")
+                                 and report.cell(x, 1).fill.fill_type == "solid"
+                                 for x in range(first, r))
+    if subs and not table_before(subs[0]):
+        subs = subs[1:]
+    starts = [first] + subs
+    return [(a, b - 1) for a, b in zip(starts, starts[1:] + [last + 1])]
+
+
+def _page_breaks(report: Worksheet, blocks: list[tuple[int, int]]) -> None:
+    """
+    v0.19.1 - a heading must never be left at the foot of a page with its
+    table on the next one. Excel cannot "keep a heading with its table", so
+    the tool decides where pages start: the pieces from _blocks are added to
+    the page one after another, and when the next piece does not fit in what
+    is left of the page, a page break is put BEFORE it - the heading moves
+    to the next page together with its table. The cost is some blank space
+    at the foot of such a page; that is preferred to a split.
+
+    The page height is taken a little short of the real one (PAGE_USE), and
+    at full size: the sheet is fitted to the page WIDTH, which can only make
+    it smaller, i.e. fit MORE rows than assumed - so the tool may break a
+    page slightly early but never too late. A piece taller than a whole
+    page (a very long table) starts on a fresh page and runs on.
+    """
+    page = PAGE_POINTS * PAGE_USE
+    height = lambda r: report.row_dimensions[r].height or 15.0
+    used = 0.0
+    for n, (first, last) in enumerate(blocks):
+        need = sum(height(r) for r in range(first, last + 1))
+        if used and used + need > page:
+            report.row_breaks.append(Break(id=first - 1))
+            used = 0.0
+        used += need
+        if used > page:                      # a table longer than a page
+            used %= page
+        if n + 1 < len(blocks):              # the blank rows before the next piece
+            used += sum(height(r) for r in range(last + 1, blocks[n + 1][0]))
+
+
 def write_pdf_workbook(data: MonthData, months: list[MonthData],
                        payments: list[Payment] | None, path: str | Path,
                        user: str = "", rto: list | None = None,
@@ -617,11 +677,12 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
              ("Vehicle-wise", lambda ws: _vehicle(ws, data)),
              ("Spot incentive", lambda ws: _incentive(ws, data)),
              ("Payment modes", lambda ws: _payments(ws, data, payments))]
-    row = 1
+    row, blocks = 1, []
     for name, writer in plan:
         part = wb.create_sheet(name)
         writer(part)
         rows = _append(report, part, row)
+        blocks += _blocks(report, row, row + rows - 1)
         row += rows + GAP_ROWS
         wb.remove(part)
 
@@ -636,6 +697,7 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
     report.oddFooter.left.size = report.oddFooter.right.size = 9
     last_row, last_col = _used(report)
     report.print_area = f"A1:{get_column_letter(last_col)}{last_row}"
+    _page_breaks(report, blocks)
     wb.calculation.fullCalcOnLoad = True
     path = Path(path)
     wb.save(path)

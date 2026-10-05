@@ -6,6 +6,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.1] – 2026-10-05 – Monthly reports PDF: a heading stays with its table
+
+### Fixed (monthly reports PDF only)
+- A section heading could be left at the foot of a page with its table on
+  the next page. A heading and the table under it now always stay together:
+  when they do not fit in what is left of a page, both start the next page.
+  This can leave blank space at the foot of a page; only a table longer
+  than a whole page continues across pages.
+
 ## [0.19.0] – 2026-10-05 – Monthly reports PDF: the client's order, no descriptions
 
 ### Changed (monthly reports PDF only; the Excel workbook is unchanged)
