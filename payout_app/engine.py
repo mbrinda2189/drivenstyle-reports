@@ -29,9 +29,22 @@ Labour and Spot incentive reports:
 
     Labour           Product master labour charge x quantity, for products
                      marked "Labour involved", at the rate in force on the
-                     invoice date. ONE line per invoice (the technician is
-                     not recorded). The Rs. 1 "Labour Charges ..." lines on
+                     invoice date. The Rs. 1 "Labour Charges ..." lines on
                      the invoice are only markers and are ignored.
+                     From v0.21.0 (client, 07-10-2026) the labour of an
+                     invoice is posted as SEPARATE LINES by kind of work,
+                     so each can be paid and proved on its own:
+                         Labour - Floor mat    item name has "floor mat"
+                         Labour - Sunfilm      item name has "sunfilm"
+                         Labour - Other        any other item with labour
+                     The kind is picked from the item name by the monthly
+                     tool's own rule (reports/data.labour_group - Brinda,
+                     07-10-2026: "floor mat" only, the same in both apps),
+                     so the daily lines agree with the monthly "Labour
+                     calculation" tables. An invoice with a mat and a
+                     sunfilm has two labour lines. (Until v0.20.0: one
+                     line "Labour" per invoice, ID ending -LAB; such lines
+                     already in a register stay as they are.)
     Spot incentive   per item with an incentive group:
                          incentive x qty x min(1, billed / (bill value x qty))
                      plus the package incentive when every item of a
@@ -97,14 +110,25 @@ from app.data.invoices_repo import (
     FIRM_GSTIN, OTHERS, OTHERS_ID, FileResult, InvoicesRepo, billed_lines,
     person_key, vehicle_key)
 from app.data.masters_repo import MastersRepo, name_key, phone_key
-from app.reports.data import build_month
+from app.reports.data import LABOUR_GROUPS, build_month, labour_group
 from app.utils import format_inr
 
-LABOUR = "Labour"
+LABOUR = "Labour"           # every labour type starts with this word; also the
+                            # type of the single labour line posted until v0.20.0
 INCENTIVE = "Spot incentive"
 INTERNAL = "Internal team"
-LINE_TYPES = (LABOUR, INCENTIVE, INTERNAL)
-SUFFIX = {LABOUR: "LAB", INCENTIVE: "INC", INTERNAL: "INT"}
+# Kind of work (reports/data.LABOUR_GROUPS) -> line type and line-ID ending.
+LABOUR_TYPE = {group: f"{LABOUR} - {group}" for group in LABOUR_GROUPS}
+LABOUR_SUFFIX = {"Floor mat": "LABM", "Sunfilm": "LABS", "Other": "LABO"}
+LABOUR_TYPES = tuple(LABOUR_TYPE[group] for group in LABOUR_GROUPS)
+LINE_TYPES = LABOUR_TYPES + (INCENTIVE, INTERNAL)
+SUFFIX = {LABOUR: "LAB", INCENTIVE: "INC", INTERNAL: "INT",
+          **{LABOUR_TYPE[g]: LABOUR_SUFFIX[g] for g in LABOUR_GROUPS}}
+
+
+def is_labour(line_type: str) -> bool:
+    """True for every labour line type, old ("Labour") and new."""
+    return str(line_type).startswith(LABOUR)
 
 READY = "ready"            # calculated; its lines can be posted
 REVIEW = "review"          # cannot be calculated yet - see reasons
@@ -119,7 +143,7 @@ class PayoutLine:
     invoice_date: date
     customer: str
     car: str
-    type: str                  # Labour / Spot incentive / Internal team
+    type: str                  # Labour - <kind> / Spot incentive / Internal team
     payee: str                 # executive's name; "" for labour
     amount: float
     working: str
@@ -307,9 +331,9 @@ def _num(value: float) -> str:
     return f"{value:,.2f}".rstrip("0").rstrip(".")
 
 
-def _labour_working(inv) -> str:
+def _labour_working(lines) -> str:
     parts = [f"{l.product}: {_num(l.labour_rate)} x {_num(l.qty)}"
-             for l in inv.lines if l.labour]
+             for l in lines if l.labour]
     return "; ".join(parts)
 
 
@@ -406,10 +430,15 @@ def calculate(masters: MastersRepo,
             result.state = READY
             common = dict(invoice_no=inv.invoice_no, invoice_date=inv.invoice_date,
                           customer=inv.customer, car=inv.printed_car or inv.car)
-            if inv.labour > 0:
-                result.lines.append(PayoutLine(
-                    line_id(inv.invoice_no, LABOUR), type=LABOUR, payee="",
-                    amount=inv.labour, working=_labour_working(inv), **common))
+            for group in LABOUR_GROUPS:           # one labour line per kind of work
+                work = [l for l in inv.lines
+                        if l.labour and labour_group(l.product) == group]
+                amount = round(sum(l.labour for l in work), 2)
+                if amount > 0:
+                    kind = LABOUR_TYPE[group]
+                    result.lines.append(PayoutLine(
+                        line_id(inv.invoice_no, kind), type=kind, payee="",
+                        amount=amount, working=_labour_working(work), **common))
             if inv.incentive_payable > 0:
                 payee = inv.executive
                 if payee == OTHERS and inv.printed_executive:

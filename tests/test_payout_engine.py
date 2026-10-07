@@ -27,6 +27,8 @@ from payout_app.google_api import format_requests
 from tests.test_invoices import inv_0753, inv_226, inv_237
 
 NOW = datetime(2026, 10, 5, 18, 0)
+# v0.21.0: labour is posted per kind of work
+MAT, SUN, OTHER = (engine.LABOUR_TYPE[g] for g in ("Floor mat", "Sunfilm", "Other"))
 WHO = "staff@example.com"
 
 
@@ -104,9 +106,10 @@ def test_labour_incentive_and_workings(repo):
     assert [r.state for r in out.results] == [engine.READY] * 3
 
     a = lines_of(out, "DNS26-GST-0753")
-    assert a[engine.LABOUR].amount == 150 and a[engine.LABOUR].payee == ""
-    assert a[engine.LABOUR].working == "I20 - PVC Full Floor Mat + Labour Extra: 150 x 1"
-    assert a[engine.LABOUR].line_id == "DNS26-GST-0753-LAB"
+    assert MAT == "Labour - Floor mat" and SUN == "Labour - Sunfilm"
+    assert a[MAT].amount == 150 and a[MAT].payee == ""
+    assert a[MAT].working == "I20 - PVC Full Floor Mat + Labour Extra: 150 x 1"
+    assert a[MAT].line_id == "DNS26-GST-0753-LABM" and SUN not in a
     # Underbody billed at its full 3,500 (Rs. 1 discount on the whole invoice)
     assert a[engine.INCENTIVE].payee == "Edhayan"
     assert a[engine.INCENTIVE].amount == pytest.approx(199.98, abs=0.02)
@@ -114,7 +117,13 @@ def test_labour_incentive_and_workings(repo):
     assert a[engine.INCENTIVE].working.endswith("/ 3,500)")
 
     b = lines_of(out, "DNS-226-2627")
-    assert b[engine.LABOUR].amount == 300 + 500 + 150
+    # a mat and two sunfilms on one invoice: two labour lines
+    assert b[SUN].amount == 300 + 500 and b[SUN].line_id == "DNS-226-2627-LABS"
+    assert b[SUN].working == ("Sunfilm - Nano Ceramic - Front (SK): 300 x 1; "
+                              "Sunfilm - Nano Ceramic - Side and Rear (SK): 500 x 1")
+    assert b[MAT].amount == 150 and b[MAT].line_id == "DNS-226-2627-LABM"
+    assert b[MAT].working == "PUNCH - PVC Full Floor Mat + Labour Extra: 150 x 1"
+    assert OTHER not in b
     # Sunfilm front 7,000 on a 21,903 invoice with 1,903 discount
     billed = 7000 * (1 - 1903 / 21903)
     assert b[engine.INCENTIVE].amount == pytest.approx(500 * billed / 7000, abs=0.01)
@@ -122,7 +131,7 @@ def test_labour_incentive_and_workings(repo):
     assert b[engine.INCENTIVE].car == "Tata Punch EV"
 
     c = lines_of(out, "DNS-237-2627")           # GST on one line only
-    assert list(c) == [engine.LABOUR] and c[engine.LABOUR].amount == 175
+    assert list(c) == [MAT] and c[MAT].amount == 175
 
 
 def test_daily_lines_add_up_to_the_monthly_figures(repo):
@@ -137,7 +146,13 @@ def test_daily_lines_add_up_to_the_monthly_figures(repo):
     month = build_month(monthly_masters, inv, InputsRepo(monthly_masters), 2026, 9)
     total = lambda kind: sum(l.amount for r in out.results for l in r.lines if l.type == kind)
     assert len(month.invoices) == 3
-    assert total(engine.LABOUR) == pytest.approx(sum(i.labour for i in month.invoices))
+    labour = sum(l.amount for r in out.results for l in r.lines if engine.is_labour(l.type))
+    assert labour == pytest.approx(sum(i.labour for i in month.invoices))
+    # ... and each kind agrees with the monthly "Labour calculation" tables
+    from app.reports.data import labour_group
+    for group in ("Floor mat", "Sunfilm", "Other"):
+        assert total(engine.LABOUR_TYPE[group]) == pytest.approx(
+            sum(l.labour for l in month.lines if labour_group(l.product) == group))
     assert total(engine.INCENTIVE) == pytest.approx(
         sum(i.incentive_payable for i in month.invoices), abs=0.05)
 
@@ -145,7 +160,7 @@ def test_daily_lines_add_up_to_the_monthly_figures(repo):
 def test_no_incentive_for_an_executive_marked_no(repo):
     out = engine.calculate(build_masters(repo, nandha_gets=False), september())
     assert engine.INCENTIVE not in lines_of(out, "DNS-226-2627")
-    assert engine.LABOUR in lines_of(out, "DNS-226-2627")
+    assert SUN in lines_of(out, "DNS-226-2627")
 
 
 def test_package_incentive_replaces_item_incentives(repo):
@@ -168,7 +183,7 @@ def test_internal_team_line(repo):
     got = lines_of(engine.calculate(build_masters(repo), files(ppf)), "DNS-400-2627")
     assert got[engine.INTERNAL].amount == 6000 and got[engine.INTERNAL].payee == "Internal team"
     assert got[engine.INTERNAL].working == "PPF - Gloss - Hatchback: 3,000 x 2"
-    assert got[engine.LABOUR].amount == 8000
+    assert got[OTHER].amount == 8000 and got[OTHER].line_id == "DNS-400-2627-LABO"
 
 
 def test_review_reasons_and_saved_matches(repo):
@@ -252,10 +267,11 @@ def test_post_once_and_tally(repo):
     first = sheet.scan(out)
     assert first.tally["files"] == 3 and first.tally["posted"] == 3
     assert [r[0] for r in sheet.payouts[1:]] == [
-        "DNS26-GST-0753-LAB", "DNS26-GST-0753-INC", "DNS-226-2627-LAB",
-        "DNS-226-2627-INC", "DNS-237-2627-LAB"]
-    row = sheet.row("DNS-226-2627-LAB")
-    assert row[rg.P["Status"]] == "Pending" and row[rg.P["Amount"]] == 950
+        "DNS26-GST-0753-LABM", "DNS26-GST-0753-INC", "DNS-226-2627-LABM",
+        "DNS-226-2627-LABS", "DNS-226-2627-INC", "DNS-237-2627-LABM"]
+    row = sheet.row("DNS-226-2627-LABS")
+    assert row[rg.P["Type"]] == "Labour - Sunfilm"
+    assert row[rg.P["Status"]] == "Pending" and row[rg.P["Amount"]] == 800
     assert row[rg.P["Invoice date"]] == ms.date_to_serial(date(2026, 9, 4))
     assert row[rg.P["Calculated on"]] == "05-10-2026 18:00"
     assert [r[rg.I["State"]] for r in sheet.invoices[1:]] == ["Posted"] * 3
@@ -274,7 +290,7 @@ def test_posted_lines_do_not_change_when_a_master_changes_later(repo):
                                      date(2026, 4, 1))])
     again = sheet.scan(engine.calculate(build_masters_fresh(repo), september()))
     assert not again.has_writes
-    assert sheet.row("DNS26-GST-0753-LAB")[rg.P["Amount"]] == 150
+    assert sheet.row("DNS26-GST-0753-LABM")[rg.P["Amount"]] == 150
 
 
 def test_in_review_is_recorded_then_posted_when_fixed(repo):
@@ -324,7 +340,7 @@ def test_reissued_invoice_corrects_unpaid_lines(repo):
     done = sheet.scan(engine.calculate(build_masters_fresh(repo),
                                        files(reissued_0753(drop_underbody=True))))
     assert done.tally["re-issued"] == 1
-    labour = sheet.row("DNS26-GST-0753-LAB")
+    labour = sheet.row("DNS26-GST-0753-LABM")
     assert labour[rg.P["Amount"]] == 300 and labour[rg.P["Status"]] == "Pending"
     assert rg.unseal(labour[rg.P["Check"]])[rg.P["Amount"]] == "300.00"
     incentive = sheet.row("DNS26-GST-0753-INC")
@@ -339,14 +355,14 @@ def test_reissued_invoice_corrects_unpaid_lines(repo):
 def test_reissued_invoice_adds_adjustments_for_paid_lines(repo):
     sheet = Sheet()
     sheet.scan(engine.calculate(build_masters(repo), september()))
-    for lid in ("DNS26-GST-0753-LAB", "DNS26-GST-0753-INC"):
+    for lid in ("DNS26-GST-0753-LABM", "DNS26-GST-0753-INC"):
         sheet.row(lid)[rg.P["Status"]] = "Paid"
         sheet.row(lid)[rg.P["Reference"]] = "UTR1"
     # more labour, and the incentive now belongs to another executive
     sheet.scan(engine.calculate(build_masters_fresh(repo),
                                 files(reissued_0753("Kumaran - HO"))))
-    assert sheet.row("DNS26-GST-0753-LAB")[rg.P["Amount"]] == 150       # untouched
-    adj = sheet.row("DNS26-GST-0753-LAB-ADJ1")
+    assert sheet.row("DNS26-GST-0753-LABM")[rg.P["Amount"]] == 150       # untouched
+    adj = sheet.row("DNS26-GST-0753-LABM-ADJ1")
     assert adj[rg.P["Amount"]] == 150 and adj[rg.P["Status"]] == "Pending"
     assert adj[rg.P["Working"]].startswith("Invoice re-issued: now 300.00")
     back = sheet.row("DNS26-GST-0753-INC-ADJ1")
@@ -364,16 +380,16 @@ def test_cells_changed_by_hand_are_put_back(repo):
     sheet = Sheet()
     sheet.scan(engine.calculate(build_masters(repo), september()))
     assert rg.verify(sheet.payouts, WHO, NOW).has_writes is False
-    row = sheet.row("DNS-226-2627-LAB")
-    row[rg.P["Amount"]] = 9500                    # typed over in the browser
+    row = sheet.row("DNS-226-2627-LABS")
+    row[rg.P["Amount"]] = 8000                    # typed over in the browser
     row[rg.P["Status"]] = "Paid"                  # theirs to change
     check = rg.verify(sheet.payouts, WHO, NOW)
     assert [(e[2], e[3], e[4], e[5]) for e in check.log] == [
-        ("Changed by hand - restored", "DNS-226-2627-LAB: Amount", "9500.00", "950.00")]
+        ("Changed by hand - restored", "DNS-226-2627-LABS: Amount", "8000.00", "800.00")]
     assert check.warnings == [f"Payouts, row {sheet.payouts.index(row) + 1} "
-                              "(DNS-226-2627-LAB): marked Paid without a reference or a proof."]
+                              "(DNS-226-2627-LABS): marked Paid without a reference or a proof."]
     sheet.apply(check)
-    assert row[rg.P["Amount"]] == 950 and row[rg.P["Status"]] == "Paid"
+    assert row[rg.P["Amount"]] == 800 and row[rg.P["Status"]] == "Paid"
     assert rg.verify(sheet.payouts, WHO, NOW).payout_updates == []
 
 
@@ -384,18 +400,19 @@ def test_rows_that_cannot_be_verified_and_duplicates(repo):
     typed = ["X-1-LAB", "X-1", "", "", "", "Labour", "", 500]
     sheet.payouts.append(typed)
     problems = rg.verify(sheet.payouts, WHO, NOW).problems
-    assert any("rows 2 and 7: the line DNS26-GST-0753-LAB is there twice" in p for p in problems)
-    assert any(p.startswith("Payouts, row 8 (X-1-LAB): the Check cell is missing")
+    assert any("rows 2 and 8: the line DNS26-GST-0753-LABM is there twice" in p for p in problems)
+    assert any(p.startswith("Payouts, row 9 (X-1-LAB): the Check cell is missing")
                for p in problems)
 
 
 def test_pending_totals_and_matches_tab(repo):
     sheet = Sheet()
     sheet.scan(engine.calculate(build_masters(repo), september()))
-    sheet.row("DNS-237-2627-LAB")[rg.P["Status"]] = "Paid"
+    sheet.row("DNS-237-2627-LABM")[rg.P["Status"]] = "Paid"
     totals = rg.pending_by_payee(sheet.payouts)
-    assert totals[0] == ("Labour", "", 1100.0, 175.0)
-    assert [t[1] for t in totals[1:]] == ["Edhayan", "Nandha Kumar"]
+    assert totals[0] == ("Labour - Floor mat", "", 300.0, 175.0)
+    assert totals[1] == ("Labour - Sunfilm", "", 800.0, 0.0)
+    assert [t[1] for t in totals[2:]] == ["Edhayan", "Nandha Kumar"]
     rows = [rg.MATCH_HEADERS, ["Item", "Old name", "New name", WHO, "x"], ["", "", ""]]
     assert rg.matches_from(rows) == [dict(kind="Item", printed="Old name", target="New name")]
 

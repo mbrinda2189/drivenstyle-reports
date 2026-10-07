@@ -23,6 +23,8 @@ invoice number / customer.
     "Open proof"  opens the selected line's proof in the browser.
     "Payout slip…" one sheet per payee: what is to be paid, or what was
                   paid on a day - to show on screen or save as a PDF.
+                  Labour has one table per kind of work (floor mat,
+                  sunfilm, other), each with its total.
 
 The three tiles show the money waiting, the money on hold and what was
 paid today. Below the table the selected line's working is shown, so a
@@ -58,7 +60,7 @@ from app.utils import format_inr
 from app.widgets.common import (
     Card, NoWheelComboBox, NoWheelDateEdit, PathPicker, StatTile, button, fit_to_screen,
     label, scroll_body)
-from payout_app import register, service, slip
+from payout_app import engine, register, service, slip
 from payout_app.ui.tables import make_table, money_item, text_item
 
 ALL = "All"
@@ -96,8 +98,12 @@ class PayoutsPage(ScrollPage):
         for name in (register.PENDING, register.PAID, register.HOLD, register.CANCELLED, ALL):
             self.status.addItem(name, name)
         self.kind = NoWheelComboBox()
+        # v0.21.0: labour is posted per kind of work (floor mat / sunfilm /
+        # other), so each can be listed and paid on its own. "Labour (all)"
+        # shows them together, with any plain "Labour" line from before.
         self.kind.addItem("All types", ALL)
-        for name in ("Labour", "Spot incentive", "Internal team"):
+        self.kind.addItem("Labour (all)", engine.LABOUR)
+        for name in engine.LABOUR_TYPES + (engine.INCENTIVE, engine.INTERNAL):
             self.kind.addItem(name, name)
         self.payee = NoWheelComboBox()
         self.payee.setMinimumWidth(190)
@@ -121,7 +127,7 @@ class PayoutsPage(ScrollPage):
             # The widths add up to fit Brinda's laptop (about 1330 px wide at
             # 150 % zoom) without a sideways scroll bar; Payee takes the rest.
             # (The invoice date is in the line of detail under the table.)
-            {COL_TICK: 34, COL_INVOICE: 150, COL_TYPE: 118, COL_AMOUNT: 96,
+            {COL_TICK: 34, COL_INVOICE: 150, COL_TYPE: 140, COL_AMOUNT: 96,
              COL_STATUS: 82, COL_PAID: 104, COL_HOW: 160})
         self.table.setMinimumHeight(330)
         self.table.itemChanged.connect(self._tick_changed)
@@ -211,7 +217,9 @@ class PayoutsPage(ScrollPage):
         words = self.search.text().strip().lower()
         self.shown = [
             l for l in self.view.lines
-            if status in (ALL, l["status"]) and kind in (ALL, l["type"])
+            if status in (ALL, l["status"])
+            and (kind in (ALL, l["type"])
+                 or (kind == engine.LABOUR and engine.is_labour(l["type"])))
             and payee in (ALL, l["payee"])
             and (not words or words in l["invoice_no"].lower()
                  or words in l["customer"].lower())]

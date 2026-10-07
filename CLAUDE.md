@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.20.0** (tags v0.1.0 … v0.20.0 on GitHub
+Current version: **v0.21.0** (tags v0.1.0 … v0.21.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## Working rules (from Brinda – always follow)
@@ -181,6 +181,13 @@ Labour Payment = labour paid per car model, Sheet3 = Zoho items export).
   Google sign-in accepted for now (Brinda, 05-10-2026).
   Masters changes (new executive, new amount) are made by the client in
   the masters Google Sheet - no rebuild.
+  v0.21.0 (client, 07-10-2026): the payout app posts labour as separate
+  lines per kind of work - `Labour - Floor mat` (-LABM), `Labour -
+  Sunfilm` (-LABS), `Labour - Other` (-LABO) - using the monthly tool's
+  `reports/data.labour_group` (rule: "floor mat" / "sunfilm" in the item
+  name; Brinda: keep it to "floor mat" in BOTH apps - change the rule only
+  there). engine.is_labour() covers old plain "Labour" (-LAB) lines too.
+  Slip: one block per labour kind; Payouts filter has the kinds.
   Next: installer (PyInstaller) for the staff PCs; first real runs on
   Brinda's PC of register / Drive calls; publish Google app vs service
   account. Cowork note: Qt tests run only in the cloud workspace - stage

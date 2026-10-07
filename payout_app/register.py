@@ -105,8 +105,8 @@ from datetime import date, datetime
 
 from app.utils import format_inr
 from payout_app.engine import (
-    INCENTIVE, INTERNAL, LABOUR, NOT_USED, READY, REVIEW, InvoiceResult, Outcome,
-    PayoutLine)
+    INCENTIVE, INTERNAL, LABOUR, LABOUR_TYPES, NOT_USED, READY, REVIEW, InvoiceResult,
+    Outcome, PayoutLine)
 from payout_app.masters_sheet import date_to_serial, parse_sheet_date
 
 SHEET_TITLE = "Drive N Style Payout Register"
@@ -526,10 +526,11 @@ def pending_by_payee(payout_rows: list[list]) -> list[tuple[str, str, float, flo
         key = (_s(_cell(r, P["Type"])), _s(_cell(r, P["Payee"])))
         slot = totals.setdefault(key, [0.0, 0.0])
         slot[1 if status == PAID else 0] += _amount(_cell(r, P["Amount"]))
-    order = {LABOUR: 0, INCENTIVE: 1, INTERNAL: 2}
+    order = {LABOUR: 0, **{t: n + 1 for n, t in enumerate(LABOUR_TYPES)},
+             INCENTIVE: 8, INTERNAL: 9}
     return [(t, p, round(v[0], 2), round(v[1], 2))
             for (t, p), v in sorted(totals.items(),
-                                    key=lambda kv: (order.get(kv[0][0], 9), kv[0][1].lower()))]
+                                    key=lambda kv: (order.get(kv[0][0], 7), kv[0][1].lower()))]
 
 
 # ---------------------------------------------------------------------------

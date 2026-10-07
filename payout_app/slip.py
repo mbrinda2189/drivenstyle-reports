@@ -15,8 +15,12 @@ as a PDF. No Qt and no Google here.
 
 GROUPING
 --------
-One block per payee: Labour first (it has no payee - the technician is
-not recorded), then the sales executives A-Z, then the Internal team.
+Labour first - it has no payee (the technician is not recorded), so there
+is ONE BLOCK PER KIND OF WORK: Labour - Floor mat, Labour - Sunfilm,
+Labour - Other, each with its own total (client, 07-10-2026: the mat and
+sunfilm labour are wanted as separate tables). A plain "Labour" line from
+before v0.21.0 gets a block "Labour". Then one block per sales executive,
+A-Z, then the Internal team.
 Each block lists its invoices and ends with its total; the slip ends with
 the grand total. Negative lines (adjustments after a re-issued invoice)
 are shown and reduce the total, so the slip always equals the register.
@@ -29,9 +33,8 @@ from datetime import date, datetime
 from html import escape
 
 from app.utils import format_inr
+from payout_app.engine import INTERNAL, LABOUR, LABOUR_TYPES, is_labour
 from payout_app.register import PAID, PENDING
-
-LABOUR, INTERNAL = "Labour", "Internal team"
 
 
 @dataclass
@@ -60,8 +63,8 @@ class Slip:
 
 
 def _block_title(line: dict) -> str:
-    if line["type"] == LABOUR:
-        return LABOUR
+    if is_labour(line["type"]):
+        return line["type"]
     return line["payee"] or line["type"]
 
 
@@ -78,8 +81,10 @@ def build(lines: list[dict], paid_on: date | None = None,
     groups: dict[str, Block] = {}
     for line in chosen:
         groups.setdefault(_block_title(line), Block(_block_title(line))).lines.append(line)
-    order = lambda b: (0 if b.title == LABOUR else 2 if b.title == INTERNAL else 1,
-                       b.title.lower())
+    labour_order = {LABOUR: 0, **{t: n + 1 for n, t in enumerate(LABOUR_TYPES)}}
+    order = lambda b: ((0, labour_order.get(b.title, 5), "") if is_labour(b.title)
+                       else (2, 0, "") if b.title == INTERNAL
+                       else (1, 0, b.title.lower()))
     blocks = sorted(groups.values(), key=order)
     for block in blocks:
         block.lines.sort(key=lambda l: (l["invoice_date"] or date.min, l["line_id"]))

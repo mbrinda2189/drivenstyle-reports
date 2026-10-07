@@ -46,21 +46,21 @@ def test_clear_register_backs_up_first_and_keeps_matches(repo):
     drive = FakeDrive()
     session, google = filled(repo, drive)
     store = google.store["R"]
-    assert len(store[rg.PAYOUTS]) == 6 and len(store[rg.INVOICES]) == 4
+    assert len(store[rg.PAYOUTS]) == 7 and len(store[rg.INVOICES]) == 4
     with pytest.raises(GoogleError, match="type CLEAR"):
         service.clear_register(session, "clear", now=NOW)
-    assert len(store[rg.PAYOUTS]) == 6 and drive.copies == []
+    assert len(store[rg.PAYOUTS]) == 7 and drive.copies == []
 
     backup, removed = service.clear_register(session, "CLEAR", now=NOW)
     assert drive.copies == [("R", "Drive N Style Payout Register - backup 06-10-2026 09.15")]
-    assert removed == {"Payouts": 5, "Invoices": 3, "Log": 5}
+    assert removed == {"Payouts": 6, "Invoices": 3, "Log": 5}
     assert store[rg.PAYOUTS] == [rg.PAYOUT_HEADERS]
     assert store[rg.INVOICES] == [rg.INVOICE_HEADERS]
     assert store[rg.MATCHES][1][:3] == ["Car", "NIOS", "Tata Punch EV"]
     assert store[rg.SETUP][1] == ["Proofs folder", "F1"]
     (entry,) = store[rg.LOG][1:]
     assert entry[1:4] == ["automation@example.com", "Register cleared",
-                          "5 payout line(s), 3 invoice(s), 5 log entries"]
+                          "6 payout line(s), 3 invoice(s), 5 log entries"]
     assert entry[5] == f"Backup: {backup}" and "COPY1" in backup
 
 
@@ -68,7 +68,7 @@ def test_only_the_owner_can_clear(repo):
     session, google = filled(repo, FakeDrive(owner=False))
     with pytest.raises(GoogleError, match="Only the owner"):
         service.clear_register(session, "CLEAR", now=NOW)
-    assert len(google.store["R"][rg.PAYOUTS]) == 6
+    assert len(google.store["R"][rg.PAYOUTS]) == 7
     assert session.drive.copies == []
 
 

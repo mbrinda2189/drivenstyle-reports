@@ -82,7 +82,7 @@ def test_scan_posts_and_shows_the_result(qapp, world):
     assert page.tiles["posted"].value_label.text() == "1"
     assert page.tiles["in review"].value_label.text() == "1"
     assert page.table.rowCount() == 2
-    assert page.table.item(0, 0).text() == "DNS26-GST-0753-LAB"
+    assert page.table.item(0, 0).text() == "DNS26-GST-0753-LABM"
     assert page.table.item(0, 3).text() == "150.00"
     assert "Lines posted: 2" in page.lines_title.text()
     assert "1 invoice(s) are in review" in page.messages.text()
@@ -124,7 +124,8 @@ def test_saving_a_match_posts_the_invoice(qapp, world):
     assert review.table.rowCount() == 0 and "Nothing needs review" in review.summary.text()
     assert window.sidebar.buttons[PAGE_REVIEW].badge.text() == ""
     ids = [r[0] for r in google.store["R"]["Payouts"][1:]]
-    assert "DNS-226-2627-LAB" in ids and "DNS-226-2627-INC" in ids
+    # a mat and sunfilms on DNS-226: two labour lines (v0.21.0) and the incentive
+    assert {"DNS-226-2627-LABM", "DNS-226-2627-LABS", "DNS-226-2627-INC"} <= set(ids)
     assert any(e[2] == "Match saved" for e in google.store["R"]["Log"][1:])
 
 
@@ -209,7 +210,14 @@ def test_payouts_lists_pending_lines(qapp, world):
     page.table.setCurrentCell(1, 2)
     assert "invoice of 05-09-2026" in page.detail.text()
     assert "Working: Underbody: 200 x 1" in page.detail.text()
-    page.kind.setCurrentIndex(page.kind.findData("Labour"))
+    kinds = [page.kind.itemText(i) for i in range(page.kind.count())]
+    assert kinds == ["All types", "Labour (all)", "Labour - Floor mat", "Labour - Sunfilm",
+                     "Labour - Other", "Spot incentive", "Internal team"]
+    page.kind.setCurrentIndex(page.kind.findData("Labour"))            # Labour (all)
+    assert page.table.rowCount() == 1 and page.table.item(0, 2).text() == "Labour - Floor mat"
+    page.kind.setCurrentIndex(page.kind.findData("Labour - Sunfilm"))
+    assert page.table.rowCount() == 0
+    page.kind.setCurrentIndex(page.kind.findData("Labour - Floor mat"))
     assert page.table.rowCount() == 1
     page.kind.setCurrentIndex(0)
     page.search.setText("nobody")
@@ -220,7 +228,7 @@ def test_recording_a_payment_from_the_screen(qapp, world, tmp_path):
     window, google, page = scanned(qapp, world)
     page._record()                                    # nothing ticked: only a message
     assert not window.busy
-    page.tick(["DNS26-GST-0753-LAB", "DNS26-GST-0753-INC"])
+    page.tick(["DNS26-GST-0753-LABM", "DNS26-GST-0753-INC"])
     assert page.selected.text().startswith("2 line(s) ticked")
     page.record(page.ticked(), date.today(), "GPay", "UTR77", "", "evening run")
     wait(qapp, window)            # the payment ...
@@ -234,7 +242,7 @@ def test_recording_a_payment_from_the_screen(qapp, world, tmp_path):
     paid = google.store["R"]["Payouts"][1]
     assert paid[rg.P["Status"]] == "Paid" and paid[rg.P["Entered by"]] == "staff@example.com"
     # a paid line cannot be paid again from the screen ...
-    page.tick(["DNS26-GST-0753-LAB"])
+    page.tick(["DNS26-GST-0753-LABM"])
     page._record()
     assert not window.busy
     # ... but it can be reopened with a reason, and then held and released
@@ -243,7 +251,7 @@ def test_recording_a_payment_from_the_screen(qapp, world, tmp_path):
     wait(qapp, window)
     assert google.store["R"]["Payouts"][1][rg.P["Status"]] == "Pending"
     page.status.setCurrentIndex(page.status.findData("Pending"))
-    page.tick(["DNS26-GST-0753-LAB"])
+    page.tick(["DNS26-GST-0753-LABM"])
     page.hold(page.ticked(), True, "Wait for the owner")
     wait(qapp, window)
     wait(qapp, window)
@@ -278,6 +286,7 @@ def test_payout_slip_is_shown_and_saved_as_pdf(qapp, world, tmp_path):
     dialog = SlipDialog(page.view.lines, page)
     text = dialog.page.toPlainText()
     assert "To pay - pending" in text and "Edhayan" in text and "Grand total" in text
+    assert "Labour - Floor mat" in text
     dialog.which.setCurrentIndex(dialog.which.findData("paid"))
     assert "Nothing to show" in dialog.page.toPlainText()
     dialog.which.setCurrentIndex(0)
@@ -370,7 +379,7 @@ def test_cancel_leaves_paid_lines_alone(repo):
     google.append_rows("R", "Invoices", todo.invoice_appends)
     google.store["R"]["Payouts"][1][rg.P["Status"]] = "Paid"          # labour paid
     paid = service.cancel_invoice(session, "DNS26-GST-0753", "Customer returned")
-    assert paid == ["DNS26-GST-0753-LAB"]
+    assert paid == ["DNS26-GST-0753-LABM"]
     labour, incentive = google.store["R"]["Payouts"][1:3]
     assert labour[rg.P["Status"]] == "Paid"
     assert incentive[rg.P["Status"]] == "Cancelled"

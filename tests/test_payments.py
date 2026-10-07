@@ -53,8 +53,8 @@ def test_register_view(world):
     session, google, _ = world
     view = service.read_register(session)
     assert [l["line_id"] for l in view.lines] == [
-        "DNS26-GST-0753-LAB", "DNS26-GST-0753-INC", "DNS-226-2627-LAB",
-        "DNS-226-2627-INC", "DNS-237-2627-LAB"]
+        "DNS26-GST-0753-LABM", "DNS26-GST-0753-INC", "DNS-226-2627-LABM",
+        "DNS-226-2627-LABS", "DNS-226-2627-INC", "DNS-237-2627-LABM"]
     first = view.lines[0]
     assert (first["row"], first["status"], first["amount"]) == (2, "Pending", 150.0)
     assert first["invoice_date"] == date(2026, 9, 5) and first["paid_date"] is None
@@ -63,14 +63,14 @@ def test_register_view(world):
 
 def test_payment_with_reference_covers_several_lines(world):
     session, google, _ = world
-    ids = ["DNS26-GST-0753-LAB", "DNS-226-2627-LAB"]
+    ids = ["DNS26-GST-0753-LABM", "DNS-226-2627-LABS"]
     link = service.record_payment(session, ids, TODAY, "Cash", "V-102", now=NOW)
     assert link == ""
     paid = line(google, ids[1])
     assert (paid["status"], paid["paid_date"], paid["mode"], paid["reference"]) == \
         ("Paid", TODAY, "Cash", "V-102")
     assert paid["entered_by"] == "staff@example.com" and paid["entered_at"] == "06-10-2026 11:00"
-    assert line(google, "DNS-237-2627-LAB")["status"] == "Pending"
+    assert line(google, "DNS-237-2627-LABM")["status"] == "Pending"
     # the calculated cells are untouched: they still match their sealed copy
     check = rg.verify(google.store["R"][rg.PAYOUTS], "x", NOW())
     assert check.payout_updates == [] and check.problems == [] and check.warnings == []
@@ -107,11 +107,11 @@ def test_rules_for_recording(world, tmp_path):
 
 def test_if_one_line_is_already_paid_nothing_is_recorded(world):
     session, google, _ = world
-    service.record_payment(session, ["DNS26-GST-0753-LAB"], TODAY, "Cash", "V-1", now=NOW)
-    with pytest.raises(GoogleError, match=r"DNS26-GST-0753-LAB \(Paid\)"):
-        service.record_payment(session, ["DNS-237-2627-LAB", "DNS26-GST-0753-LAB"],
+    service.record_payment(session, ["DNS26-GST-0753-LABM"], TODAY, "Cash", "V-1", now=NOW)
+    with pytest.raises(GoogleError, match=r"DNS26-GST-0753-LABM \(Paid\)"):
+        service.record_payment(session, ["DNS-237-2627-LABM", "DNS26-GST-0753-LABM"],
                                TODAY, "Cash", "V-2", now=NOW)
-    assert line(google, "DNS-237-2627-LAB")["status"] == "Pending"
+    assert line(google, "DNS-237-2627-LABM")["status"] == "Pending"
 
 
 def test_proof_is_uploaded_to_the_shared_folder(world, tmp_path):
@@ -155,7 +155,7 @@ def test_reopen_needs_a_reason_and_keeps_the_trail(world):
     with pytest.raises(GoogleError, match="reason"):
         service.reopen_payment(session, ids, " ", now=NOW)
     with pytest.raises(GoogleError, match="Only paid lines"):
-        service.reopen_payment(session, ["DNS-237-2627-LAB"], "x", now=NOW)
+        service.reopen_payment(session, ["DNS-237-2627-LABM"], "x", now=NOW)
     service.reopen_payment(session, ids, "Paid to the wrong person", now=NOW)
     again = line(google, ids[0])
     assert (again["status"], again["paid_date"], again["reference"], again["mode"]) == \
@@ -190,17 +190,24 @@ def test_payout_slip(world):
     lines = service.read_register(session).lines
     to_pay = slip.build(lines, now=NOW())
     assert to_pay.title == "To pay - pending as on 06-10-2026"
+    # v0.21.0: one block per kind of labour, each with its own total
     assert [(b.title, len(b.lines)) for b in to_pay.blocks] == [
-        ("Labour", 3), ("Edhayan", 1), ("Nandha Kumar", 1)]
-    assert to_pay.blocks[0].total == 150 + 950 + 175
+        ("Labour - Floor mat", 3), ("Labour - Sunfilm", 1), ("Edhayan", 1),
+        ("Nandha Kumar", 1)]
+    assert to_pay.blocks[0].total == 150 + 150 + 175 and to_pay.blocks[1].total == 800
     assert to_pay.total == pytest.approx(sum(l["amount"] for l in lines))
-    service.record_payment(session, ["DNS26-GST-0753-LAB", "DNS26-GST-0753-INC"],
+    service.record_payment(session, ["DNS26-GST-0753-LABM", "DNS26-GST-0753-INC"],
                            TODAY, "GPay", "U1", now=NOW)
     lines = service.read_register(session).lines
     paid = slip.build(lines, TODAY, NOW())
     assert paid.title == "Paid on 06-10-2026" and paid.count == 2
     assert slip.build(lines, date(2026, 10, 5), NOW()).blocks == []
-    assert slip.build(lines, now=NOW()).count == 3
+    assert slip.build(lines, now=NOW()).count == 4
     html = slip.to_html(paid)
     assert "Edhayan" in html and "Grand total" in html and "DNS26-GST-0753" in html
+    assert "Labour - Floor mat" in html
+    # a plain "Labour" line posted before v0.21.0 keeps a block of its own, first
+    old = dict(lines[0], type="Labour", line_id="OLD-1-LAB", status="Pending")
+    assert [b.title for b in slip.build(lines + [old], now=NOW()).blocks][:3] == [
+        "Labour", "Labour - Floor mat", "Labour - Sunfilm"]
     assert "Nothing to show" in slip.to_html(slip.build(lines, date(2026, 10, 5), NOW()))

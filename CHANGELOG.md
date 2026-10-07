@@ -6,6 +6,37 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.21.0] – 2026-10-07 – Payout app: labour posted separately for floor mat and sunfilm
+
+The client wants the labour for floor mats and for sunfilm as separate
+tables. The monthly reports have had them since v0.20.0; this version does
+the same in the daily payout app. The monthly tool is unchanged.
+
+### Changed
+- **Labour is posted as separate lines by kind of work**, so each can be
+  listed, paid, held and proved on its own:
+  `Labour - Floor mat` (ID ending `-LABM`), `Labour - Sunfilm` (`-LABS`)
+  and `Labour - Other` (`-LABO`) for any other item with labour. An
+  invoice with a mat and a sunfilm gets two labour lines. Spot incentive
+  and internal team lines are as before.
+- The kind is picked from the item name by **the same rule as the monthly
+  "Labour calculation" tables** ("floor mat" / "sunfilm"; Brinda,
+  07-10-2026: keep it to "floor mat" in both), so daily lines and monthly
+  tables agree - a test checks each kind against the monthly figures.
+- **Payout slip**: one table per kind of labour, each with its total, then
+  the executives and the internal team.
+- **Payouts screen**: the type filter lists the three kinds of labour and
+  "Labour (all)".
+- The register's Summary tab splits the totals by the new types by itself.
+
+### Pending
+- A labour line posted before this version stays one line "Labour"
+  (`-LAB`); it is not split. If such an invoice is re-issued, its old line
+  is cancelled (or adjusted if paid) and the new lines are added.
+- An item such as "7D Mat" without the words "floor mat" counts as Other.
+- The staff PCs need the rebuilt program
+  (`python scripts\build_payout_app.py`).
+
 ## [0.20.0] – 2026-10-05 – Monthly reports: client's changes to P&L, labour and vehicle tables
 
 All of these are in both the Excel workbook and the PDF.

@@ -29,7 +29,8 @@ calculated by the app; you record the payments.
    - If the invoice should not be paid on, choose it under **Or cancel
      invoice**, type the reason and press **Cancel invoice**.
 4. Go to **Payouts**. The list shows what is waiting to be paid.
-   **Payout slip…** shows the total for each person.
+   **Payout slip…** shows the total for each person, with the labour for
+   floor mats, for sunfilm and for other work in separate tables.
 5. After paying, tick the lines you paid and press **Record payment…**.
    Enter the date, how it was paid, the reference number, and choose the
    screenshot or photo as proof. One payment can cover many lines.
