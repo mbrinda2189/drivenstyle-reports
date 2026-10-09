@@ -79,6 +79,105 @@ export const api = {
   removeUser: (id: number) => ask<{ ok: boolean }>("DELETE", `/users/${id}`),
 };
 
+// ---- masters (v0.24.0) ----------------------------------------------------
+/** One field (column) of a master, as app/data/master_defs.py describes it. */
+export interface Field {
+  key: string;
+  label: string;
+  kind: "text" | "money" | "bool" | "choice" | "lookup" | "date";
+  required: boolean;
+  choices: string[];
+  open_choice: boolean;
+  lookup: string;
+  dated: boolean;      // keeps a history with "effective from" dates
+  default: string | number | boolean;
+}
+
+export interface MasterDef {
+  key: string;
+  title: string;
+  singular: string;
+  filter_field: string;
+  has_rates: boolean;
+  fields: Field[];
+  rows: number;
+  active_rows: number;
+}
+
+export type Value = string | number | boolean | null;
+/** One row of a master: field key -> value, plus its number in the database. */
+export type Row = Record<string, Value> & { id: number };
+export type Rate = Record<string, string | number>;
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  user: string;
+  master: string;
+  record: string;
+  action: string;
+  field: string;
+  old_value: string;
+  new_value: string;
+  source: string;
+}
+
+export interface AuditFilters {
+  master: string;
+  action: string;
+  date_from: string;
+  date_to: string;
+  text: string;
+}
+
+function query(filters: AuditFilters): string {
+  const q = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => value && q.set(key, value));
+  return q.toString();
+}
+
+export const mastersApi = {
+  list: () => ask<MasterDef[]>("GET", "/masters"),
+  rows: (master: string) =>
+    ask<{ rows: Row[]; lookups: Record<string, string[]> }>("GET", `/masters/${master}/rows`),
+  add: (master: string, values: Record<string, Value>, effective_from: string | null) =>
+    ask<Row>("POST", `/masters/${master}/rows`, { values, effective_from }),
+  change: (master: string, id: number, values: Record<string, Value>, effective_from: string | null) =>
+    ask<Row>("PUT", `/masters/${master}/rows/${id}`, { values, effective_from }),
+  setActive: (master: string, ids: number[], active: boolean) =>
+    ask<{ changed: number }>("POST", `/masters/${master}/active`, { ids, active }),
+  remove: (master: string, ids: number[]) =>
+    ask<{ deleted: number }>("POST", `/masters/${master}/delete`, { ids }),
+  removeAll: (master: string, confirm: string) =>
+    ask<{ deleted: number }>("POST", `/masters/${master}/delete-all`, { confirm }),
+  rates: (master: string, id: number) => ask<Rate[]>("GET", `/masters/${master}/rows/${id}/rates`),
+  removeRate: (master: string, id: number, effective_from: string) =>
+    ask<Rate[]>("POST", `/masters/${master}/rows/${id}/rates/delete`, { effective_from }),
+  audit: (filters: AuditFilters) =>
+    ask<{ entries: AuditEntry[]; more: boolean; limit: number;
+          masters: { key: string; title: string }[] }>("GET", `/audit?${query(filters)}`),
+  /** The address of the Excel download for the same filters. */
+  auditExportUrl: (filters: AuditFilters) => `/api/audit/export?${query(filters)}`,
+};
+
+/** 1234567.5 -> "12,34,567.50" (Indian grouping, as everywhere in the tool). */
+export function inr(amount: number): string {
+  return amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** "2026-10-09" -> "09-10-2026". */
+export function showDate(iso: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
+}
+
+/** Today as "YYYY-MM-DD", for date boxes. */
+export function today(): string {
+  const d = new Date();
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+}
+
 /** "2026-10-09T11:42:10" -> "09-10-2026 11:42" (dates are dd-mm-yyyy everywhere). */
 export function showDateTime(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || "");

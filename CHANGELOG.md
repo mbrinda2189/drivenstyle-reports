@@ -6,6 +6,48 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.0] – 2026-10-09 – Web tool step 3a: Masters and Audit log in the browser
+
+The Masters screen works on the web with the desktop tool's own rules, and
+the desktop tool's data can be copied across so the web tool starts with
+the present masters. The desktop programs and every figure are unchanged.
+
+### Added
+- **Masters screen** - Products, Sales executives, Cars, Incentives and
+  Packages as tabs with their row counts: search, filter (category /
+  branch / segment / package), active or inactive; click a row for its
+  edit form; Add; tick rows to Mark active / Mark inactive / Delete;
+  Delete all after typing DELETE.
+- **Dated amounts**: changing a selling price, cost price, labour charge,
+  incentive amount or bill value asks "Amounts apply from"; the form shows
+  the rate history and can remove a set entered with a wrong date (never
+  the last one).
+- **Audit log screen** (admins): filters by master, action, dates and
+  text; newest 1,000 entries on screen, all of them in "Export to Excel".
+- **Bring across** - `python -m web.backend.bring_across` copies the
+  desktop tool's database into the web tool once (masters, rate history,
+  saved matches, months read, inputs, History, audit log). The desktop
+  database is only read, the web users are kept, the previous web database
+  is kept as a copy, and it refuses to overwrite masters without
+  `--replace`.
+- `web/backend/masters_api.py`; `tests/test_web_masters.py` (7 tests).
+
+### Changed
+- **Staff can use the Masters screen in full**, cost prices and rates
+  included (Brinda, 09-10-2026: the firm's partner will not be entering
+  them). Audit log, Users and the monthly reports stay admin only. Every
+  change carries the e-mail of the person who made it.
+- The left menu now has "Shared" (Masters, for everyone) and "Admin"
+  (Audit log, Users).
+- No rule was rewritten: every check and audit entry comes from
+  `app/data/masters_repo.py`; the screen's columns and form are drawn from
+  `app/data/master_defs.py`.
+
+### Pending
+- Step 3b: import from Excel with column matching, the Zoho item list
+  import, export of each master to Excel.
+- Google client ID (Brinda); AWS credentials and web address (client).
+
 ## [0.23.0] – 2026-10-09 – Web tool step 2: server, sign-in with roles, the frame with two tabs
 
 The web tool can now be started on a PC and opened in the browser: people

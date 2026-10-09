@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.23.0** (tags v0.1.0 … v0.23.0 on GitHub
+Current version: **v0.24.0** (tags v0.1.0 … v0.24.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -65,8 +65,29 @@ web/frontend there, tar app/ + web/backend, run uvicorn with
 DNS_WEB_DEV_LOGIN=1, Playwright), then copy the source files back.
 Tests: tests/test_web_auth.py (fake Google; `pip install fastapi httpx
 itsdangerous`). 246 passed / 4 skipped.
-Next: step 3 (Masters on the web + Audit log screen; how the present
-masters get into the web database) - propose the plan first. Open: Google
+Step 3a done in v0.24.0 (Brinda, 09-10-2026: bring the DESKTOP database
+across by copying it - it is the truth, not the payout Google Sheet; edit
+through a FORM per row, no in-cell editing; STAFF MAY EDIT ALL MASTERS incl.
+cost and rates - "we can't ask the firm partner to enter the cost"; Audit
+log / Users / monthly reports stay admin only). `web/backend/masters_api.py`
+(add_routes(api, connection, current_user, admin); no rule of its own -
+MastersRepo.save / delete / set_active / delete_rate / audit_entries as they
+are, source "Masters screen" so the category-fixed logic still applies;
+definitions sent to the screen from master_defs), `bring_across.py`
+(sqlite backup of a read-only source, users re-inserted, refuses when
+masters exist unless --replace). main.py: `connection()` yields the
+sqlite connection, `database(user)` the UsersRepo. Screens:
+pages/Masters.tsx (plain rows, click -> EditDialog; "Amounts apply from"
+only when a dated field changed or the row is new), pages/AuditLog.tsx;
+routes /masters (all) and /admin/audit, /admin/users. Checked in a browser
+with a copy of Brinda's real database (189 products, 69 executives, 33
+cars, 33 incentives, 75 package rows). 253 passed / 4 skipped.
+Cloud-workspace note: never `pkill -f uvicorn` in the same command that
+mentions uvicorn elsewhere (it kills its own shell) - run
+`pkill -f "[u]vicorn web"` as a command of its own.
+Next: step 3b (Excel import with column matching + preview, Zoho item
+import incl. "remove products not in Zoho", packages import, export of
+each master) - propose the plan first. Open: Google
 "Web application" client ID (Brinda; consent screen is in Testing, so test
 users must be listed); AWS IAM user + web address from the client; whether
 their IT allows the site and Google sign-in. In the Cowork VM never grep the whole folder (`dist/` and

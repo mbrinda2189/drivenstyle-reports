@@ -1,7 +1,8 @@
 # Drive N Style - web tool (`web/`)
 
-**Status: v0.23.0 - step 2 done: the server starts, people sign in with
-roles, and the frame with the two tabs is there. Masters, reports and
+**Status: v0.24.0 - step 3a done: Masters (all five tabs) and the Audit
+log work in the browser, and the desktop tool's data can be brought
+across. Excel import / export of the masters is step 3b; reports and
 payouts are not built yet (their screens say "Comes in step N").**
 
 ## Why
@@ -68,6 +69,23 @@ on the Users screen.
 The web tool keeps its own database in `data\web\drivenstyle.db` (not in
 Git). It starts EMPTY and does not touch the desktop tool's database.
 
+## Bringing the desktop tool's data across (once)
+
+With the server STOPPED (Ctrl+C in window 1):
+
+```powershell
+python -m web.backend.bring_across
+```
+
+This copies the desktop tool's database into the web tool: masters with
+their rate history, saved matches, the months already read, monthly
+inputs, History and the audit log. The desktop database is only read; the
+web tool's users are kept; the web tool's previous database is kept beside
+it as `drivenstyle.before-bring-across-<date>.db`. If the web tool already
+has masters it refuses - add `--replace` only if they may be replaced.
+`--from "path\to\drivenstyle.db"` copies another file (this is how the
+data will reach the AWS server).
+
 `DNS_WEB_DEV_LOGIN` lets anyone who knows an admin's e-mail address in
 without a password. It is for your PC only - **never set it on the AWS
 server.**
@@ -104,10 +122,15 @@ users can sign in - add them there, or publish the app.
 
 ## Roles
 
-| | Daily payouts | Monthly reports | Masters, Audit log, Users |
-|---|---|---|---|
-| Admin | yes | yes | yes |
-| Staff | yes | no | no |
+| | Daily payouts | Masters | Monthly reports | Audit log, Users |
+|---|---|---|---|---|
+| Admin | yes | yes | yes | yes |
+| Staff | yes | yes | no | no |
+
+Staff use the whole Masters screen, cost prices and rates included
+(Brinda, 09-10-2026: the firm's partner will not be entering them). The
+safeguard is the audit log: every change carries the e-mail of the person
+who made it, and only admins can read the log.
 
 The server checks the role at every request; the screens only hide what
 the server would refuse anyway. The last active admin cannot be removed,
@@ -119,7 +142,7 @@ audit log with the e-mail of the admin who made it.
 | Subject | Decision |
 |---|---|
 | Hosting | One small server on the client's AWS, Mumbai region (ap-south-1), HTTPS on a web address of theirs. Brinda deploys; credentials awaited from the client. |
-| Screens | React + TypeScript instead of PySide6. One screen with two tabs, Daily payouts and Monthly reports, and a Shared (admin) section under both - layout approved on the mockup. |
+| Screens | React + TypeScript instead of PySide6. One screen with two tabs, Daily payouts and Monthly reports, and under both a Shared section (Masters) and, for admins, Audit log and Users - layout approved on the mockup. |
 | Database | SQLite on the server (the data code and its tests are written for it), nightly backup to S3. Not PostgreSQL. |
 | Masters | In the database, edited on the Masters screen, Excel import / export, dated rates. No masters Google Sheet. |
 | Payout register | Database tables with Excel export. No register Google Sheet; the same rules (post once, In review, Re-issued, Cancelled, payment and proof). |
@@ -138,7 +161,8 @@ back-posting, no daily rounding of incentive, and every control.
 |---|---|---|
 | 1 | v0.22.0 | **Done.** Tests as the baseline, September figures saved, these folders, the plan written down |
 | 2 | v0.23.0 | **Done.** Server (FastAPI), users list with roles in the database, Google sign-in + test sign-in, React frame with the two tabs, Users screen |
-| 3 | | Masters: screens, Excel import, dated rates, checks, audit log |
+| 3a | v0.24.0 | **Done.** Masters screen (Products, Sales executives, Cars, Incentives, Packages): search, filters, add, change, active / inactive, delete, Delete all, rate history; Audit log screen with Excel export; bring-across command |
+| 3b | | Masters: import from Excel with column matching, Zoho item list import, export to Excel |
 | 4 | | Monthly tool: upload and read, Scan review, Monthly inputs, generate workbook and PDF, History |
 | 5 | | Daily payouts: scan and review, posting to the register, mark paid with proof, audit log |
 | 6 | | Payout slip, summary, and the month check against the monthly Labour and Spot incentive reports |

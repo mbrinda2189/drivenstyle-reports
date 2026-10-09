@@ -12,7 +12,8 @@
  * THE TWO TABS (layout approved by Brinda, 09-10-2026)
  *      Daily payouts     /daily/...     staff and admin
  *      Monthly reports   /monthly/...   admin only
- *      Shared            /admin/...     admin only (Masters, Audit log, Users)
+ *      Shared            /masters       staff and admin (v0.24.0)
+ *      Admin             /admin/...     admin only (Audit log, Users)
  *
  * A staff member who types a /monthly or /admin address is sent back to
  * the daily payouts. That is only for tidiness: the real control is on the
@@ -25,7 +26,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ApiError, Config, User, api } from "./api";
 import Shell from "./Shell";
+import AuditLog from "./pages/AuditLog";
 import ComingSoon from "./pages/ComingSoon";
+import Masters from "./pages/Masters";
 import SignIn from "./pages/SignIn";
 import Users from "./pages/Users";
 
@@ -79,6 +82,7 @@ export default function App() {
           about="Every labour and incentive line to pay: mark paid with reference and proof, hold, reopen, payout slip." />} />
         <Route path="/daily/history" element={<ComingSoon title="History" step={6}
           about="Payouts of earlier days, the summary, and the check against the monthly reports." />} />
+        <Route path="/masters" element={<Masters onExpired={expired} />} />
         {admin && (
           <>
             <Route path="/monthly/generate" element={<ComingSoon title="Generate reports" step={4}
@@ -89,10 +93,7 @@ export default function App() {
               about="Indirect costs for the month, the high-profit threshold and the automatic cost percentages." />} />
             <Route path="/monthly/history" element={<ComingSoon title="History" step={4}
               about="Months already read and workbooks already made: download, regenerate, remove." />} />
-            <Route path="/admin/masters" element={<ComingSoon title="Masters" step={3}
-              about="Products, sales executives, cars, incentives and packages, with dated rates and Excel import / export." />} />
-            <Route path="/admin/audit" element={<ComingSoon title="Audit log" step={3}
-              about="Every change to a master, a fix, an input or a user: who, when, old and new value. Read-only." />} />
+            <Route path="/admin/audit" element={<AuditLog onExpired={expired} />} />
             <Route path="/admin/users" element={<Users me={user} onExpired={expired} />} />
           </>
         )}

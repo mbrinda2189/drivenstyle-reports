@@ -17,18 +17,20 @@
  *   |  History  |                                                    |
  *   | SHARED    |                                                    |
  *   |  Masters  |                                                    |
- *   |  ...      |                                                    |
+ *   | ADMIN     |   (admins only)                                    |
+ *   |  Audit log, Users                                              |
  *   +-----------+----------------------------------------------------+
  *
  * WHICH TAB IS "ON"
  *   The address decides: /daily/... = Daily, /monthly/... = Monthly.
- *   The shared screens (/admin/...) belong to both, so there the tab the
+ *   The shared screens (/masters, /admin/...) belong to both, so there the tab the
  *   person was on last stays on - going to Masters from Monthly reports
  *   does not throw them over to Daily.
  *
  * ROLES
- *   Staff see the Daily payouts menu only: no tab bar (one tab needs no
- *   bar) and no Shared section.
+ *   Staff see the Daily payouts menu and Masters (Brinda, 09-10-2026:
+ *   staff enter cost prices and rates): no tab bar - one tab needs no bar.
+ *   Audit log and Users are for admins only.
  */
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
@@ -48,8 +50,9 @@ const MENU: Record<Tab, { heading: string; items: [string, string][] }> = {
             ["/monthly/inputs", "Monthly inputs"], ["/monthly/history", "History"]],
   },
 };
-const SHARED: [string, string][] = [["/admin/masters", "Masters"],
-                                    ["/admin/audit", "Audit log"], ["/admin/users", "Users"]];
+/** Used by both tools, so listed under both tabs. Open to staff as well. */
+const SHARED: [string, string][] = [["/masters", "Masters"]];
+const ADMIN_ONLY: [string, string][] = [["/admin/audit", "Audit log"], ["/admin/users", "Users"]];
 /** The screen each tab opens on. */
 const HOME: Record<Tab, string> = { daily: "/daily/payouts", monthly: "/monthly/generate" };
 
@@ -103,10 +106,14 @@ export default function Shell({ user, version, onSignOut }: Props) {
           {menu.items.map(([to, label]) => (
             <NavLink key={to} to={to} className="side-link">{label}</NavLink>
           ))}
+          <div className="side-heading gap">Shared</div>
+          {SHARED.map(([to, label]) => (
+            <NavLink key={to} to={to} className="side-link">{label}</NavLink>
+          ))}
           {admin && (
             <>
-              <div className="side-heading gap">Shared (admin)</div>
-              {SHARED.map(([to, label]) => (
+              <div className="side-heading gap">Admin</div>
+              {ADMIN_ONLY.map(([to, label]) => (
                 <NavLink key={to} to={to} className="side-link">{label}</NavLink>
               ))}
             </>

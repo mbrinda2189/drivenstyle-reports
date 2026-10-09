@@ -1,6 +1,6 @@
 """
-main.py - The web tool's server (v0.23.0: sign-in, roles, users)
-================================================================
+main.py - The web tool's server (sign-in, roles, users; masters from v0.24.0)
+============================================================================
 
 WHAT THIS MODULE DOES
 ---------------------
@@ -21,6 +21,7 @@ ADDRESSES IN THIS VERSION
     POST   /api/users           add a user                      (admin only)
     PATCH  /api/users/{id}      change name / role / active     (admin only)
     DELETE /api/users/{id}      remove a user                   (admin only)
+    /api/masters..., /api/audit...   see masters_api.py (v0.24.0)
 
     Everything else serves the built screens (web/frontend/dist), so the
     tool has ONE address in production.
@@ -28,7 +29,9 @@ ADDRESSES IN THIS VERSION
 WHO MAY DO WHAT
     * Not signed in: only /api/config and the sign-in addresses answer.
       Everything else says 401 ("sign in first").
-    * Staff: /api/me. The admin addresses say 403 ("not allowed").
+    * Staff: /api/me and the masters (Brinda, 09-10-2026: staff enter cost
+      and rates too - the firm's partner will not). The admin addresses
+      (users, audit log) say 403 ("not allowed").
     * Admin: everything.
     The check is made HERE, on the server, at every request - hiding a
     menu on the screen is not a control.
@@ -61,7 +64,7 @@ from pydantic import BaseModel
 from app import __version__
 from app.data.database import connect
 from app.data.users_repo import UserError, UsersRepo
-from web.backend import config
+from web.backend import config, masters_api
 from web.backend.security import COOKIE, Sessions, SignInError, verify_google
 
 log = logging.getLogger("dns_web")
@@ -110,15 +113,21 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
     api.state.verify_google = verify_google       # the tests put a stand-in here
 
     @contextmanager
-    def database(user: str = ""):
-        """The database for one request; `user` goes into the audit log."""
+    def connection():
+        """The database for one request: opened, used and closed inside it."""
         conn = connect(settings.db_path)
         try:
             conn.execute("PRAGMA journal_mode = WAL")
             conn.execute("PRAGMA busy_timeout = 5000")
-            yield UsersRepo(conn, user=user)
+            yield conn
         finally:
             conn.close()
+
+    @contextmanager
+    def database(user: str = ""):
+        """The users list for one request; `user` goes into the audit log."""
+        with connection() as conn:
+            yield UsersRepo(conn, user=user)
 
     # Day one: the admins named in the settings, when the list has none.
     with database("Server settings") as users:
@@ -224,6 +233,9 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
             except UserError as exc:
                 raise HTTPException(400, str(exc)) from exc
         return {"ok": True}
+
+    # ---- masters and audit log (v0.24.0) ----------------------------------------
+    masters_api.add_routes(api, connection, current_user, admin)
 
     @api.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def no_such_address(rest: str):

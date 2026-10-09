@@ -1,7 +1,7 @@
 # web/frontend - the screens (React + TypeScript)
 
-**v0.23.0: sign-in page, the frame with the two tabs, and the Users
-screen.** The other screens show "Comes in step N" until they are built.
+**v0.24.0: sign-in page, the frame with the two tabs, Users, Masters and
+Audit log.** The other screens show "Comes in step N" until they are built.
 
 | File | What it does |
 |---|---|
@@ -10,6 +10,8 @@ screen.** The other screens show "Comes in step N" until they are built.
 | `src/api.ts` | The only file that talks to the server |
 | `src/theme.css` | Every colour and size - the desktop tool's blue theme (`app/theme.py`) |
 | `src/pages/SignIn.tsx` | Google sign-in, and the test sign-in on a developer's PC |
+| `src/pages/Masters.tsx` | The five masters: table, filters, bulk actions and the edit form with rate history |
+| `src/pages/AuditLog.tsx` | The audit log with filters and Excel export (admin) |
 | `src/pages/Users.tsx` | The users list (admin) |
 | `src/pages/ComingSoon.tsx` | Placeholder for a screen not built yet |
 
