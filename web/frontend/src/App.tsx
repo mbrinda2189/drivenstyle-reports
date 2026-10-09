@@ -30,6 +30,7 @@ import AuditLog from "./pages/AuditLog";
 import DailyHistory from "./pages/DailyHistory";
 import DailyReview from "./pages/DailyReview";
 import DailyScan from "./pages/DailyScan";
+import DailySummary from "./pages/DailySummary";
 import Generate from "./pages/Generate";
 import History from "./pages/History";
 import Masters from "./pages/Masters";
@@ -84,6 +85,7 @@ export default function App() {
         <Route path="/daily/scan" element={<DailyScan onExpired={expired} />} />
         <Route path="/daily/review" element={<DailyReview onExpired={expired} />} />
         <Route path="/daily/payouts" element={<Payouts onExpired={expired} />} />
+        <Route path="/daily/summary" element={<DailySummary onExpired={expired} />} />
         <Route path="/daily/history" element={<DailyHistory admin={admin} onExpired={expired} />} />
         <Route path="/masters" element={<Masters onExpired={expired} />} />
         {admin && (

@@ -1,7 +1,7 @@
 # web/frontend - the screens (React + TypeScript)
 
 **v0.26.0: sign-in page, the frame with the two tabs, Users, Masters (with
-Excel import / export), Audit log, the four monthly screens and the four daily payout screens.** The other screens show "Comes in step N" until they are built.
+Excel import / export), Audit log, the four monthly screens and the five daily payout screens.** The other screens show "Comes in step N" until they are built.
 
 | File | What it does |
 |---|---|
@@ -20,6 +20,7 @@ Excel import / export), Audit log, the four monthly screens and the four daily p
 | `src/pages/DailyScan.tsx` | Scan invoices: upload PDFs, Scan, the result of the scan |
 | `src/pages/DailyReview.tsx` | What could not be posted, with the fix; invoices waiting; Cancel invoice |
 | `src/pages/Payouts.tsx` | The register: filters, Mark paid (reference / proof), Hold, Release, Reopen, Cancel invoice |
+| `src/pages/DailySummary.tsx` | Payout slip, summary by person / day / month, month check |
 | `src/pages/DailyHistory.tsx` | The payout log; start date and Clear register for admins |
 | `src/pages/AuditLog.tsx` | The audit log with filters and Excel export (admin) |
 | `src/pages/Users.tsx` | The users list (admin) |

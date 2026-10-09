@@ -261,3 +261,11 @@ ul.details.open { max-height: none; }
 .wide-input { min-width: 260px; }
 .top-gap { margin-top: 16px; }
 input[type="file"] { padding: 9px 12px; }
+
+/* ---- Summary and month check (v0.28.0) ----------------------------------------- */
+.ok-text { color: var(--green); font-weight: 600; }
+.amber-text { font-weight: 600; }
+tr.total-row td { font-weight: 700; border-top: 2px solid var(--line-strong); }
+.grow-text { flex: 1 1 260px; align-self: center; }
+.filters .month-picker { flex: 0 0 auto; }
+.title-row .row-actions, .title-row > a.btn { margin-top: 4px; }

@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.27.0** (tags v0.1.0 … v0.27.0 on GitHub
+Current version: **v0.28.0** (tags v0.1.0 … v0.28.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -153,9 +153,22 @@ before the start date is not shown as waiting). 12 real PDFs on a copy of
 Brinda's database: 11 posted, 1 in review (Navendran - ooty). 277 passed /
 4 skipped. Playwright note: `.side >> text=Payouts` also matches the
 heading "Daily payouts" - use `.side a:text-is("Payouts")`.
-Next: step 6 (payout slip via payout_app/slip.py, summary by person / day
-/ month, month check against build_month, Excel export of the register) -
-confirmed with step 5, build it. Open: Google
+Step 6 done in v0.28.0: web/backend/daily_reports.py (read-only, every
+signed-in person): /api/daily/slip (slip.build + to_html in a printable
+page), /summary (register.pending_by_payee, by paid day, by invoice
+month), /month-check?month_text=YYYY-MM (register lines of the month vs
+build_month on the REAL database: labour by labour_group, incentive per
+payee named as engine names it, internal; rounding box = incentive_payable
+- exact; not_scanned / left_out / not_in_monthly lists), /export (Excel).
+Screen: pages/DailySummary.tsx (menu "Summary"). On Brinda's data the 7
+September invoices with lines scanned from PDF agree invoice by invoice
+with the monthly tool. 280 passed / 4 skipped.
+Next: step 7, deployment on the client's AWS (one small EC2 in
+ap-south-1, nginx + HTTPS, uvicorn as a service, DNS_WEB_HTTPS=1, NO
+DNS_WEB_DEV_LOGIN, libreoffice-calc, nightly sqlite backup to S3, proofs
+to S3, bring_across --from the desktop database, deployment guide) -
+blocked on AWS credentials + web address from the client and the Google
+client ID; propose the plan first. Open: Google
 "Web application" client ID (Brinda; consent screen is in Testing, so test
 users must be listed); AWS IAM user + web address from the client; whether
 their IT allows the site and Google sign-in. In the Cowork VM never grep the whole folder (`dist/` and

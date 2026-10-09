@@ -24,7 +24,8 @@ ADDRESSES IN THIS VERSION
     /api/masters..., /api/audit...   see masters_api.py (v0.24.0)
     /api/masters/.../import..., /export   see imports_api.py (v0.25.0)
     /api/monthly/...                 see monthly_api.py (v0.26.0, admin only)
-    /api/daily/...                   see daily_api.py (v0.27.0)
+    /api/daily/...                   see daily_api.py (v0.27.0) and
+                                     daily_reports.py (v0.28.0)
 
     Everything else serves the built screens (web/frontend/dist), so the
     tool has ONE address in production.
@@ -67,7 +68,8 @@ from pydantic import BaseModel
 from app import __version__
 from app.data.database import connect
 from app.data.users_repo import UserError, UsersRepo
-from web.backend import config, daily_api, imports_api, masters_api, monthly_api
+from web.backend import (
+    config, daily_api, daily_reports, imports_api, masters_api, monthly_api)
 from web.backend.security import COOKIE, Sessions, SignInError, verify_google
 
 log = logging.getLogger("dns_web")
@@ -246,6 +248,8 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
     monthly_api.add_routes(api, connection, admin, settings.data_dir)
     # The daily payouts (v0.27.0) - staff and admins.
     daily_api.add_routes(api, connection, current_user, admin, settings.data_dir)
+    # Payout slip, summary, month check, Excel (v0.28.0) - read-only.
+    daily_reports.add_routes(api, connection, current_user)
 
     @api.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def no_such_address(rest: str):

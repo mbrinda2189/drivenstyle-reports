@@ -121,8 +121,16 @@ export default function Payouts({ onExpired }: { onExpired: () => void }) {
 
   return (
     <>
-      <h1>Payouts</h1>
-      <p className="muted">Labour and incentive to pay. Tick the lines, then record the payment.</p>
+      <div className="title-row">
+        <div>
+          <h1>Payouts</h1>
+          <p className="muted">Labour and incentive to pay. Tick the lines, then record the payment.</p>
+        </div>
+        <div className="row-actions">
+          <a className="btn" href={dailyApi.slipUrl()} target="_blank" rel="noreferrer">Payout slip (to pay)</a>
+          <a className="btn" href={dailyApi.exportUrl}>Export to Excel</a>
+        </div>
+      </div>
 
       {totals && (
         <div className="tiles">

@@ -1,9 +1,9 @@
 # Drive N Style - web tool (`web/`)
 
-**Status: v0.27.0 - step 5 done: the daily payouts work in the browser
-(Scan invoices, Review, Payouts, History), with the register in the
-database. Every screen of both tools is now real. Still to come: the
-payout slip, summary and month check (step 6) and deployment (step 7).**
+**Status: v0.28.0 - steps 1 to 6 done: both tools work in the browser,
+including the payout slip, the summary and the month check that ties the
+daily payouts to the monthly reports. Only deployment on the client's AWS
+(step 7) is left.**
 
 ## Why
 
@@ -158,6 +158,13 @@ Release, Reopen, Cancel invoice. **History** is the log.
 - Files are kept under `data\web\daily\`: `pdfs\` (scanned invoices),
   `proofs\` (payment proofs, named e.g. `2026-10-05_GPay_UTR123_Kumaran.jpg`).
   At deployment the proofs move to the S3 bucket.
+- **Summary** has the payout slip (to pay, or paid on a day - opens in a
+  new tab with a Print button), the totals by person, day and month, and
+  the **Month check**: the register beside the monthly tool's Labour and
+  Spot incentive figures for the month. Every row should differ by 0.00;
+  the month-end rounding (each executive up to the next ₹10) is shown apart
+  because it is expected; invoices that explain a difference are listed.
+  **Export register to Excel** downloads every line and invoice.
 - Staff may reopen a payment and cancel an invoice (always with a reason,
   always logged). Admins only: the start date, and Clear the register
   (backup first, type CLEAR).
@@ -229,7 +236,7 @@ back-posting, no daily rounding of incentive, and every control.
 | 3b | v0.25.0 | **Done.** Masters: Import Excel (sheet chooser, column matching, preview, rows left out), Zoho item list import, "Add items…" tick, Export to Excel of the rows shown |
 | 4 | v0.26.0 | **Done.** Monthly tool: upload the three Zoho files, Read invoices, Scan review (fixes, Saved matches, Invoices read, exports), Monthly inputs, Generate workbook + PDF (LibreOffice), History (download, Make PDF, Regenerate, Remove, Remove month) |
 | 5 | v0.27.0 | **Done.** Daily payouts: upload PDFs and Scan, Review with shared matches, Payouts (Mark paid with reference / proof, Hold, Release, Reopen, Cancel invoice), History; register in database tables; start date 01-10-2026 |
-| 6 | | Payout slip, summary, and the month check against the monthly Labour and Spot incentive reports |
+| 6 | v0.28.0 | **Done.** Summary screen: payout slip (to pay / paid on a day), summary by person, day and month, month check against the monthly tool, Excel export of the register |
 | 7 | | Deployment on the client's AWS: HTTPS, backups, deployment guide |
 
 Each step is confirmed with Brinda before it is coded, and is one version.

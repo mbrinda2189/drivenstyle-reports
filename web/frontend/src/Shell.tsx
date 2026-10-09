@@ -42,7 +42,8 @@ const MENU: Record<Tab, { heading: string; items: [string, string][] }> = {
   daily: {
     heading: "Daily payouts",
     items: [["/daily/scan", "Scan invoices"], ["/daily/review", "Review"],
-            ["/daily/payouts", "Payouts"], ["/daily/history", "History"]],
+            ["/daily/payouts", "Payouts"], ["/daily/summary", "Summary"],
+            ["/daily/history", "History"]],
   },
   monthly: {
     heading: "Monthly reports",

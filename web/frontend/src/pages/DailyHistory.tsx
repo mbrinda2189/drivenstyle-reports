@@ -20,7 +20,7 @@
  *                    trial. A copy of the whole database is made first and
  *                    the word CLEAR must be typed. The log is kept.
  *
- * (The payout slip, the summary and the month check come in step 6.)
+ * (The payout slip, the summary and the month check are on Summary.)
  */
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ApiError, AuditEntry, dailyApi, showDate, showDateTime } from "../api";

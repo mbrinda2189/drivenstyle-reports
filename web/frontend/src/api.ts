@@ -444,7 +444,35 @@ export interface PayoutInvoice {
   scanned_at: string;
 }
 
+// ---- slip, summary, month check (v0.28.0) --------------------------------------
+export interface DailySummary {
+  by_payee: { type: string; payee: string; pending: number; paid: number }[];
+  by_day: { date: string; lines: number; amount: number }[];
+  by_month: { month: string; label: string; due: number; paid: number; pending: number; hold: number }[];
+}
+
+/** The register beside the monthly tool's figures for one month. */
+export interface MonthCheck {
+  month: string;
+  label: string;
+  monthly_read: boolean;           // has the monthly tool read this month?
+  start_date: string;
+  register_invoices: number;
+  rows: { group: string; label: string; register: number; monthly: number | null;
+          difference: number | null }[];
+  totals?: { register: number; monthly: number; difference: number };
+  rounding: { exact: number; rounded: number; amount: number;
+              by_payee: { payee: string; exact: number; rounded: number }[] } | null;
+  not_scanned: { invoice_no: string; why: string }[];
+  not_in_monthly: string[];
+  left_out: string[];
+}
+
 export const dailyApi = {
+  slipUrl: (paidOn = "") => `/api/daily/slip${paidOn ? `?paid_on=${paidOn}` : ""}`,
+  exportUrl: "/api/daily/export",
+  summary: () => ask<DailySummary>("GET", "/daily/summary"),
+  monthCheck: (month: string) => ask<MonthCheck>("GET", `/daily/month-check?month_text=${month}`),
   overview: () => ask<DailyOverview>("GET", "/daily/overview"),
   upload: (file: File) => sendFile<{ name: string; size: number }>("/daily/files", file),
   removeUpload: (name: string) => ask<{ ok: boolean }>("DELETE", `/daily/files/${encodeURIComponent(name)}`),

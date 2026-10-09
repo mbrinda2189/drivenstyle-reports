@@ -6,6 +6,41 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.28.0] – 2026-10-09 – Web tool step 6: payout slip, summary and month check
+
+The daily payouts get their reports, and the control that ties them to
+the monthly tool. Nothing here changes the register; all of it is open to
+staff and admins.
+
+On a copy of the real database, the 7 September invoices with payout
+lines scanned from PDF were compared invoice by invoice with what the
+monthly tool works out from Zoho's export: labour, incentive and internal
+team agree on all 7.
+
+### Added
+- **Summary** screen (Daily payouts menu):
+  - **Payout slip** - "To pay" or "Paid on <date>", in the desktop slip's
+    layout (`payout_app/slip.py`): one block per kind of labour, one per
+    executive, the internal team, totals; opens in a new tab with Print.
+  - **Summary** - pending and paid by person; paid by day (with a link to
+    that day's slip); by invoice month: due, paid, pending, on hold.
+  - **Month check** - the register beside the monthly tool's figures for
+    a month: labour by kind, spot incentive per executive, internal team,
+    with the difference per row and in total. The month-end rounding (each
+    executive up to the next ₹10) is shown apart as expected. Invoices
+    that explain a difference are listed: in the export but not scanned
+    daily (or still in review / before the start date), or scanned daily
+    but left out by / missing from the monthly tool.
+- **Export to Excel** of the register (sheets Payouts and Invoices), and a
+  "Payout slip (to pay)" button, on the Payouts screen.
+- `web/backend/daily_reports.py`, `src/pages/DailySummary.tsx`,
+  `tests/test_web_daily_reports.py` (3 tests).
+
+### Pending
+- Step 7: deployment on the client's AWS (HTTPS, nightly backup, proofs
+  to S3, LibreOffice, deployment guide). Needs the AWS credentials and the
+  web address from the client, and the Google client ID.
+
 ## [0.27.0] – 2026-10-09 – Web tool step 5: the daily payouts in the browser
 
 The daily payout app works on the web: staff upload the day's invoice
