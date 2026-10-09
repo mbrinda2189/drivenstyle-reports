@@ -1,9 +1,9 @@
 # Drive N Style - web tool (`web/`)
 
 **Status: v0.29.0 - steps 1 to 6 done (both tools work in the browser)
-and step 7 written: `deploy/` puts the tool on the client's server with
-one command, see `docs/deployment.md`. The first install on the server has
-not been run yet.**
+and step 7 done: the tool is live at https://drivenstyle.duckdns.org
+(`deploy/`, see `docs/deployment.md`). A new developer starts with
+`docs/developer_guide.md`.**
 
 ## Why
 
@@ -237,7 +237,7 @@ back-posting, no daily rounding of incentive, and every control.
 | 4 | v0.26.0 | **Done.** Monthly tool: upload the three Zoho files, Read invoices, Scan review (fixes, Saved matches, Invoices read, exports), Monthly inputs, Generate workbook + PDF (LibreOffice), History (download, Make PDF, Regenerate, Remove, Remove month) |
 | 5 | v0.27.0 | **Done.** Daily payouts: upload PDFs and Scan, Review with shared matches, Payouts (Mark paid with reference / proof, Hold, Release, Reopen, Cancel invoice), History; register in database tables; start date 01-10-2026 |
 | 6 | v0.28.0 | **Done.** Summary screen: payout slip (to pay / paid on a day), summary by person, day and month, month check against the monthly tool, Excel export of the register |
-| 7 | v0.29.0 | **Written, not yet run on the server.** `deploy/deploy.ps1` (from the PC) and `deploy/install.sh` (on the server): own user and folders, service, one nginx site, HTTPS, LibreOffice, nightly backup, rollback; `docs/deployment.md`; privacy page `/privacy` |
+| 7 | v0.29.0 | **Done - installed 09-10-2026.** `deploy/deploy.ps1` (from the PC) and `deploy/install.sh` (on the server): own user and folders, service, one nginx site, HTTPS, LibreOffice, nightly backup, rollback; `docs/deployment.md`; privacy page `/privacy` |
 
 Each step is confirmed with Brinda before it is coded, and is one version.
 

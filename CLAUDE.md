@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.29.0** (tags v0.1.0 … v0.29.0 on GitHub
+Current version: **v0.29.1** (tags v0.1.0 … v0.29.1 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -197,7 +197,13 @@ Branding page is filled (home page + `/privacy`).
   other nginx sites, `nginx -t` before and after, reload only;
   `NEEDRESTART_SUSPEND=1` on apt. `tests/test_deploy.py` guards these.
 - Never set `DNS_WEB_DEV_LOGIN` on the server.
-- Tests on Python 3.10: 285 passed / 5 skipped. Not yet run on the server.
+- Tests on Python 3.10: 285 passed / 5 skipped.
+- FIRST INSTALL DONE 09-10-2026 (v0.29.0): live, HTTPS + Google sign-in
+  work. Note: apt also refreshed the python3 meta-packages while
+  installing python3-venv (told to Brinda for the IT vendor).
+- v0.29.1: `docs/developer_guide.md` - handover guide for a new,
+  inexperienced developer. Keep it true when folders, addresses, roles,
+  settings or the release routine change.
 
 ## Working rules (from Brinda – always follow)
 

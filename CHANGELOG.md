@@ -6,6 +6,28 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.29.1] – 2026-10-09 – Developer guide; the web tool is live
+
+Documentation only - no change to any program.
+
+The first install on the client's server was run with v0.29.0 and worked:
+the tool answers at https://drivenstyle.duckdns.org with HTTPS, and
+Google sign-in works.
+
+### Added
+- **`docs/developer_guide.md`**: a guide for a developer who takes the
+  project over and has not seen it before - setting up a PC step by step,
+  every folder and file, how a request travels, sign-in and roles, the
+  database and how to change it, every server address, working on the
+  screens, the tests, the routine for making and releasing a change, the
+  server, routine jobs, what to do when something goes wrong, the rules
+  that must never be broken, known limits, and a handover checklist.
+
+### Pending
+- Bring the desktop data across, check September against the baseline on
+  the server, try from an office PC.
+- Publish the Google sign-in; confirm the privacy page wording.
+
 ## [0.29.0] – 2026-10-09 – Web tool step 7: putting it on the client's server
 
 Everything needed to run the web tool on the client's AWS server, as one
