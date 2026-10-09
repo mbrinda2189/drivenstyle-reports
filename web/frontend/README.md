@@ -1,7 +1,7 @@
 # web/frontend - the screens (React + TypeScript)
 
-**v0.24.0: sign-in page, the frame with the two tabs, Users, Masters and
-Audit log.** The other screens show "Comes in step N" until they are built.
+**v0.25.0: sign-in page, the frame with the two tabs, Users, Masters (with
+Excel import / export) and Audit log.** The other screens show "Comes in step N" until they are built.
 
 | File | What it does |
 |---|---|
@@ -11,6 +11,7 @@ Audit log.** The other screens show "Comes in step N" until they are built.
 | `src/theme.css` | Every colour and size - the desktop tool's blue theme (`app/theme.py`) |
 | `src/pages/SignIn.tsx` | Google sign-in, and the test sign-in on a developer's PC |
 | `src/pages/Masters.tsx` | The five masters: table, filters, bulk actions and the edit form with rate history |
+| `src/pages/ImportDialog.tsx` | Import a sheet: sheet chooser, column matching, preview, result, Zoho's missing items |
 | `src/pages/AuditLog.tsx` | The audit log with filters and Excel export (admin) |
 | `src/pages/Users.tsx` | The users list (admin) |
 | `src/pages/ComingSoon.tsx` | Placeholder for a screen not built yet |

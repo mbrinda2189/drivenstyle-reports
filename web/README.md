@@ -1,9 +1,9 @@
 # Drive N Style - web tool (`web/`)
 
-**Status: v0.24.0 - step 3a done: Masters (all five tabs) and the Audit
-log work in the browser, and the desktop tool's data can be brought
-across. Excel import / export of the masters is step 3b; reports and
-payouts are not built yet (their screens say "Comes in step N").**
+**Status: v0.25.0 - step 3 done: Masters (all five tabs) with import from
+and export to Excel, the Audit log, and bringing the desktop tool's data
+across. Reports and payouts are not built yet (their screens say "Comes in
+step N").**
 
 ## Why
 
@@ -132,6 +132,22 @@ Staff use the whole Masters screen, cost prices and rates included
 safeguard is the audit log: every change carries the e-mail of the person
 who made it, and only admins can read the log.
 
+Staff can also import and export the masters. One thing is kept for admins:
+after importing Zoho's item list, **removing the products that are not in
+Zoho's list** (it can delete many products at once). Staff see the list
+and a note; an admin removes them by importing Zoho's list.
+
+## Importing a sheet
+
+Masters > the tab > **Import Excel** (.xlsx or .csv, up to 20 MB; an old
+.xls must first be saved as .xlsx). The window shows which column is taken
+for which field (changeable, and remembered for next time), the first rows
+as they will be saved, and the rows that will be left out with the reason.
+Nothing is saved until **Import**. The uploaded sheet waits on the server
+in `data\web\uploads` only until Import or Cancel (one hour at most) and
+is then deleted. **Export to Excel** downloads the rows the search and
+filters show.
+
 The server checks the role at every request; the screens only hide what
 the server would refuse anyway. The last active admin cannot be removed,
 made inactive or made staff. Every change to the users list is in the
@@ -162,7 +178,7 @@ back-posting, no daily rounding of incentive, and every control.
 | 1 | v0.22.0 | **Done.** Tests as the baseline, September figures saved, these folders, the plan written down |
 | 2 | v0.23.0 | **Done.** Server (FastAPI), users list with roles in the database, Google sign-in + test sign-in, React frame with the two tabs, Users screen |
 | 3a | v0.24.0 | **Done.** Masters screen (Products, Sales executives, Cars, Incentives, Packages): search, filters, add, change, active / inactive, delete, Delete all, rate history; Audit log screen with Excel export; bring-across command |
-| 3b | | Masters: import from Excel with column matching, Zoho item list import, export to Excel |
+| 3b | v0.25.0 | **Done.** Masters: Import Excel (sheet chooser, column matching, preview, rows left out), Zoho item list import, "Add items…" tick, Export to Excel of the rows shown |
 | 4 | | Monthly tool: upload and read, Scan review, Monthly inputs, generate workbook and PDF, History |
 | 5 | | Daily payouts: scan and review, posting to the register, mark paid with proof, audit log |
 | 6 | | Payout slip, summary, and the month check against the monthly Labour and Spot incentive reports |

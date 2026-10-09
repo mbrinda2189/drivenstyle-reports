@@ -181,3 +181,22 @@ label.check { flex-direction: row; align-items: center; gap: 10px; min-height: 4
 .apply-from label { max-width: 220px; color: var(--amber); font-weight: 700; }
 .apply-from p { margin: 8px 0 0; }
 .error.lines { white-space: pre-line; margin: 16px 0 0; }
+
+/* ---- Import window (v0.25.0) ------------------------------------------------ */
+.dialog.wide { max-width: 900px; }
+.dialog-col { display: flex; flex-direction: column; width: 100%; min-height: 0; }
+label.short { max-width: 280px; margin-bottom: 12px; }
+.match-grid { display: flex; flex-direction: column; gap: 8px; }
+.match-row { display: grid; grid-template-columns: 190px minmax(200px, 280px) 1fr;
+             gap: 12px; align-items: center; }
+.match-row label { color: var(--ink); font-size: 14px; }
+.match-row .hint { font-size: 13px; }
+@media (max-width: 640px) { .match-row { grid-template-columns: 1fr; gap: 4px; } }
+.note.blue { background: var(--blue-tint); border-color: #b5cdf3; color: var(--ink); }
+.warn { background: var(--amber-tint); color: var(--amber); border-radius: 8px;
+        padding: 12px 14px; margin-top: 16px; font-weight: 600; }
+.lines { white-space: pre-line; }
+ul.names, ul.details { margin: 8px 0; padding-left: 20px; line-height: 1.5; }
+ul.details { max-height: 200px; overflow-y: auto; color: var(--slate); }
+.row-actions.left { justify-content: flex-start; }
+.dialog .check { margin-top: 12px; }

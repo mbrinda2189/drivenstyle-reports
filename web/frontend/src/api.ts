@@ -136,6 +136,101 @@ function query(filters: AuditFilters): string {
   return q.toString();
 }
 
+// ---- import from / export to Excel (v0.25.0) ---------------------------------
+/** Everything the import window shows (web/backend/imports_api.py, `state`). */
+export interface ImportState {
+  token: string;                       // the uploaded file's name on the server
+  file_name: string;
+  sheet: string;
+  sheet_names: string[];
+  header_row: number;
+  data_rows: number;
+  headers: string[];
+  mapping: Record<string, string | null>;      // field -> column heading
+  fields: { key: string; label: string; required: boolean; kind: string; hint: string }[];
+  missing: string[];                   // required fields with no column yet
+  preview_fields: string[];
+  preview: Record<string, Value>[];    // first rows, as they will be saved
+  count: number;                       // rows that will be imported
+  problems: string[];                  // rows that will be left out, and why
+  is_zoho: boolean;
+  zoho_note: string;
+  has_rates: boolean;
+  default_date: string | null;
+  can_choose_add_new: boolean;
+}
+
+export interface ImportResult {
+  file_name: string;
+  added: number;
+  updated: number;
+  unchanged: number;
+  rates_changed: number;
+  effective_from: string | null;
+  skipped: string[];
+  warnings: string[];
+  not_in_zoho: { id: number; name: string }[];
+  may_remove: boolean;                 // only admins may remove those products
+}
+
+/** Send a file as it is (not as JSON) - used for the sheet to import. */
+async function sendFile<T>(path: string, file: File): Promise<T> {
+  let reply: Response;
+  try {
+    reply = await fetch(`/api${path}?filename=${encodeURIComponent(file.name)}`, {
+      method: "POST", credentials: "same-origin",
+      headers: { "X-DNS-Request": "1", "Content-Type": "application/octet-stream" },
+      body: file,
+    });
+  } catch {
+    throw new ApiError(0, "The server could not be reached. Check the connection and try again.");
+  }
+  const data = await reply.json().catch(() => null);
+  if (!reply.ok) {
+    throw new ApiError(reply.status, data && typeof data.detail === "string"
+      ? data.detail : "The file could not be read.");
+  }
+  return data as T;
+}
+
+/** Ask for a file and hand it to the browser as a download. */
+async function download(path: string, body: unknown): Promise<void> {
+  const reply = await fetch(`/api${path}`, {
+    method: "POST", credentials: "same-origin",
+    headers: { "X-DNS-Request": "1", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!reply.ok) {
+    const data = await reply.json().catch(() => null);
+    throw new ApiError(reply.status, data?.detail ?? "The file could not be made.");
+  }
+  const url = URL.createObjectURL(await reply.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = reply.headers.get("X-File-Name") ?? "export.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export const importApi = {
+  upload: (master: string, file: File) =>
+    sendFile<ImportState>(`/masters/${master}/import/upload`, file),
+  preview: (master: string, token: string, sheet: string, mapping: Record<string, string | null> | null) =>
+    ask<ImportState>("POST", `/masters/${master}/import/${token}/preview`, { sheet, mapping }),
+  run: (master: string, token: string, sheet: string, mapping: Record<string, string | null>,
+        effective_from: string | null, add_new: boolean) =>
+    ask<ImportResult>("POST", `/masters/${master}/import/${token}/run`,
+                      { sheet, mapping, effective_from, add_new }),
+  removeMissing: (master: string, token: string) =>
+    ask<{ removed: number; names: string[] }>("POST", `/masters/${master}/import/${token}/remove-missing`),
+  cancel: (master: string, token: string) =>
+    ask<{ ok: boolean }>("DELETE", `/masters/${master}/import/${token}`),
+  /** The given rows of a master as an Excel file. */
+  exportRows: (master: string, ids: number[]) => download(`/masters/${master}/export`, { ids }),
+};
+
 export const mastersApi = {
   list: () => ask<MasterDef[]>("GET", "/masters"),
   rows: (master: string) =>

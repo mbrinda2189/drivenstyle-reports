@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.24.0** (tags v0.1.0 … v0.24.0 on GitHub
+Current version: **v0.25.0** (tags v0.1.0 … v0.25.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -85,9 +85,28 @@ cars, 33 incentives, 75 package rows). 253 passed / 4 skipped.
 Cloud-workspace note: never `pkill -f uvicorn` in the same command that
 mentions uvicorn elsewhere (it kills its own shell) - run
 `pkill -f "[u]vicorn web"` as a command of its own.
-Next: step 3b (Excel import with column matching + preview, Zoho item
-import incl. "remove products not in Zoho", packages import, export of
-each master) - propose the plan first. Open: Google
+Step 3b done in v0.25.0 (Brinda, 09-10-2026: staff may import / export;
+REMOVING products not in Zoho's list is ADMIN ONLY; export = the rows the
+filters show). `web/backend/imports_api.py`: upload (file as the raw
+request body, ?filename= - no python-multipart needed) -> token + note in
+data/web/uploads (owner only, one hour, deleted after Import / Cancel) ->
+preview (`state()`: read_sheet, suggest_mapping / zoho_item_mapping,
+convert_rows) -> run (import_records with add_new / replace_later exactly
+as the desktop dialog, set_mapping) -> for Zoho the missing product ids are
+kept in the note, and remove-missing (admin) deletes exactly those.
+FALLBACK_HINTS and financial_year_start are copied from the Qt dialog
+(app/widgets/import_dialog.py cannot be imported on the server) - change
+both places together. Screen: pages/ImportDialog.tsx. Tried in a browser
+with the client's pricelist (8 sheets; "Master Data - Items": 194 rows
+importable, 7 priced in words left out, remembered column matches came
+across from the desktop database). 262 passed / 4 skipped.
+When a docs-update script stops on a failed match, NOTHING after it was
+written: check its output before committing (v0.25.0 was first committed
+without its documents and had to be amended).
+Next: step 4 (monthly tool on the web: upload Zoho invoice export /
+payments export / RTO list, read, Scan review + Saved matches, Monthly
+inputs, generate workbook + PDF by LibreOffice, History) - propose the
+plan first; it is large, split it. Open: Google
 "Web application" client ID (Brinda; consent screen is in Testing, so test
 users must be listed); AWS IAM user + web address from the client; whether
 their IT allows the site and Google sign-in. In the Cowork VM never grep the whole folder (`dist/` and

@@ -6,6 +6,50 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.25.0] – 2026-10-09 – Web tool step 3b: masters from and to Excel
+
+The Masters screen on the web can now import a sheet and export to Excel,
+with the same reading, column matching and checks as the desktop tool
+(`excel_io.py`, `masters_repo.py` - no rule rewritten). The desktop
+programs and every figure are unchanged.
+
+### Added
+- **Import Excel** on every Masters tab (.xlsx or .csv, up to 20 MB): the
+  heading row is found even below a title; each field's column is
+  suggested (last import's matches first) and can be changed; a sheet
+  chooser for workbooks with several sheets; the first rows shown as they
+  will be saved; rows that will be left out listed with the reason;
+  "Amounts apply from" for products and incentives (1 April for a first
+  load or Zoho's list, otherwise the 1st of next month). Nothing is saved
+  until Import; afterwards a summary: added, updated, unchanged, left out,
+  notes.
+- **Zoho's item list** is recognised, its columns pre-set, the ₹1 labour
+  items left out; products of the tool that are not in Zoho's list are
+  shown afterwards.
+- **"Add items that are not in the Product master"** tick, for the staff
+  sheet that only supplies labour / incentive.
+- **Export to Excel** on every tab: the rows the search and filters show,
+  in the desktop layout (e.g. `Products_09-10-2026.xlsx`).
+- `web/backend/imports_api.py`, `web/frontend/src/pages/ImportDialog.tsx`,
+  `tests/test_web_imports.py` (9 tests).
+
+### Decided (Brinda, 09-10-2026)
+- Staff may import and export. **Removing the products that are not in
+  Zoho's list is for admins only**; the server keeps the list it found, so
+  only exactly those products can be removed.
+- Export gives what the filters show, not always the whole master.
+
+### Notes
+- An uploaded sheet is kept on the server (`data/web/uploads`) only until
+  Import or Cancel, one hour at most, and belongs to the person who
+  uploaded it. Every imported row is in the audit log as
+  "Import: <file name>" with that person's e-mail.
+
+### Pending
+- Step 4: the monthly tool on the web (read Zoho's exports, Scan review,
+  Monthly inputs, generate workbook and PDF, History).
+- Google client ID (Brinda); AWS credentials and web address (client).
+
 ## [0.24.0] – 2026-10-09 – Web tool step 3a: Masters and Audit log in the browser
 
 The Masters screen works on the web with the desktop tool's own rules, and

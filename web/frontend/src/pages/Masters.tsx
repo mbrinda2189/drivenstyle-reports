@@ -11,6 +11,8 @@
  *   Add                  the same form, empty
  *   Tick rows            then Mark active / Mark inactive / Delete
  *   Delete all           every row of the tab - the word DELETE must be typed
+ *   Import Excel         choose a sheet -> ImportDialog (match columns, preview)
+ *   Export to Excel      the rows the search and filters show, as .xlsx
  *
  * WHERE THE RULES ARE
  *   Not here. The columns and the form are drawn from what the server
@@ -34,8 +36,10 @@
  * Staff may use this screen too (Brinda, 09-10-2026). Every change is in
  * the audit log with the e-mail of the person who made it.
  */
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, Field, MasterDef, Rate, Row, Value, inr, mastersApi, showDate, today } from "../api";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ApiError, Field, ImportState, MasterDef, Rate, Row, Value, importApi, inr, mastersApi,
+         showDate, today } from "../api";
+import ImportDialog from "./ImportDialog";
 
 type Status = "all" | "active" | "inactive";
 
@@ -61,6 +65,9 @@ export default function Masters({ onExpired }: { onExpired: () => void }) {
   const [word, setWord] = useState("");
   const [problem, setProblem] = useState("");
   const [notice, setNotice] = useState("");
+  const [importing, setImporting] = useState<ImportState | null>(null);
+  const [busy, setBusy] = useState("");                 // "Reading the file…" etc.
+  const filePicker = useRef<HTMLInputElement>(null);
 
   const fail = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) onExpired();
@@ -142,6 +149,35 @@ export default function Masters({ onExpired }: { onExpired: () => void }) {
   };
   const rowsWord = (n: number) => `${n} row${n === 1 ? "" : "s"}`;
 
+  /** A file was chosen: send it; the server answers with how it reads it. */
+  const fileChosen = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";                // so the same file can be chosen again
+    if (!file) return;
+    setProblem("");
+    setNotice("");
+    setBusy("Reading the file…");
+    try {
+      setImporting(await importApi.upload(tab, file));
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const exportShown = async () => {
+    setProblem("");
+    setBusy("Making the Excel file…");
+    try {
+      await importApi.exportRows(tab, shown.map((r) => r.id));
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy("");
+    }
+  };
+
   if (!defs || !def) {
     return <><h1>Masters</h1>{problem ? <div className="error">{problem}</div>
       : <p className="muted">Reading…</p>}</>;
@@ -182,7 +218,12 @@ export default function Masters({ onExpired }: { onExpired: () => void }) {
           </select>
         </label>
         <button className="btn primary" onClick={() => setEditing("new")}>Add {def.singular}</button>
+        <button className="btn" disabled={Boolean(busy)} onClick={() => filePicker.current?.click()}>Import Excel</button>
+        <button className="btn" disabled={Boolean(busy) || !shown.length} onClick={() => void exportShown()}>Export to Excel</button>
+        <input ref={filePicker} type="file" accept=".xlsx,.csv" hidden onChange={fileChosen}
+               aria-label={`Sheet to import into ${def.title}`} />
       </div>
+      {busy && <div className="note" role="status">{busy}</div>}
 
       <div className="bulk">
         <span className="muted">{shown.length} of {rows?.length ?? 0} shown
@@ -254,6 +295,14 @@ export default function Masters({ onExpired }: { onExpired: () => void }) {
           </table>
         </div>
       </div>
+
+      {importing && (
+        <ImportDialog def={def} start={importing} onExpired={onExpired}
+                      onClose={(changed) => {
+                        setImporting(null);
+                        if (changed) void refresh(tab);
+                      }} />
+      )}
 
       {editing && (
         <EditDialog def={def} row={editing === "new" ? null : editing} lookups={lookups}
