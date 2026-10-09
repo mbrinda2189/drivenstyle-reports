@@ -1,0 +1,3 @@
+# Downloaded packages and the built screens - both are re-created by npm
+node_modules/
+dist/

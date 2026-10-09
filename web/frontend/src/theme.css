@@ -1,0 +1,131 @@
+/*
+ * theme.css - The look of the whole web tool
+ * ==========================================
+ * The colours are the desktop tool's (app/theme.py, class Colors), so both
+ * look like one product. Change a colour HERE only - no screen carries a
+ * colour of its own.
+ *
+ * Every button and menu line is at least 44 px high, so it can be pressed
+ * comfortably on a touch screen as well.
+ */
+:root {
+  --navy: #0b2545;        /* top bar */
+  --navy-light: #13335f;
+  --blue: #1f5fbf;        /* main action */
+  --blue-hover: #184c99;
+  --blue-tint: #e8f0fc;   /* selected menu line */
+  --bg: #f4f7fb;          /* page */
+  --surface: #ffffff;     /* cards, tables, inputs */
+  --line: #dce4ef;
+  --line-strong: #c3cfdf;
+  --ink: #1b2a41;         /* main text */
+  --slate: #5b6b82;       /* secondary text */
+  --bar-text: #b8c7dd;
+  --green: #17704a;  --green-tint: #e3f4ec;
+  --amber: #8a5a12;  --amber-tint: #fbf1de;
+  --red: #b23226;    --red-tint: #fbe7e4;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 14px; }
+h1 { font-size: 24px; margin: 0 0 6px; }
+p { margin: 0 0 16px; line-height: 1.5; }
+.muted { color: var(--slate); }
+.center-note { padding: 80px 24px; text-align: center; color: var(--slate); }
+
+/* ---- frame ------------------------------------------------------------ */
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+.topbar { background: var(--navy); color: #fff; display: flex; flex-wrap: wrap;
+          align-items: center; gap: 16px; padding: 12px 24px; }
+.brand-name { font-size: 18px; font-weight: 700; }
+.brand-sub, .who-role { font-size: 12px; color: var(--bar-text); }
+.tabs { display: flex; gap: 6px; background: #071a33; padding: 5px; border-radius: 10px; }
+.tab { display: flex; align-items: center; min-height: 44px; padding: 0 22px; border-radius: 7px;
+       font-size: 15px; font-weight: 600; color: #dbe6f5; text-decoration: none; }
+.tab:hover { background: var(--navy-light); }
+.tab.on { background: #fff; color: var(--navy); }
+.spacer { flex-grow: 1; }
+.who { text-align: right; }
+.who-email { font-size: 13px; font-weight: 600; }
+
+.body { display: flex; flex-wrap: wrap; flex-grow: 1; }
+.side { flex: 1 1 200px; max-width: 240px; background: var(--surface);
+        border-right: 1px solid var(--line); padding: 20px 12px;
+        display: flex; flex-direction: column; gap: 4px; }
+.side-heading { font-size: 11px; font-weight: 700; letter-spacing: .08em;
+                text-transform: uppercase; color: var(--slate); padding: 0 12px 8px; }
+.side-heading.gap { padding-top: 20px; }
+.side-link { display: flex; align-items: center; min-height: 44px; padding: 0 12px;
+             border-radius: 8px; color: var(--ink); text-decoration: none; }
+.side-link:hover { background: var(--bg); }
+.side-link.active { background: var(--blue-tint); color: var(--navy); font-weight: 600; }
+.side-version { margin-top: auto; padding: 16px 12px 0; font-size: 12px; color: var(--slate); }
+.main { flex: 999 1 560px; min-width: 0; padding: 24px; }
+@media (max-width: 720px) { .side { max-width: none; border-right: 0;
+                                    border-bottom: 1px solid var(--line); } }
+
+/* ---- building blocks -------------------------------------------------- */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+        padding: 20px; margin-bottom: 20px; }
+.btn { min-height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--line-strong);
+       background: var(--surface); color: var(--navy); font: inherit; font-weight: 600; cursor: pointer; }
+.btn:hover { background: var(--bg); }
+.btn:disabled { opacity: .6; cursor: default; }
+.btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn.primary:hover { background: var(--blue-hover); }
+.btn.danger { background: var(--red); border-color: var(--red); color: #fff; }
+.btn.on-dark { background: transparent; border-color: #5d7ba6; color: #fff; }
+.btn.on-dark:hover { background: var(--navy-light); }
+input, select { min-height: 44px; border: 1px solid var(--line-strong); border-radius: 8px;
+                padding: 0 12px; font: inherit; color: var(--ink); background: var(--surface); }
+input:focus-visible, select:focus-visible, .btn:focus-visible, a:focus-visible {
+  outline: 3px solid #3b82f6; outline-offset: 2px; }
+label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--slate); }
+.error { background: var(--red-tint); color: var(--red); border-radius: 8px;
+         padding: 12px 14px; margin-bottom: 16px; font-weight: 600; }
+.note { background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+        padding: 12px 14px; color: var(--slate); margin-bottom: 16px; }
+.badge { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 10px;
+         padding: 3px 10px; margin-left: 8px; }
+.badge.green { background: var(--green-tint); color: var(--green); margin-left: 0; }
+.badge.grey { background: #e2e6ec; color: #2c3a4e; margin-left: 0; }
+.badge.blue { background: var(--blue-tint); color: var(--navy); }
+
+/* ---- tables ------------------------------------------------------------ */
+.table-card { padding: 8px; }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: .04em;
+     text-transform: uppercase; color: var(--slate); padding: 10px 12px;
+     border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+tr.inactive td { color: var(--slate); }
+.row-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+
+/* ---- Users ------------------------------------------------------------- */
+.add-user { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.add-user label { flex: 1 1 200px; }
+.add-user label:nth-of-type(3) { flex: 0 1 140px; }
+
+/* ---- screens still to come ---------------------------------------------- */
+.soon { max-width: 640px; }
+.soon-step { display: inline-block; background: var(--amber-tint); color: var(--amber);
+             font-size: 12px; font-weight: 700; border-radius: 10px; padding: 3px 10px;
+             margin-bottom: 12px; }
+.soon p { margin: 0; color: var(--slate); }
+
+/* ---- sign-in page -------------------------------------------------------- */
+.signin { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+          padding: 24px; background: var(--navy); }
+.signin-card { width: 100%; max-width: 400px; background: var(--surface);
+               border-radius: 14px; padding: 32px; }
+.signin-brand { font-size: 20px; font-weight: 700; color: var(--navy); }
+.signin-sub { font-size: 13px; color: var(--slate); margin-bottom: 24px; }
+.google-box { min-height: 44px; margin-bottom: 16px; }
+.test-signin { display: flex; flex-direction: column; gap: 10px; margin-top: 8px;
+               border: 1px solid #e3c98e; background: var(--amber-tint);
+               border-radius: 10px; padding: 14px; }
+.test-label { font-size: 12px; font-weight: 700; color: var(--amber); }
+.signin-version { margin-top: 20px; font-size: 12px; color: var(--slate); }

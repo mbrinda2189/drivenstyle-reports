@@ -1,0 +1,10 @@
+# The web tool's server (web/backend). The desktop programs do not need these.
+# Install with:  pip install -r web/backend/requirements.txt
+openpyxl>=3.1         # Excel files (same as the desktop tool)
+pdfplumber>=0.11      # invoice PDFs (same as the desktop tool)
+fastapi>=0.110        # the web server framework
+uvicorn>=0.29         # runs the server:  python -m uvicorn web.backend.main:app
+itsdangerous>=2.1     # signs the sign-in cookie
+google-auth>=2.20     # checks Google's sign-in answer
+requests>=2.31        # used by google-auth to fetch Google's public keys
+httpx>=0.27           # only for the automated tests of the server

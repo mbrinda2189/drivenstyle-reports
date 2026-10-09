@@ -11,8 +11,8 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 12)
--------------------------
+TABLES (schema version 13)
+--------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
         name_key is the name in a standard form (lower case, single
@@ -73,6 +73,11 @@ TABLES (schema version 12)
                       field last time, so the next import is pre-filled
         master, field, column_header
 
+    users             (v0.23.0, web tool) who may sign in: id, email (lower
+                      case, unique), name, role (admin / staff), active,
+                      created_at, last_login. See users_repo.py. The
+                      desktop programs do not use this table.
+
     meta              small key/value settings, e.g. schema_version
 
 UPGRADING
@@ -99,6 +104,7 @@ an older database then upgrades it in place without losing data.
                      source (pdf / export), status (Closed / Overdue ...)
                      and branch (CF.Branch); invoice lines get item_type
                      (Zoho goods / service)
+    step 13 (v0.23.0) users of the web tool (sign-in list with roles)
 
 A step is either a block of SQL or a Python function taking the connection
 (used when values must be worked out in Python, e.g. contact-number keys).
@@ -113,7 +119,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -520,6 +526,21 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
     """,
     # --- 11 -> 12 : internal team incentive per product (v0.12.0) --------------
     _step_12,
+    # --- 12 -> 13 : people who may sign in to the web tool (v0.23.0) -----------
+    # Only e-mail addresses in this table can enter the web tool. The role
+    # decides what they see: "admin" everything, "staff" the daily payouts
+    # only. The desktop programs never read this table.
+    """
+    CREATE TABLE IF NOT EXISTS users (
+        id          INTEGER PRIMARY KEY,
+        email       TEXT    NOT NULL UNIQUE,            -- always lower case
+        name        TEXT    NOT NULL DEFAULT '',
+        role        TEXT    NOT NULL CHECK (role IN ('admin', 'staff')),
+        active      INTEGER NOT NULL DEFAULT 1,
+        created_at  TEXT    NOT NULL,
+        last_login  TEXT    NOT NULL DEFAULT ''
+    );
+    """,
 ]
 
 

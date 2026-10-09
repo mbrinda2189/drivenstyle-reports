@@ -18,6 +18,9 @@ output/
 *.pdf
 *.csv
 
+# Web tool screens (web/frontend): downloaded packages - npm re-creates them
+node_modules/
+
 # Editors / OS
 .vscode/
 .idea/

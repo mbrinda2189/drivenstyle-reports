@@ -6,6 +6,53 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.0] – 2026-10-09 – Web tool step 2: server, sign-in with roles, the frame with two tabs
+
+The web tool can now be started on a PC and opened in the browser: people
+sign in, each as admin or staff, and see the frame of the tool - Daily
+payouts and Monthly reports as two tabs of one screen (the layout Brinda
+approved on the mockup). Masters, reports and payouts are not built yet;
+their screens say which step brings them. The desktop programs and every
+figure are unchanged.
+
+### Added
+- **Server** (`web/backend`, FastAPI): `main.py`, `security.py`,
+  `config.py`, its own `requirements.txt`. One database connection per
+  request; SQLite in multi-user (WAL) mode.
+- **Users list with roles** in the same database as the masters: table
+  `users` (database upgrade step 13) and `app/data/users_repo.py`.
+  Admin sees everything; staff see the daily payouts only. The last active
+  admin cannot be removed, made inactive or made staff. Every change is in
+  the audit log with the e-mail of the admin who made it.
+- **First admin** `automation.drivenstyle@gmail.com` (setting
+  `DNS_WEB_ADMINS`), added when the list has no active admin.
+- **Google sign-in**: the server checks Google's signed answer and looks
+  the address up in the users list; the person stays signed in for 12
+  hours through a signed, HttpOnly cookie. Needs a Google "Web
+  application" client ID (steps in `web/README.md`).
+- **Test sign-in** without Google for a developer's PC, only when
+  `DNS_WEB_DEV_LOGIN=1`; shown in amber on the sign-in page.
+- **Screens** (`web/frontend`, React + TypeScript, Vite): sign-in page,
+  the frame (top bar with the two tabs, left menu, Shared section for
+  admins) in the desktop tool's blue theme, the Users screen, and
+  placeholders for the screens to come.
+- `tests/test_web_auth.py` (13 tests): only listed people get in, nothing
+  answers without a sign-in, staff cannot open admin addresses, an
+  inactive person is out at once, last-admin rule, audit log, altered or
+  expired cookies, and the database upgrade keeping existing data.
+
+### Changed
+- The database is now schema 13. The desktop tool's own database gains
+  the (unused) `users` table the next time the desktop tool is opened; a
+  copy `drivenstyle.schema12.bak.db` is made first, as with every upgrade.
+- The web tool keeps its own database in `data/web/` by default; it starts
+  empty and does not touch the desktop tool's database.
+
+### Pending
+- Step 3: Masters on the web (screens, Excel import, dated rates, audit
+  log screen) - and bringing the present masters across.
+- Google client ID (Brinda); AWS credentials and web address (client).
+
 ## [0.22.0] – 2026-10-09 – Moving to a web tool: step 1 (baseline, September figures, folders)
 
 The client's IT does not allow the Windows programs to run on the office

@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.22.0** (tags v0.1.0 … v0.22.0 on GitHub
+Current version: **v0.23.0** (tags v0.1.0 … v0.23.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -43,9 +43,33 @@ Brinda's real database (147 invoices, none left out; sales 13,80,298.18;
 product cost 5,81,478.63; labour 71,350.00; gross profit 7,27,469.55; spot
 incentive 49,000; internal 12,000). Re-run the script only when a figure
 is MEANT to change.
-Next: step 2 (backend base) - propose the plan first. Open: AWS IAM user +
-web address from the client; whether their IT allows the site and Google
-sign-in. In the Cowork VM never grep the whole folder (`dist/` and
+Step 2 done in v0.23.0 (Brinda's answers, 09-10-2026: staff see ONLY the
+daily payouts; first admin automation.drivenstyle@gmail.com; users in the
+SAME database; TypeScript; layout = ONE screen, top-bar tabs "Daily
+payouts" / "Monthly reports", left menu per tab, "Shared (admin)" section
+Masters / Audit log / Users under both - approved on the mockup, keep it).
+`app/data/users_repo.py` + schema step 13 (`users`); `web/backend/main.py`
+(create_app(settings); `app` is made lazily by module __getattr__),
+`security.py` (itsdangerous cookie holding only the user id - role is read
+from the table at every request), `config.py` (DNS_WEB_* settings; the web
+database is data/web/drivenstyle.db, NOT the desktop one). Rules to keep:
+every non-GET /api request needs header X-DNS-Request (api.ts sends it);
+open the database INSIDE the endpoint (`with database(email) as ...`) -
+sqlite connections must not cross threads; role checks on the server, the
+screens only hide. Frontend: Vite + React 18 + react-router 6, all colours
+in src/theme.css, all server calls in src/api.ts, unbuilt screens are
+`ComingSoon` lines in App.tsx. NEVER run `npm install` in the mounted
+Windows folder from the Cowork VM (Linux binaries would land in
+node_modules): build and screenshot in the cloud workspace (copy
+web/frontend there, tar app/ + web/backend, run uvicorn with
+DNS_WEB_DEV_LOGIN=1, Playwright), then copy the source files back.
+Tests: tests/test_web_auth.py (fake Google; `pip install fastapi httpx
+itsdangerous`). 246 passed / 4 skipped.
+Next: step 3 (Masters on the web + Audit log screen; how the present
+masters get into the web database) - propose the plan first. Open: Google
+"Web application" client ID (Brinda; consent screen is in Testing, so test
+users must be listed); AWS IAM user + web address from the client; whether
+their IT allows the site and Google sign-in. In the Cowork VM never grep the whole folder (`dist/` and
 `build/` are huge - the command times out); name the folders.
 
 ## Working rules (from Brinda – always follow)

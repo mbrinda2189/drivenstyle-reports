@@ -5,7 +5,7 @@ from Zoho Books' invoice export and produces one Excel workbook with 12
 management reports. Reports are
 prepared each month before the 7th, for the month just ended.
 
-> **Current status: v0.22.0 – moving to a web tool, step 1: the tests and September's figures are fixed as the baseline, `web/` folder and plan added (no change to the programs); earlier: v0.21.0 – payout app posts labour separately for floor mat, sunfilm and other, like the monthly tables; earlier: v0.20.0 – incentives under direct costs, 4% / 3% on product cost only, labour split into floor mat and sunfilm, one "Others" segment (Excel and PDF); earlier: v0.19.2 – monthly PDF fills each page properly (no part-empty pages, fewer pages); earlier: v0.19.1 – monthly PDF keeps each heading with its table; earlier: v0.19.0 – monthly reports PDF in the client's order (Profit & loss first, no descriptions); earlier: v0.18.1 – Windows build fix (guide and self-check need Qt's normal mode, which has fonts); earlier: v0.18.0 – the payout app can be built into a program for the staff PCs (`python scripts\build_payout_app.py`), with a staff guide; earlier: v0.17.1 – payout app Set-up can clear the register (with a backup) and remove duplicate sheets, for a clean start; earlier: v0.17.0 – daily payout app: Payouts screen (record payments with reference and proof, hold / reopen, payout slip) and History; earlier: v0.16.0 – daily payout app has its own window (`python -m payout_app`): Set-up, Scan and Review screens; earlier: v0.15.0 – daily payout app: invoice PDFs are calculated and posted to the payout register Google Sheet (commands; screens next); earlier: v0.14.0 – daily payout app started: the masters as a Google Sheet, checked on every read (`payout_app/`); earlier: v0.13.0 – PDF reader brought up to date for the daily payout app (item notes, Branch line, invoices with GST on some lines, amount billed per line); earlier: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
+> **Current status: v0.23.0 – web tool step 2: the server starts, people sign in with roles (admin / staff), and the frame with the Daily payouts and Monthly reports tabs is there (`web/README.md` says how to run it); earlier: v0.22.0 – moving to a web tool, step 1: the tests and September's figures are fixed as the baseline, `web/` folder and plan added (no change to the programs); earlier: v0.21.0 – payout app posts labour separately for floor mat, sunfilm and other, like the monthly tables; earlier: v0.20.0 – incentives under direct costs, 4% / 3% on product cost only, labour split into floor mat and sunfilm, one "Others" segment (Excel and PDF); earlier: v0.19.2 – monthly PDF fills each page properly (no part-empty pages, fewer pages); earlier: v0.19.1 – monthly PDF keeps each heading with its table; earlier: v0.19.0 – monthly reports PDF in the client's order (Profit & loss first, no descriptions); earlier: v0.18.1 – Windows build fix (guide and self-check need Qt's normal mode, which has fonts); earlier: v0.18.0 – the payout app can be built into a program for the staff PCs (`python scripts\build_payout_app.py`), with a staff guide; earlier: v0.17.1 – payout app Set-up can clear the register (with a backup) and remove duplicate sheets, for a clean start; earlier: v0.17.0 – daily payout app: Payouts screen (record payments with reference and proof, hold / reopen, payout slip) and History; earlier: v0.16.0 – daily payout app has its own window (`python -m payout_app`): Set-up, Scan and Review screens; earlier: v0.15.0 – daily payout app: invoice PDFs are calculated and posted to the payout register Google Sheet (commands; screens next); earlier: v0.14.0 – daily payout app started: the masters as a Google Sheet, checked on every read (`payout_app/`); earlier: v0.13.0 – PDF reader brought up to date for the daily payout app (item notes, Branch line, invoices with GST on some lines, amount billed per line); earlier: v0.12.1 – incentive rounded up to the next ₹10 per executive; earlier: v0.12.0 – internal team incentive per product; earlier: v0.11.1 – PDF top lists ranked by profit margin %; earlier: v0.11.0 – "Gets incentive" flag for sales executives; earlier: v0.10.5 – PDF starts at the Summary, percentages highest first; earlier: v0.10.4 – PDF "% of sales" fixed; earlier: v0.10.3 – PDF without graphs, continuous, page numbers; earlier: v0.10.2 – change a saved match, delete a dated price; earlier: v0.10.1 – remove a month / a History entry; earlier: v0.10.0 – PDF version with graphs, month-wise trend; earlier: v0.9.1 – workbook also as one PDF; earlier: v0.9.0 – delivery (RTO) list, new-car reports and executive summary; earlier: v0.8.3 – Saved matches tab on Scan review (see and undo choices); earlier: v0.8.2 – automatic indirect costs (4% + 3% of COGS, editable on Monthly inputs); earlier: v0.8.0 – package sales recognised from the invoice (Packages master); earlier: v0.7.1 – "Others" for salesperson / car on Scan review; earlier: v0.7.0 – Zoho item list as the Product master; Zoho invoice export.** The tool reads the
 > month's invoices from Zoho's invoice export (`Invoice.csv` / `.xlsx`),
 > matches them to the masters, lets anything unclear
 > be fixed on Scan review, and writes the Excel workbook with all 12 reports.
@@ -14,15 +14,16 @@ prepared each month before the 7th, for the month just ended.
 > Still to come: linking products to incentive groups (draft sent),
 > package definitions, and packaging as an .exe.
 
-## Web tool (`web/`) – started in v0.22.0
+## Web tool (`web/`) – started in v0.22.0, runs from v0.23.0
 
 The client's IT does not allow the Windows programs on the office PCs, so
 the monthly reports tool and the daily payout app are becoming **one web
 tool** on the client's AWS: a FastAPI server (`web/backend`) and React
 screens (`web/frontend`). The calculations are not rewritten - the server
 imports `app/data`, `app/reports` and `payout_app/engine.py` as they are.
-The plan, the decisions and the build order are in
-[`web/README.md`](web/README.md). The desktop programs described below stay
+From v0.23.0 it starts and people can sign in (admin or staff); masters,
+reports and payouts follow step by step. How to run it, the settings, the
+plan and the decisions are in [`web/README.md`](web/README.md). The desktop programs described below stay
 in the repository unchanged, as the reference.
 
 ## The 12 reports
@@ -601,9 +602,9 @@ scripts/
     ├── snapshot_month.py  Save a month's figures as the baseline (v0.22.0)
     ├── make_sample_masters.py
     └── build_payout_app.py
-web/                       The web tool (v0.22.0: plan only) - see web/README.md
-    ├── backend/           FastAPI server (step 2)
-    └── frontend/          React screens (steps 3 to 6)
+web/                       The web tool - see web/README.md
+    ├── backend/           FastAPI server: main.py, security.py, config.py
+    └── frontend/          React + TypeScript screens (src/App.tsx, Shell.tsx, pages/)
 payout_app/                Daily payout app (separate app, same rules)
     ├── masters_sheet.py   Masters sheet: layout, write, read + every check
     ├── google_api.py      Google sign-in and the Sheets calls
