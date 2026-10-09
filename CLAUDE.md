@@ -16,8 +16,37 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.21.0** (tags v0.1.0 … v0.21.0 on GitHub
+Current version: **v0.22.0** (tags v0.1.0 … v0.22.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
+
+## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
+
+The client's IT blocks the Windows programs, so BOTH the monthly tool and
+the daily payout app become ONE web tool on the client's AWS: FastAPI in
+`web/backend`, React in `web/frontend`. `app/` and `payout_app/` stay as
+they are (frozen reference; the installer is no longer planned).
+Agreed: no `core/` folder - the server imports `app/data`, `app/reports`,
+`payout_app/engine.py`, `slip.py` unchanged; SQLite on the server + nightly
+S3 backup (NOT PostgreSQL - Brinda agreed to reverse this); masters,
+register and proofs leave Google Sheets / Drive for the database and S3
+(`register.py`, `masters_sheet.py`, `google_api.py`, `service.py` are
+rewritten on tables, same rules); Google sign-in with roles admin / staff,
+built so user name + password can replace it; reports PDF by LibreOffice
+on the server (compare pages with the Excel PDF); audit log records the
+signed-in e-mail. Monthly upload = Zoho invoice export + payments export +
+RTO list; daily upload = invoice PDFs.
+Step 1 done in v0.22.0: baseline 227 passed / 4 skipped (non-Qt, in the
+Cowork VM: `python3 -m pip install --user pytest openpyxl pdfplumber`
+works there); `app/reports/snapshot.py`, `scripts/snapshot_month.py`,
+`tests/test_baseline.py`. September 2026 saved in `data/baseline/` from
+Brinda's real database (147 invoices, none left out; sales 13,80,298.18;
+product cost 5,81,478.63; labour 71,350.00; gross profit 7,27,469.55; spot
+incentive 49,000; internal 12,000). Re-run the script only when a figure
+is MEANT to change.
+Next: step 2 (backend base) - propose the plan first. Open: AWS IAM user +
+web address from the client; whether their IT allows the site and Google
+sign-in. In the Cowork VM never grep the whole folder (`dist/` and
+`build/` are huge - the command times out); name the folders.
 
 ## Working rules (from Brinda – always follow)
 

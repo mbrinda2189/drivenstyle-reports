@@ -6,6 +6,48 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.0] – 2026-10-09 – Moving to a web tool: step 1 (baseline, September figures, folders)
+
+The client's IT does not allow the Windows programs to run on the office
+PCs. The monthly reports tool and the daily payout app will therefore
+become ONE web tool, hosted on the client's own AWS (Brinda, 09-10-2026).
+This version prepares the move and changes nothing in either program:
+no screen, report or figure is different.
+
+### Added
+- **`web/` folder** with `web/backend` (FastAPI server) and `web/frontend`
+  (React screens) - empty for now. `web/README.md` holds the plan, the
+  decisions and the build order.
+- **September's figures saved as the "before" picture.**
+  `python scripts/snapshot_month.py 2026 9` copies the tool's database to
+  `data/baseline/` (the real database is only read) and writes the month's
+  figures to `data/baseline/figures_2026-09.json`: totals, automatic
+  indirect costs, labour by kind of work, incentive per executive, and
+  sales / product cost / labour / gross profit / incentive of every
+  invoice. `data/` is not in Git - these are the client's figures.
+- **`tests/test_baseline.py`**: `python -m pytest` now works every saved
+  month out again and fails, naming the figure, if anything is no longer
+  the same to the paisa. On a PC without `data/baseline/` this one test is
+  skipped.
+- `app/reports/snapshot.py`: `snapshot`, `differences`, `save`, `load`
+  (no Qt, writes nothing to the database).
+
+### Decided (09-10-2026)
+- The calculations are not rewritten and not moved: the web tool imports
+  `app/data`, `app/reports` and `payout_app/engine.py` as they are (no
+  `core/` folder, as agreed on 05-10-2026).
+- Database: SQLite on the server with a nightly backup, not PostgreSQL.
+- Masters, payout register and proofs move from Google Sheets / Drive to
+  the server's database and an S3 bucket.
+- Google sign-in with roles (admin, staff); the reports PDF is made with
+  LibreOffice on the server.
+
+### Pending
+- Step 2: the server's base (FastAPI, database, sign-in and roles).
+- AWS credentials and a web address from the client; whether their IT
+  allows the site and Google sign-in on the staff PCs.
+- The Windows installer of the payout app is no longer planned.
+
 ## [0.21.0] – 2026-10-07 – Payout app: labour posted separately for floor mat and sunfilm
 
 The client wants the labour for floor mats and for sunfilm as separate
