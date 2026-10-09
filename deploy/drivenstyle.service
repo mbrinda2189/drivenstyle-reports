@@ -1,0 +1,38 @@
+# drivenstyle.service - Keeps the tool running on the server (v0.29.0)
+# ====================================================================
+#
+# WHAT THIS FILE IS
+# -----------------
+# "systemd" is the part of Linux that starts programs when the server
+# starts and restarts them if they stop. This file tells it how to run the
+# tool: as its own user (drivenstyle, which can do nothing else on the
+# server), from its own folder, listening INSIDE the server only
+# (127.0.0.1) - the outside world reaches it through nginx alone.
+#
+# install.sh copies it to /etc/systemd/system/ with the port filled in.
+#
+#   sudo systemctl status drivenstyle      is it running?
+#   sudo systemctl restart drivenstyle     stop and start it
+#   sudo journalctl -u drivenstyle -n 50   its last 50 lines of messages
+
+[Unit]
+Description=Drive N Style web tool (daily payouts and monthly reports)
+After=network.target
+
+[Service]
+User=drivenstyle
+Group=drivenstyle
+WorkingDirectory=/opt/drivenstyle/app
+EnvironmentFile=/etc/drivenstyle.env
+ExecStart=/opt/drivenstyle/venv/bin/python -m uvicorn web.backend.main:app --host 127.0.0.1 --port __PORT__ --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=5
+# The server is shared with other sites: the tool may never take more than
+# this much memory from them (it normally uses far less).
+MemoryMax=1500M
+# It cannot gain rights, and sees a /tmp of its own.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

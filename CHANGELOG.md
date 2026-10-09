@@ -6,6 +6,55 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.29.0] – 2026-10-09 – Web tool step 7: putting it on the client's server
+
+Everything needed to run the web tool on the client's AWS server, as one
+command from Brinda's PC. **Nothing has been run on the server yet** - this
+version only adds the files; the first install is the next step.
+
+The server (`35.154.161.180`, Ubuntu 22.04, nginx) is shared with other
+sites, so the scripts add the tool beside them and change nothing of
+theirs. The address is `https://drivenstyle.duckdns.org`.
+
+### Added
+- **`deploy/deploy.ps1`** (run on the PC): builds the screens, packs the
+  last commit, copies it to the server and installs / updates it. Also
+  `-Status`, `-Backup` (fetches the database and proofs to
+  `data\server-backups\`) and `-Database desktop` (brings the desktop
+  data across).
+- **`deploy/install.sh`** (runs on the server): own user `drivenstyle`,
+  folders under `/opt/drivenstyle`, Python libraries, LibreOffice Calc and
+  the Carlito font for the PDF, the service, one nginx site, the HTTPS
+  certificate (certbot), the nightly backup. Checks that the new version
+  answers and **puts the previous one back if it does not**. nginx is
+  checked before and after and only reloaded.
+- `deploy/server.conf` (address, port, Google client ID, admins),
+  `deploy/nginx-site.conf`, `deploy/drivenstyle.service`,
+  `deploy/backup.sh` (02:00 Indian time, 14 copies kept).
+- **`docs/deployment.md`**: the guide - first install, updates, backups,
+  what to do when something is wrong, changing the address, taking the
+  tool off the server.
+- **Privacy page** at `/privacy`, open without signing in
+  (`web/backend/privacy.py`): Google asks for it before the sign-in can be
+  published.
+- `.gitattributes`: the server files keep Unix line ends on Windows.
+- `tests/test_deploy.py`: the server files never switch on the test
+  sign-in, the tool listens inside the server only, nginx is only
+  reloaded.
+
+### Checked
+- All tests pass on Python 3.10, the server's version (285 passed, 5
+  skipped).
+- The install script was run against stand-ins for systemd, nginx and
+  certbot: first install, update, a version that does not start (the
+  previous one came back), backup, bring-across.
+
+### Pending
+- The first real install (needs DuckDNS pointing to the new server).
+- Publishing the Google sign-in (Branding page), then no "test users".
+- Backups leave the server only when `-Backup` is run; an S3 bucket from
+  the client would make that automatic.
+
 ## [0.28.0] – 2026-10-09 – Web tool step 6: payout slip, summary and month check
 
 The daily payouts get their reports, and the control that ties them to

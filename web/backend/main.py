@@ -26,6 +26,8 @@ ADDRESSES IN THIS VERSION
     /api/monthly/...                 see monthly_api.py (v0.26.0, admin only)
     /api/daily/...                   see daily_api.py (v0.27.0) and
                                      daily_reports.py (v0.28.0)
+    /privacy                         the privacy page, open to everyone -
+                                     see privacy.py (v0.29.0)
 
     Everything else serves the built screens (web/frontend/dist), so the
     tool has ONE address in production.
@@ -62,14 +64,15 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from app import __version__
 from app.data.database import connect
 from app.data.users_repo import UserError, UsersRepo
 from web.backend import (
-    config, daily_api, daily_reports, imports_api, masters_api, monthly_api)
+    config, daily_api, daily_reports, imports_api, masters_api, monthly_api,
+    privacy)
 from web.backend.security import COOKIE, Sessions, SignInError, verify_google
 
 log = logging.getLogger("dns_web")
@@ -254,6 +257,13 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
     @api.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def no_such_address(rest: str):
         raise HTTPException(404, "Not found.")
+
+    # ---- the privacy page (v0.29.0) ------------------------------------------
+    @api.get("/privacy", response_class=HTMLResponse)
+    def privacy_page() -> str:
+        """Open to everyone, signed in or not: Google asks for this page
+        before the sign-in can be published (see privacy.py)."""
+        return privacy.PAGE
 
     # ---- the screens ---------------------------------------------------------
     @api.get("/{path:path}")

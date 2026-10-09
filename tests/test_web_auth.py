@@ -201,6 +201,13 @@ def test_sign_out_and_altered_or_old_tickets(tmp_path):
     assert client.get("/api/me").status_code == 401
 
 
+def test_privacy_page_is_open_to_everyone(app):
+    # v0.29.0: Google asks for it before the sign-in can be published.
+    reply = TestClient(app).get("/privacy")
+    assert reply.status_code == 200 and "text/html" in reply.headers["content-type"]
+    assert "Drive N Style" in reply.text and "e-mail address" in reply.text
+
+
 def test_screens_are_served_from_the_built_folder(tmp_path):
     app, settings = make(tmp_path)
     client = TestClient(app)

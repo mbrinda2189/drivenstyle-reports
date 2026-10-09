@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.28.0** (tags v0.1.0 … v0.28.0 on GitHub
+Current version: **v0.29.0** (tags v0.1.0 … v0.29.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -173,6 +173,31 @@ client ID; propose the plan first. Open: Google
 users must be listed); AWS IAM user + web address from the client; whether
 their IT allows the site and Google sign-in. In the Cowork VM never grep the whole folder (`dist/` and
 `build/` are huge - the command times out); name the folders.
+
+### Step 7 – on the client's server (v0.29.0) – read `docs/deployment.md`
+Server: `ubuntu@35.154.161.180` (Ubuntu 22.04, Python 3.10, **nginx**,
+shared with theprintapp.com and other sites; an earlier server
+3.109.74.97 was dropped). Key on Brinda's PC, outside the repo:
+`C:\Official\Coding\Personal Coding Projects\key\Printapp_KEY.pem` -
+never copy or commit it. Address `https://drivenstyle.duckdns.org`
+(DuckDNS, client's account); Google client ID in `deploy/server.conf`
+(public by design); Google sign-in still "Testing" (test users) until the
+Branding page is filled (home page + `/privacy`).
+- Claude cannot SSH (no route from its machines): Brinda runs
+  `powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1` and pastes
+  the output. `-Status`, `-Backup`, `-Database desktop [-Replace]`.
+- `deploy.ps1` sends the LAST COMMIT (`git archive HEAD`) + the built
+  `web/frontend/dist` (no Node on the server). `deploy/install.sh` is the
+  same for install and update; rolls back to `app.previous` if
+  `/api/config` does not answer.
+- Layout: `/opt/drivenstyle/{app,app.previous,venv,data,backups}`, user
+  `drivenstyle`, service `drivenstyle` on 127.0.0.1:8010,
+  `/etc/drivenstyle.env`, `/etc/cron.d/drivenstyle-backup`.
+- SHARED SERVER RULES: never upgrade / restart other programs, never edit
+  other nginx sites, `nginx -t` before and after, reload only;
+  `NEEDRESTART_SUSPEND=1` on apt. `tests/test_deploy.py` guards these.
+- Never set `DNS_WEB_DEV_LOGIN` on the server.
+- Tests on Python 3.10: 285 passed / 5 skipped. Not yet run on the server.
 
 ## Working rules (from Brinda – always follow)
 

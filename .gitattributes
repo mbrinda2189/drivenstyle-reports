@@ -1,0 +1,6 @@
+# The files in deploy/ run on the Linux server, which needs Unix line ends
+# (LF). Without this, Git on Windows would hand them over with Windows line
+# ends (CRLF) and the server could not run them.
+deploy/*.sh       text eol=lf
+deploy/*.conf     text eol=lf
+deploy/*.service  text eol=lf

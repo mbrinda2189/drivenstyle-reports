@@ -1,9 +1,9 @@
 # Drive N Style - web tool (`web/`)
 
-**Status: v0.28.0 - steps 1 to 6 done: both tools work in the browser,
-including the payout slip, the summary and the month check that ties the
-daily payouts to the monthly reports. Only deployment on the client's AWS
-(step 7) is left.**
+**Status: v0.29.0 - steps 1 to 6 done (both tools work in the browser)
+and step 7 written: `deploy/` puts the tool on the client's server with
+one command, see `docs/deployment.md`. The first install on the server has
+not been run yet.**
 
 ## Why
 
@@ -237,11 +237,33 @@ back-posting, no daily rounding of incentive, and every control.
 | 4 | v0.26.0 | **Done.** Monthly tool: upload the three Zoho files, Read invoices, Scan review (fixes, Saved matches, Invoices read, exports), Monthly inputs, Generate workbook + PDF (LibreOffice), History (download, Make PDF, Regenerate, Remove, Remove month) |
 | 5 | v0.27.0 | **Done.** Daily payouts: upload PDFs and Scan, Review with shared matches, Payouts (Mark paid with reference / proof, Hold, Release, Reopen, Cancel invoice), History; register in database tables; start date 01-10-2026 |
 | 6 | v0.28.0 | **Done.** Summary screen: payout slip (to pay / paid on a day), summary by person, day and month, month check against the monthly tool, Excel export of the register |
-| 7 | | Deployment on the client's AWS: HTTPS, backups, deployment guide |
+| 7 | v0.29.0 | **Written, not yet run on the server.** `deploy/deploy.ps1` (from the PC) and `deploy/install.sh` (on the server): own user and folders, service, one nginx site, HTTPS, LibreOffice, nightly backup, rollback; `docs/deployment.md`; privacy page `/privacy` |
 
 Each step is confirmed with Brinda before it is coded, and is one version.
 
+## On the server (step 7)
+
+The full guide is `docs/deployment.md`. In short, from the project folder
+on Brinda's PC:
+
+```
+powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1                    install / update
+powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1 -Status            is it running?
+powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1 -Backup            fetch a backup to the PC
+powershell -ExecutionPolicy Bypass -File deploy\deploy.ps1 -Database desktop  bring the desktop data across
+```
+
+Address: `https://drivenstyle.duckdns.org`. Server: the client's AWS,
+Ubuntu 22.04 with nginx, shared with their other sites - the scripts add
+the tool beside them and change nothing of theirs. The settings particular
+to the server are in `deploy/server.conf`; the test sign-in is never
+switched on there.
+
 ## Still open
+
+- (Settled 09-10-2026: server `35.154.161.180`, address
+  `drivenstyle.duckdns.org`, Google client ID created. The older points
+  below are kept for the record.)
 
 - AWS credentials from the client: an IAM user for Brinda (not the root
   login) allowed to create one small server and one S3 bucket.
