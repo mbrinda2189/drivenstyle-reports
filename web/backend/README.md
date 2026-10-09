@@ -1,13 +1,15 @@
 # web/backend - the server (FastAPI)
 
-**v0.25.0: sign-in, roles, users, masters with Excel import / export, and
-the audit log.** Reports and payouts come in steps 4 to 6 (`web/README.md`).
+**v0.26.0: sign-in, roles, users, masters with Excel import / export, the
+audit log and the monthly reports tool.** The daily payouts come in steps
+5 and 6 (`web/README.md`).
 
 | File | What it does |
 |---|---|
 | `main.py` | The server: every `/api` address, who may open it, and serving the built screens |
 | `masters_api.py` | Masters and audit log addresses - every rule comes from `app/data/masters_repo.py` |
 | `imports_api.py` | Import a master from Excel / CSV (upload, preview, import, Zoho item list) and export to Excel - reading and saving by `app/data/excel_io.py` and `masters_repo.py` |
+| `monthly_api.py` | The monthly tool (admins): the month's uploaded files, Read invoices, Scan review fixes and saved matches, Monthly inputs, Generate, History - all by `app/data` and `app/reports` |
 | `bring_across.py` | One-time copy of the desktop tool's database into the web tool |
 | `security.py` | Checking Google's sign-in answer; the signed sign-in cookie |
 | `config.py` | The settings (environment variables) - data folder, first admins, Google client ID, test sign-in |
@@ -20,5 +22,5 @@ This folder holds no calculation of its own - sales, cost, labour,
 incentive and the workbook all come from `app/data`, `app/reports` and
 `payout_app/engine.py`, imported as they are.
 
-Tests: `tests/test_web_auth.py`, `tests/test_web_masters.py`, `tests/test_web_imports.py` (Google is replaced by a stand-in; no
+Tests: `tests/test_web_auth.py`, `tests/test_web_masters.py`, `tests/test_web_imports.py`, `tests/test_web_monthly.py` (Google is replaced by a stand-in; no
 internet needed).

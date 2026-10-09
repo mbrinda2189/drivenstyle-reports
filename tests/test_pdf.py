@@ -12,6 +12,8 @@ import sys
 from types import SimpleNamespace
 
 import openpyxl
+from pathlib import Path
+
 import pytest
 
 from app.data.inputs_repo import InputsRepo
@@ -37,14 +39,45 @@ def test_workbook_is_set_up_for_printing(world):  # noqa: F811
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="needs a PC without Excel automation")
-def test_pdf_problem_does_not_lose_the_workbook(world):  # noqa: F811
+def test_pdf_problem_does_not_lose_the_workbook(world, monkeypatch):  # noqa: F811
     masters, irepo, tmp_path = world
     out = tmp_path / "out"
     out.mkdir()
+    # v0.26.0: without Excel the PDF is made by LibreOffice - here neither is there.
+    monkeypatch.setattr(pdf_export, "find_libreoffice", lambda: None)
     r = generate(masters, irepo, InputsRepo(masters), 2026, 9, out, ["Profit & loss"],
                  pdf=True)
     assert r.path.exists() and r.pdf_path is None
     assert "Windows PC with Microsoft Excel" in r.pdf_error
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="LibreOffice is used where Excel is not")
+def test_libreoffice_makes_the_pdf_where_there_is_no_excel(tmp_path, monkeypatch):
+    """v0.26.0 (web server): LibreOffice converts in a folder of its own and
+    the PDF is moved to where it was asked for."""
+    book = tmp_path / "Reports Sep.xlsx"
+    openpyxl.Workbook().save(book)
+    target = tmp_path / "saved" / "Final name.pdf"
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["cmd"], seen["env"] = cmd, kwargs["env"]
+        outdir = Path(cmd[cmd.index("--outdir") + 1])
+        (outdir / "Reports Sep.pdf").write_bytes(b"%PDF")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(pdf_export, "find_libreoffice", lambda: "/usr/bin/soffice")
+    monkeypatch.setattr(pdf_export.subprocess, "run", fake_run)
+    assert export_pdf(book, target) == target.resolve() and target.read_bytes() == b"%PDF"
+    assert seen["cmd"][0] == "/usr/bin/soffice" and "--headless" in seen["cmd"]
+    assert seen["cmd"][-1] == str(book.resolve())
+    assert any(a.startswith("-env:UserInstallation=file://") for a in seen["cmd"])
+    assert seen["env"]["LANG"] == "en_IN.UTF-8"        # 13,80,298.18, not 1,380,298.18
+
+    monkeypatch.setattr(pdf_export.subprocess, "run",
+                        lambda cmd, **k: SimpleNamespace(returncode=1, stdout="", stderr="boom"))
+    with pytest.raises(PdfError, match="LibreOffice could not make the PDF. \\(boom\\)"):
+        export_pdf(book, target)
 
 
 def test_excel_is_asked_for_one_pdf(tmp_path, monkeypatch):

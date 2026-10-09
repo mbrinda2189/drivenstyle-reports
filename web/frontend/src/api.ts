@@ -231,6 +231,149 @@ export const importApi = {
   exportRows: (master: string, ids: number[]) => download(`/masters/${master}/export`, { ids }),
 };
 
+// ---- the monthly reports tool (v0.26.0, admins only) ---------------------------
+/** One of the month's three uploaded files, or null when not uploaded. */
+export type MonthFile = { name: string; at: string; by: string } | null;
+export type FileKind = "invoices" | "payments" | "rto";
+
+/** What the last reading of the month's invoices gave. */
+export interface ScanSummary {
+  scanned_at: string;
+  source: string;
+  read: number;
+  skipped: number;
+  open_issues: number;
+  invoices_held_back: number;      // invoices left out of the reports while issues are open
+}
+
+/** One generated workbook (a line of History). */
+export interface Run {
+  id: number;
+  month: string;
+  label: string;
+  file_name: string;
+  generated_at: string;
+  user: string;
+  invoices: number;
+  left_out: number;
+  sales: number;
+  gross_profit: number;
+  reports: string[];
+  available: boolean;              // the file is on this server
+  pdf_available: boolean;
+}
+
+export interface Overview {
+  month: string;
+  label: string;
+  reports: string[];
+  files: Record<FileKind, MonthFile>;
+  scan: ScanSummary | null;
+  masters: Record<string, number>;
+  has_inputs: boolean;
+  last_run: Run | null;
+  pdf_possible: boolean;
+}
+
+export interface LogLine { kind: "ok" | "skip" | "warn" | "error"; text: string }
+
+/** One thing on Scan review (app/data/invoices_repo.py, class Issue). */
+export interface Issue {
+  kind: "product" | "salesperson" | "car" | "labour" | "totals" | "file";
+  key: string;
+  message: string;
+  invoices: string[];
+  file_name: string;
+  status: "open" | "skipped";
+  printed: string;
+  options: number[];               // suggested ids, if any
+  grouped: boolean;                // one row for every invoice showing this name
+  reason: string;
+}
+
+export interface Choice { id: number; text: string }
+
+export interface SavedMatch {
+  store: "alias" | "override" | "ack";
+  kind: string;
+  key: string;
+  printed: string;
+  target: string;
+  scope: string;
+  invoices: number;
+  saved_on: string;
+  type_label: string;
+}
+
+export interface InvoiceRead {
+  invoice_no: string;
+  date: string;
+  customer: string;
+  executive: string;
+  printed_executive: string;
+  car: string;
+  printed_car: string;
+  items: number;
+  total: number;
+  gst: string;
+  payment_mode: string;
+  lines: { no: number; description: string; amount: number; product: string; marker: boolean }[];
+}
+
+export interface Inputs {
+  label: string;
+  saved: boolean;
+  costs: [string, number][];
+  default_heads: string[];
+  previous: { label: string; costs: [string, number][] };
+  threshold: number;
+  auto_rates: { key: string; head: string; pct: number }[];
+}
+
+export interface GenerateResult { run: Run; payments_used: boolean; rto_used: boolean; pdf_error: string }
+type FixReply = { done: string; scan: ScanSummary | null; issues: Issue[] };
+type MatchRef = Pick<SavedMatch, "store" | "kind" | "key">;
+
+export const monthlyApi = {
+  overview: (month: string) => ask<Overview>("GET", `/monthly/${month}/overview`),
+  upload: (month: string, kind: FileKind, file: File) =>
+    sendFile<Record<FileKind, MonthFile>>(`/monthly/${month}/files/${kind}`, file),
+  removeFile: (month: string, kind: FileKind) =>
+    ask<Record<FileKind, MonthFile>>("DELETE", `/monthly/${month}/files/${kind}`),
+  read: (month: string) => ask<{ log: LogLine[]; scan: ScanSummary }>("POST", `/monthly/${month}/read`),
+  generate: (month: string, reports: string[], pdf: boolean) =>
+    ask<GenerateResult>("POST", `/monthly/${month}/generate`, { reports, pdf }),
+  history: () => ask<{ runs: Run[]; pdf_possible: boolean;
+                       months: { month: string; label: string; invoices: number;
+                                 scanned_at: string; folder: string }[] }>("GET", "/monthly/history"),
+  downloadUrl: (id: number, pdf = false) => `/api/monthly/runs/${id}/download${pdf ? "?pdf=true" : ""}`,
+  regenerate: (id: number) => ask<GenerateResult>("POST", `/monthly/runs/${id}/regenerate`),
+  makePdf: (id: number) => ask<Run>("POST", `/monthly/runs/${id}/pdf`),
+  removeRuns: (month: string) => ask<{ removed: number }>("DELETE", `/monthly/${month}/runs`),
+  removeMonth: (month: string) => ask<{ removed: number }>("DELETE", `/monthly/${month}/invoices`),
+  issues: (month: string) =>
+    ask<{ label: string; scan: ScanSummary | null; issues: Issue[] }>("GET", `/monthly/${month}/issues`),
+  choices: () => ask<Record<"product" | "salesperson" | "car", Choice[]>>("GET", "/monthly/choices"),
+  fix: (month: string, kind: string, key: string, target_id: number | null, all_invoices: boolean) =>
+    ask<FixReply>("POST", `/monthly/${month}/fix`, { kind, key, target_id, all_invoices }),
+  invoices: (month: string) => ask<InvoiceRead[]>("GET", `/monthly/${month}/invoices`),
+  matches: (month: string) => ask<SavedMatch[]>("GET", `/monthly/${month}/matches`),
+  matchChoices: (kind: string) => ask<Choice[]>("GET", `/monthly/match-choices/${kind}`),
+  changeMatch: (month: string, match: MatchRef, target_id: number) =>
+    ask<SavedMatch[]>("POST", `/monthly/${month}/matches/change`,
+                      { store: match.store, kind: match.kind, key: match.key, target_id }),
+  removeMatch: (month: string, match: MatchRef) =>
+    ask<SavedMatch[]>("POST", `/monthly/${month}/matches/remove`,
+                      { store: match.store, kind: match.kind, key: match.key }),
+  issuesExportUrl: (month: string) => `/api/monthly/${month}/issues/export`,
+  matchesExportUrl: (month: string) => `/api/monthly/${month}/matches/export`,
+  inputs: (month: string) => ask<Inputs>("GET", `/monthly/${month}/inputs`),
+  saveInputs: (month: string, costs: [string, number][], threshold: number) =>
+    ask<Inputs>("PUT", `/monthly/${month}/inputs`, { costs, threshold }),
+  saveRates: (rates: Record<string, number>) =>
+    ask<Inputs["auto_rates"]>("PUT", "/monthly/auto-rates", { rates }),
+};
+
 export const mastersApi = {
   list: () => ask<MasterDef[]>("GET", "/masters"),
   rows: (master: string) =>

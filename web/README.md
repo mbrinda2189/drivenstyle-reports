@@ -1,9 +1,9 @@
 # Drive N Style - web tool (`web/`)
 
-**Status: v0.25.0 - step 3 done: Masters (all five tabs) with import from
-and export to Excel, the Audit log, and bringing the desktop tool's data
-across. Reports and payouts are not built yet (their screens say "Comes in
-step N").**
+**Status: v0.26.0 - step 4 done: the whole monthly reports tool works in
+the browser (Generate reports, Scan review, Monthly inputs, History), with
+the workbook and the PDF downloaded. The daily payout screens are not
+built yet (they say "Comes in step N").**
 
 ## Why
 
@@ -137,6 +137,29 @@ after importing Zoho's item list, **removing the products that are not in
 Zoho's list** (it can delete many products at once). Staff see the list
 and a note; an admin removes them by importing Zoho's list.
 
+## The monthly reports (admins)
+
+Monthly reports > **Generate reports**: choose the month, upload Zoho's
+invoice export (and, if wanted, the payments export and the delivery list),
+**Read invoices**, fix anything on **Scan review**, enter **Monthly
+inputs**, then **Generate workbook** and download it. **History** lists the
+workbooks: download, make the PDF, regenerate, remove.
+
+- The three files of a month are kept on the server in
+  `data\web\months\<YYYY-MM>\` so History > Regenerate can use them
+  again; a new upload replaces the old one. A file is checked when it is
+  uploaded - a wrong one is refused and the month's present file stays.
+- Workbooks and PDFs are written to `data\web\output\`. A workbook made
+  on the desktop tool appears in History with its figures, marked "Made on
+  the desktop": Regenerate makes it on the server.
+- **The PDF**: on the AWS server it is made by LibreOffice, which must be
+  installed there (`sudo apt install libreoffice-calc`); without it the
+  "Also make the PDF" tick is greyed out and the workbook is still made.
+  Amounts are written with Indian grouping (13,80,298.18). If LibreOffice
+  is installed somewhere unusual, set `DNS_SOFFICE` to the program's path.
+  When you run the web tool on your own Windows PC, the PDF is made by
+  Excel exactly as the desktop tool does - LibreOffice is not needed.
+
 ## Importing a sheet
 
 Masters > the tab > **Import Excel** (.xlsx or .csv, up to 20 MB; an old
@@ -165,7 +188,7 @@ audit log with the e-mail of the admin who made it.
 | Payment proofs | S3 bucket on the client's AWS. No Google Drive folder. |
 | Sign-in | Google sign-in with roles: admin and staff (staff see the daily payouts only). First admin: automation.drivenstyle@gmail.com. Built so that user name + password can replace it if IT blocks Google. |
 | Invoices | Uploaded in the browser. Monthly tool: Zoho invoice export, payments export, delivery (RTO) list. Daily payouts: invoice PDFs; an invoice already posted is skipped. |
-| PDF of the reports | LibreOffice on the server (Excel cannot run there). Its pages must be compared with the present PDF before it is accepted. |
+| PDF of the reports | LibreOffice on the server (Excel cannot run there). Compared with the Excel PDF of September on 09-10-2026: same 9 pages, same order, page numbers and Indian grouping; the font is LibreOffice's stand-in for Arial. Brinda to look at it once on the real server. |
 | Audit log | Records the signed-in person's e-mail instead of the Windows user name. |
 
 Unchanged from the payout plan: no technician, the spot incentive rule, no
@@ -179,7 +202,7 @@ back-posting, no daily rounding of incentive, and every control.
 | 2 | v0.23.0 | **Done.** Server (FastAPI), users list with roles in the database, Google sign-in + test sign-in, React frame with the two tabs, Users screen |
 | 3a | v0.24.0 | **Done.** Masters screen (Products, Sales executives, Cars, Incentives, Packages): search, filters, add, change, active / inactive, delete, Delete all, rate history; Audit log screen with Excel export; bring-across command |
 | 3b | v0.25.0 | **Done.** Masters: Import Excel (sheet chooser, column matching, preview, rows left out), Zoho item list import, "Add items…" tick, Export to Excel of the rows shown |
-| 4 | | Monthly tool: upload and read, Scan review, Monthly inputs, generate workbook and PDF, History |
+| 4 | v0.26.0 | **Done.** Monthly tool: upload the three Zoho files, Read invoices, Scan review (fixes, Saved matches, Invoices read, exports), Monthly inputs, Generate workbook + PDF (LibreOffice), History (download, Make PDF, Regenerate, Remove, Remove month) |
 | 5 | | Daily payouts: scan and review, posting to the register, mark paid with proof, audit log |
 | 6 | | Payout slip, summary, and the month check against the monthly Labour and Spot incentive reports |
 | 7 | | Deployment on the client's AWS: HTTPS, backups, deployment guide |

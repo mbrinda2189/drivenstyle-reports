@@ -6,6 +6,57 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.0] – 2026-10-09 – Web tool step 4: the monthly reports in the browser
+
+The whole monthly tool now works on the web: Generate reports, Scan
+review, Monthly inputs and History. Reading the export, matching, fixes,
+inputs and the workbook are the desktop tool's own code, called in the
+same order as its screens - no calculation was rewritten. Built in one go
+on Brinda's instruction ("you go ahead and build it", 09-10-2026).
+
+Checked against the real September files on a copy of the real database:
+147 invoices, sales ₹13,80,298.18, gross profit ₹7,27,469.55 - the saved
+baseline to the paisa.
+
+### Added
+- **Generate reports**: report month; upload Zoho's invoice export, the
+  payments export and the delivery (RTO) list (each checked on upload - a
+  wrong file is refused and the month's present file stays); Read
+  invoices with the same log as the desktop; the 12 report ticks;
+  Generate workbook with the desktop's two questions (open issues, no
+  indirect costs); Download workbook / Download PDF.
+- **Scan review**: tiles; Issues with a fix for the clicked row (product,
+  salesperson / vehicle incl. "Others", "All invoices", Accept for totals);
+  Saved matches with Change and Remove; Invoices read; Export issues and
+  Export matches.
+- **Monthly inputs**: indirect cost heads with total, Copy from the
+  earlier month, high-profit threshold, the two automatic percentages.
+- **History**: workbooks (Download, PDF / Make PDF, Regenerate, Remove)
+  and months read (Remove month).
+- **PDF without Excel**: `app/reports/pdf_export.py` uses LibreOffice
+  where there is no Windows / Excel (the server), with Indian grouping.
+  On a Windows PC nothing changes - Excel is still used.
+- `web/backend/monthly_api.py`; `src/month.tsx` and four pages in
+  `web/frontend`; `tests/test_web_monthly.py` (6 tests) and a LibreOffice
+  test in `tests/test_pdf.py`.
+
+### Notes
+- Admins only: every monthly address refuses staff.
+- The month's three files are kept on the server
+  (`data/web/months/<YYYY-MM>/`) for History > Regenerate; workbooks in
+  `data/web/output/`. Both are outside Git.
+- A workbook made on the desktop tool is listed in History as "Made on
+  the desktop"; Regenerate makes it on the server.
+- The LibreOffice PDF of September has the same 9 pages, order, page
+  numbers and Indian grouping as the Excel one; the font is LibreOffice's
+  stand-in for Arial and sub-lines are indented a little less.
+
+### Pending
+- Step 5: the daily payouts on the web (scan and review, posting to the
+  register, mark paid with proof, audit log).
+- LibreOffice must be installed on the AWS server (deployment, step 7).
+- Google client ID (Brinda); AWS credentials and web address (client).
+
 ## [0.25.0] – 2026-10-09 – Web tool step 3b: masters from and to Excel
 
 The Masters screen on the web can now import a sheet and export to Excel,

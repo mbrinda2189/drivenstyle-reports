@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.25.0** (tags v0.1.0 … v0.25.0 on GitHub
+Current version: **v0.26.0** (tags v0.1.0 … v0.26.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -103,10 +103,36 @@ across from the desktop database). 262 passed / 4 skipped.
 When a docs-update script stops on a failed match, NOTHING after it was
 written: check its output before committing (v0.25.0 was first committed
 without its documents and had to be amended).
-Next: step 4 (monthly tool on the web: upload Zoho invoice export /
-payments export / RTO list, read, Scan review + Saved matches, Monthly
-inputs, generate workbook + PDF by LibreOffice, History) - propose the
-plan first; it is large, split it. Open: Google
+Step 4 done in v0.26.0 - built WITHOUT a plan round because Brinda said
+"you go ahead and build it" (09-10-2026); that was for step 4 only - go
+back to plan-then-confirm for step 5 unless she says so again.
+`web/backend/monthly_api.py` (add_routes(api, connection, admin, data_dir);
+ALL admin only): month in the address as YYYY-MM; the month's files in
+data/web/months/<YYYY-MM>/{invoices,payments,rto}.<ext> + files.json
+(checked on upload with classify_export / read_payments / read_rto BEFORE
+replacing the present file); read = classify_export + store_scan (source =
+the uploaded file's name) with the desktop's log lines; generate() into
+data/web/output; run_for_screen marks a run "available" only if its file
+is under output/ (desktop-made runs brought across are not); regenerate
+uses the run's reports + the month's stored files; Scan review fix looks
+the open issue up on the SERVER (printed text / grouped never come from
+the browser); saved matches change / remove; issues + matches Excel;
+inputs; auto rates. Screens: month.tsx (useMonth in localStorage
+"dns-month", MonthPicker, Chooser = input + datalist), pages/Generate,
+ScanReview, MonthlyInputs, History.
+PDF: pdf_export.export_pdf now calls _export_with_libreoffice when not on
+Windows (soffice --headless --convert-to pdf, own profile folder,
+LANG=en_IN.UTF-8 for 13,80,298.18 grouping - without it LibreOffice writes
+1,380,298.18). Monkeypatch `pdf_export.find_libreoffice` in tests; refer to
+it as pdf_export.find_libreoffice() in code so the patch is seen.
+Real September through the web screens on a copy of Brinda's database:
+147 invoices, 0 issues, sales 13,80,298.18, GP 7,27,469.55 = baseline;
+LibreOffice PDF 9 pages like the Excel one. (Her 06-10 Excel PDF shows
+labour 70,900 and breakage 4% - she changed breakage to 5% and a labour
+charge later that day; the database is right.) 269 passed / 4 skipped.
+Next: step 5 (daily payouts on the web: engine.py reused; register.py /
+masters_sheet.py / google_api.py / service.py replaced by database tables
++ S3 or local folder for proofs; staff AND admin) - propose the plan first. Open: Google
 "Web application" client ID (Brinda; consent screen is in Testing, so test
 users must be listed); AWS IAM user + web address from the client; whether
 their IT allows the site and Google sign-in. In the Cowork VM never grep the whole folder (`dist/` and

@@ -19,8 +19,8 @@
  * the daily payouts. That is only for tidiness: the real control is on the
  * server, which refuses the data itself (web/backend/main.py).
  *
- * Screens not built yet show a "comes in step N" card, so the whole layout
- * can be seen and clicked through now.
+ * The monthly screens are real from v0.26.0. The daily payout screens are
+ * not built yet and show a "comes in step N" card.
  */
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
@@ -28,7 +28,11 @@ import { ApiError, Config, User, api } from "./api";
 import Shell from "./Shell";
 import AuditLog from "./pages/AuditLog";
 import ComingSoon from "./pages/ComingSoon";
+import Generate from "./pages/Generate";
+import History from "./pages/History";
 import Masters from "./pages/Masters";
+import MonthlyInputs from "./pages/MonthlyInputs";
+import ScanReview from "./pages/ScanReview";
 import SignIn from "./pages/SignIn";
 import Users from "./pages/Users";
 
@@ -85,14 +89,10 @@ export default function App() {
         <Route path="/masters" element={<Masters onExpired={expired} />} />
         {admin && (
           <>
-            <Route path="/monthly/generate" element={<ComingSoon title="Generate reports" step={4}
-              about="Upload Zoho's invoice export, the payments export and the delivery (RTO) list, then make the workbook and the PDF." />} />
-            <Route path="/monthly/review" element={<ComingSoon title="Scan review" step={4}
-              about="Items, salespersons and vehicles the month's invoices could not be matched to, each with a fix." />} />
-            <Route path="/monthly/inputs" element={<ComingSoon title="Monthly inputs" step={4}
-              about="Indirect costs for the month, the high-profit threshold and the automatic cost percentages." />} />
-            <Route path="/monthly/history" element={<ComingSoon title="History" step={4}
-              about="Months already read and workbooks already made: download, regenerate, remove." />} />
+            <Route path="/monthly/generate" element={<Generate onExpired={expired} />} />
+            <Route path="/monthly/review" element={<ScanReview onExpired={expired} />} />
+            <Route path="/monthly/inputs" element={<MonthlyInputs onExpired={expired} />} />
+            <Route path="/monthly/history" element={<History onExpired={expired} />} />
             <Route path="/admin/audit" element={<AuditLog onExpired={expired} />} />
             <Route path="/admin/users" element={<Users me={user} onExpired={expired} />} />
           </>
