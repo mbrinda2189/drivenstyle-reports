@@ -19,19 +19,22 @@
  * the daily payouts. That is only for tidiness: the real control is on the
  * server, which refuses the data itself (web/backend/main.py).
  *
- * The monthly screens are real from v0.26.0. The daily payout screens are
- * not built yet and show a "comes in step N" card.
+ * Every screen is real from v0.27.0 (monthly from v0.26.0, daily payouts
+ * from v0.27.0).
  */
 import { useCallback, useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { ApiError, Config, User, api } from "./api";
 import Shell from "./Shell";
 import AuditLog from "./pages/AuditLog";
-import ComingSoon from "./pages/ComingSoon";
+import DailyHistory from "./pages/DailyHistory";
+import DailyReview from "./pages/DailyReview";
+import DailyScan from "./pages/DailyScan";
 import Generate from "./pages/Generate";
 import History from "./pages/History";
 import Masters from "./pages/Masters";
 import MonthlyInputs from "./pages/MonthlyInputs";
+import Payouts from "./pages/Payouts";
 import ScanReview from "./pages/ScanReview";
 import SignIn from "./pages/SignIn";
 import Users from "./pages/Users";
@@ -78,14 +81,10 @@ export default function App() {
   return (
     <Routes>
       <Route element={<Shell user={user} version={config.version} onSignOut={signOut} />}>
-        <Route path="/daily/scan" element={<ComingSoon title="Scan invoices" step={5}
-          about="Upload the day's invoice PDFs. Labour and incentive are worked out; an invoice already posted is skipped." />} />
-        <Route path="/daily/review" element={<ComingSoon title="Review" step={5}
-          about="Anything the scan could not settle: an item, salesperson or vehicle not in the masters." />} />
-        <Route path="/daily/payouts" element={<ComingSoon title="Payouts" step={5}
-          about="Every labour and incentive line to pay: mark paid with reference and proof, hold, reopen, payout slip." />} />
-        <Route path="/daily/history" element={<ComingSoon title="History" step={6}
-          about="Payouts of earlier days, the summary, and the check against the monthly reports." />} />
+        <Route path="/daily/scan" element={<DailyScan onExpired={expired} />} />
+        <Route path="/daily/review" element={<DailyReview onExpired={expired} />} />
+        <Route path="/daily/payouts" element={<Payouts onExpired={expired} />} />
+        <Route path="/daily/history" element={<DailyHistory admin={admin} onExpired={expired} />} />
         <Route path="/masters" element={<Masters onExpired={expired} />} />
         {admin && (
           <>

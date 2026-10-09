@@ -11,7 +11,7 @@ SQLite is a single file on disk - no server to install - which suits a
 desktop tool used on one PC. The file lives in the folder given by
 app/data/paths.py.
 
-TABLES (schema version 13)
+TABLES (schema version 14)
 --------------------------
     products          one row per product / service
         id, sku, name, name_key, hsn_sac, category, has_labour, active
@@ -78,6 +78,18 @@ TABLES (schema version 13)
                       created_at, last_login. See users_repo.py. The
                       desktop programs do not use this table.
 
+    payout_lines      (v0.27.0, web tool) the daily payout register: one row
+                      per labour / incentive line to pay. `cells` holds the
+                      line exactly as the payout app's register row
+                      (payout_app/register.py, PAYOUT_HEADERS) so its posting
+                      rules are used unchanged; line_id is unique, so a line
+                      can never be posted twice.
+    payout_invoices   (v0.27.0) one row per invoice the daily scan has seen:
+                      Posted / In review / Re-issued / Cancelled, with the
+                      fingerprint of what its PDF said (INVOICE_HEADERS).
+                      See web/backend/payout_store.py. The desktop programs
+                      do not use these two tables.
+
     meta              small key/value settings, e.g. schema_version
 
 UPGRADING
@@ -105,6 +117,7 @@ an older database then upgrades it in place without losing data.
                      and branch (CF.Branch); invoice lines get item_type
                      (Zoho goods / service)
     step 13 (v0.23.0) users of the web tool (sign-in list with roles)
+    step 14 (v0.27.0) the daily payout register of the web tool
 
 A step is either a block of SQL or a Python function taking the connection
 (used when values must be worked out in Python, e.g. contact-number keys).
@@ -119,7 +132,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -539,6 +552,27 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
         active      INTEGER NOT NULL DEFAULT 1,
         created_at  TEXT    NOT NULL,
         last_login  TEXT    NOT NULL DEFAULT ''
+    );
+    """,
+    # --- 13 -> 14 : the daily payout register of the web tool (v0.27.0) --------
+    # On the desktop the register was a Google Sheet. On the web it is these
+    # two tables. Each row keeps the register row as it was in the sheet
+    # (`cells`, a JSON list) so payout_app/register.py - which decides what a
+    # scan posts, corrects or adjusts - works on it unchanged. `id` gives
+    # the order of the rows; the UNIQUE columns make a second posting of the
+    # same line or invoice impossible, whoever scans.
+    """
+    CREATE TABLE IF NOT EXISTS payout_lines (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        line_id     TEXT    NOT NULL UNIQUE,            -- e.g. DNS-226-2627-LABM
+        invoice_no  TEXT    NOT NULL,
+        cells       TEXT    NOT NULL                    -- register.PAYOUT_HEADERS
+    );
+    CREATE INDEX IF NOT EXISTS ix_payout_lines_invoice ON payout_lines(invoice_no);
+    CREATE TABLE IF NOT EXISTS payout_invoices (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_no  TEXT    NOT NULL UNIQUE,
+        cells       TEXT    NOT NULL                    -- register.INVOICE_HEADERS
     );
     """,
 ]

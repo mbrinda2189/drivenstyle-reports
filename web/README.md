@@ -1,9 +1,9 @@
 # Drive N Style - web tool (`web/`)
 
-**Status: v0.26.0 - step 4 done: the whole monthly reports tool works in
-the browser (Generate reports, Scan review, Monthly inputs, History), with
-the workbook and the PDF downloaded. The daily payout screens are not
-built yet (they say "Comes in step N").**
+**Status: v0.27.0 - step 5 done: the daily payouts work in the browser
+(Scan invoices, Review, Payouts, History), with the register in the
+database. Every screen of both tools is now real. Still to come: the
+payout slip, summary and month check (step 6) and deployment (step 7).**
 
 ## Why
 
@@ -122,10 +122,10 @@ users can sign in - add them there, or publish the app.
 
 ## Roles
 
-| | Daily payouts | Masters | Monthly reports | Audit log, Users |
-|---|---|---|---|---|
-| Admin | yes | yes | yes | yes |
-| Staff | yes | yes | no | no |
+| | Daily payouts | Masters | Monthly reports | Audit log, Users | Start date, Clear register |
+|---|---|---|---|---|---|
+| Admin | yes | yes | yes | yes | yes |
+| Staff | yes | yes | no | no | no |
 
 Staff use the whole Masters screen, cost prices and rates included
 (Brinda, 09-10-2026: the firm's partner will not be entering them). The
@@ -136,6 +136,31 @@ Staff can also import and export the masters. One thing is kept for admins:
 after importing Zoho's item list, **removing the products that are not in
 Zoho's list** (it can delete many products at once). Staff see the list
 and a note; an admin removes them by importing Zoho's list.
+
+## The daily payouts (staff and admins)
+
+Daily payouts > **Scan invoices**: choose the day's invoice PDFs (several
+at once) and press Scan. Each invoice's labour (by kind of work), spot
+incentive and internal team amount are posted to the payout register.
+**Review** lists what could not be posted, with the fix. **Payouts** is
+the register: tick lines, Mark paid with a reference or a proof, Hold,
+Release, Reopen, Cancel invoice. **History** is the log.
+
+- The rules are the desktop payout app's own (`payout_app/engine.py`,
+  `register.py`, `service.py`); only the Google Sheet is replaced by two
+  database tables. An invoice is posted once; a master changed later never
+  alters a posted line; a re-issued invoice corrects unpaid lines and adds
+  adjustment lines for paid ones.
+- **The saved name matches are shared with the monthly tool**: a name fixed
+  on either Review screen is known to both.
+- Invoices dated before the **start date** (01-10-2026; admins change it on
+  History) are left alone.
+- Files are kept under `data\web\daily\`: `pdfs\` (scanned invoices),
+  `proofs\` (payment proofs, named e.g. `2026-10-05_GPay_UTR123_Kumaran.jpg`).
+  At deployment the proofs move to the S3 bucket.
+- Staff may reopen a payment and cancel an invoice (always with a reason,
+  always logged). Admins only: the start date, and Clear the register
+  (backup first, type CLEAR).
 
 ## The monthly reports (admins)
 
@@ -203,7 +228,7 @@ back-posting, no daily rounding of incentive, and every control.
 | 3a | v0.24.0 | **Done.** Masters screen (Products, Sales executives, Cars, Incentives, Packages): search, filters, add, change, active / inactive, delete, Delete all, rate history; Audit log screen with Excel export; bring-across command |
 | 3b | v0.25.0 | **Done.** Masters: Import Excel (sheet chooser, column matching, preview, rows left out), Zoho item list import, "Add items…" tick, Export to Excel of the rows shown |
 | 4 | v0.26.0 | **Done.** Monthly tool: upload the three Zoho files, Read invoices, Scan review (fixes, Saved matches, Invoices read, exports), Monthly inputs, Generate workbook + PDF (LibreOffice), History (download, Make PDF, Regenerate, Remove, Remove month) |
-| 5 | | Daily payouts: scan and review, posting to the register, mark paid with proof, audit log |
+| 5 | v0.27.0 | **Done.** Daily payouts: upload PDFs and Scan, Review with shared matches, Payouts (Mark paid with reference / proof, Hold, Release, Reopen, Cancel invoice), History; register in database tables; start date 01-10-2026 |
 | 6 | | Payout slip, summary, and the month check against the monthly Labour and Spot incentive reports |
 | 7 | | Deployment on the client's AWS: HTTPS, backups, deployment guide |
 

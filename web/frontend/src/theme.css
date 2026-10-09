@@ -247,3 +247,17 @@ table.inputs td { padding: 6px 8px; border-bottom: 0; }
 table.inputs input.num { text-align: right; }
 table.inputs tr.total td { font-weight: 700; border-top: 1px solid var(--line); padding-top: 12px; }
 table.inputs { margin-bottom: 12px; }
+
+/* ---- Daily payouts (v0.27.0) ------------------------------------------------- */
+.dropzone { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+            gap: 12px; border: 2px dashed #9db3d1; }
+.dropzone h2 { margin-bottom: 4px; }
+.badge.blue.plain { margin-left: 0; }
+.table-scroll.short { max-height: 260px; overflow: auto; }
+td.working { white-space: normal; color: var(--slate); font-size: 13px; min-width: 260px; }
+ul.details.open { max-height: none; }
+.warn + .warn { margin-top: 8px; }
+.tiles { margin-bottom: 16px; }
+.wide-input { min-width: 260px; }
+.top-gap { margin-top: 16px; }
+input[type="file"] { padding: 9px 12px; }

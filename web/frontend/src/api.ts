@@ -374,6 +374,107 @@ export const monthlyApi = {
     ask<Inputs["auto_rates"]>("PUT", "/monthly/auto-rates", { rates }),
 };
 
+// ---- the daily payouts (v0.27.0, staff and admins) ------------------------------
+/** One amount to pay for one invoice (payout_app/register.py, payout_lines). */
+export interface PayoutLine {
+  line_id: string;                 // e.g. DNS-226-2627-LABM
+  invoice_no: string;
+  invoice_date: string;
+  customer: string;
+  car: string;
+  type: string;                    // Labour - Floor mat / Spot incentive / Internal team ...
+  payee: string;                   // "" for labour
+  amount: number;
+  working: string;                 // how the amount was reached
+  status: "Pending" | "Paid" | "Hold" | "Cancelled";
+  paid_date: string;
+  mode: string;
+  reference: string;
+  proof: string;                   // the proof's file name on the server
+  remarks: string;
+  entered_by: string;
+  entered_at: string;
+}
+
+type Count = { lines: number; amount: number };
+export interface DailyTotals { pending: Count; hold: Count; paid_today: Count }
+
+export interface DailyOverview {
+  start_date: string;
+  inbox: { name: string; size: number }[];
+  in_review: number;
+  invoices: number;
+  totals: DailyTotals;
+  modes: string[];
+  types: string[];
+}
+
+export interface ReviewIssue {
+  kind: "Item" | "Salesperson" | "Car" | "Totals";
+  printed: string;
+  message: string;
+  invoices: string[];
+  suggestions: string[];
+}
+
+/** What one scan found and did. */
+export interface ScanReport {
+  tally: Record<string, number>;
+  posted: PayoutLine[];
+  posted_total: number;
+  corrected: number;
+  review: { file_name: string; invoice_no: string; reasons: string[] }[];
+  not_used: { file_name: string; reasons: string[] }[];
+  issues: ReviewIssue[];
+  warnings: string[];
+  notes: string[];
+  files_read: number;
+}
+
+export interface PayoutInvoice {
+  invoice_no: string;
+  invoice_date: string;
+  customer: string;
+  total: number;
+  salesperson: string;
+  file_name: string;
+  state: string;
+  reason: string;
+  scanned_by: string;
+  scanned_at: string;
+}
+
+export const dailyApi = {
+  overview: () => ask<DailyOverview>("GET", "/daily/overview"),
+  upload: (file: File) => sendFile<{ name: string; size: number }>("/daily/files", file),
+  removeUpload: (name: string) => ask<{ ok: boolean }>("DELETE", `/daily/files/${encodeURIComponent(name)}`),
+  scan: () => ask<ScanReport>("POST", "/daily/scan"),
+  review: () => ask<{ invoices: PayoutInvoice[]; issues: ReviewIssue[] }>("GET", "/daily/review"),
+  choices: () => ask<Record<"Item" | "Salesperson" | "Car", Choice[]>>("GET", "/daily/choices"),
+  match: (kind: string, printed: string, invoices: string[], target_id: number) =>
+    ask<{ done: string; report: ScanReport | null }>("POST", "/daily/match",
+                                                     { kind, printed, invoices, target_id }),
+  acceptTotals: (invoice_no: string) =>
+    ask<{ done: string; report: ScanReport | null }>("POST", "/daily/accept-totals", { invoice_no }),
+  cancel: (invoice_no: string, reason: string) =>
+    ask<{ paid_lines_left: string[] }>("POST", "/daily/cancel", { invoice_no, reason }),
+  lines: () => ask<{ lines: PayoutLine[]; totals: DailyTotals; invoices: PayoutInvoice[] }>("GET", "/daily/lines"),
+  uploadProof: (file: File) => sendFile<{ token: string }>("/daily/proofs", file),
+  pay: (body: { line_ids: string[]; paid_date: string; mode: string; reference: string;
+                remarks: string; proof_token: string }) =>
+    ask<{ paid: number; amount: number; proof: string }>("POST", "/daily/pay", body),
+  reopen: (line_ids: string[], reason: string) =>
+    ask<{ reopened: number }>("POST", "/daily/reopen", { line_ids, reason }),
+  hold: (line_ids: string[], hold: boolean, reason: string) =>
+    ask<{ changed: number }>("POST", "/daily/hold", { line_ids, hold, reason }),
+  proofUrl: (name: string) => `/api/daily/proofs/${encodeURIComponent(name)}`,
+  log: (text: string) =>
+    ask<{ entries: AuditEntry[]; more: boolean }>("GET", `/daily/log?text=${encodeURIComponent(text)}`),
+  setStartDate: (date: string) => ask<{ start_date: string }>("PUT", "/daily/start-date", { date }),
+  clear: (confirm: string) =>
+    ask<{ lines: number; invoices: number; backup: string }>("POST", "/daily/clear", { confirm }),
+};
+
 export const mastersApi = {
   list: () => ask<MasterDef[]>("GET", "/masters"),
   rows: (master: string) =>

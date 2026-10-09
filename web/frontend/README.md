@@ -1,7 +1,7 @@
 # web/frontend - the screens (React + TypeScript)
 
 **v0.26.0: sign-in page, the frame with the two tabs, Users, Masters (with
-Excel import / export), Audit log and the four monthly screens.** The other screens show "Comes in step N" until they are built.
+Excel import / export), Audit log, the four monthly screens and the four daily payout screens.** The other screens show "Comes in step N" until they are built.
 
 | File | What it does |
 |---|---|
@@ -17,6 +17,10 @@ Excel import / export), Audit log and the four monthly screens.** The other scre
 | `src/pages/ScanReview.tsx` | Issues with their fixes, Saved matches, Invoices read |
 | `src/pages/MonthlyInputs.tsx` | Indirect costs, high-profit threshold, automatic cost percentages |
 | `src/pages/History.tsx` | Workbooks made and months read: download, PDF, regenerate, remove |
+| `src/pages/DailyScan.tsx` | Scan invoices: upload PDFs, Scan, the result of the scan |
+| `src/pages/DailyReview.tsx` | What could not be posted, with the fix; invoices waiting; Cancel invoice |
+| `src/pages/Payouts.tsx` | The register: filters, Mark paid (reference / proof), Hold, Release, Reopen, Cancel invoice |
+| `src/pages/DailyHistory.tsx` | The payout log; start date and Clear register for admins |
 | `src/pages/AuditLog.tsx` | The audit log with filters and Excel export (admin) |
 | `src/pages/Users.tsx` | The users list (admin) |
 | `src/pages/ComingSoon.tsx` | Placeholder for a screen not built yet |

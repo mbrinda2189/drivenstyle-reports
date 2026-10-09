@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.26.0** (tags v0.1.0 … v0.26.0 on GitHub
+Current version: **v0.27.0** (tags v0.1.0 … v0.27.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -130,9 +130,32 @@ Real September through the web screens on a copy of Brinda's database:
 LibreOffice PDF 9 pages like the Excel one. (Her 06-10 Excel PDF shows
 labour 70,900 and breakage 4% - she changed breakage to 5% and a labour
 charge later that day; the database is right.) 269 passed / 4 skipped.
-Next: step 5 (daily payouts on the web: engine.py reused; register.py /
-masters_sheet.py / google_api.py / service.py replaced by database tables
-+ S3 or local folder for proofs; staff AND admin) - propose the plan first. Open: Google
+Step 5 done in v0.27.0 (Brinda, 09-10-2026: saved matches SHARED with
+the monthly tool; STAFF may reopen a payment and cancel an invoice; start
+date 01-10-2026; register starts empty). Schema step 14: payout_lines
+(line_id UNIQUE, cells = JSON list in register.PAYOUT_HEADERS order) and
+payout_invoices (invoice_no UNIQUE, cells = INVOICE_HEADERS). Rows are
+kept in the Google-sheet shape ON PURPOSE so `register.plan` runs
+unchanged: web/backend/payout_store.py reads them as rows (row 1 =
+headings; Plan row n -> ids[n - 2]), applies the Plan in one BEGIN
+IMMEDIATE transaction and logs to audit_log (master "payouts", field =
+what happened). `working_copy()` = sqlite backup into :memory: minus the
+monthly invoices, because engine.calculate stores its scan beside the
+masters - never run calculate on the real connection. Matches are saved
+with InvoicesRepo.map_product / set_salesperson / set_car on the REAL
+database (so `matches=[]` is passed to calculate). Payment rules copied
+from service.py (record / reopen / hold / cancel_invoice), messages too.
+daily_api.py: inbox -> Scan (inbox + PDFs of invoices In review) -> pdfs/;
+proofs/waiting/<token> then service.proof_name on record; `read_files` is
+a module attribute so tests replace it (no client PDFs in Git). "In
+review" on screen = what the REGISTER holds as In review (an invoice
+before the start date is not shown as waiting). 12 real PDFs on a copy of
+Brinda's database: 11 posted, 1 in review (Navendran - ooty). 277 passed /
+4 skipped. Playwright note: `.side >> text=Payouts` also matches the
+heading "Daily payouts" - use `.side a:text-is("Payouts")`.
+Next: step 6 (payout slip via payout_app/slip.py, summary by person / day
+/ month, month check against build_month, Excel export of the register) -
+confirmed with step 5, build it. Open: Google
 "Web application" client ID (Brinda; consent screen is in Testing, so test
 users must be listed); AWS IAM user + web address from the client; whether
 their IT allows the site and Google sign-in. In the Cowork VM never grep the whole folder (`dist/` and

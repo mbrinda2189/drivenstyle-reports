@@ -6,6 +6,55 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.27.0] – 2026-10-09 – Web tool step 5: the daily payouts in the browser
+
+The daily payout app works on the web: staff upload the day's invoice
+PDFs, the labour and incentive lines are posted, and each line is marked
+paid with a reference or a proof. The register is no longer a Google
+Sheet but two database tables; the rules that decide what is posted and
+what a payment needs are the desktop payout app's own code, unchanged.
+
+Tried with 12 real invoice PDFs on a copy of the real database: 11 posted
+(₹5,604.74 in 13 lines), 1 held in review for a salesperson not in the
+master; payment with proof, reopen and the log checked on screen.
+
+### Added
+- **Scan invoices**: choose several PDFs, Scan; the result says what
+  became of every file (posted, already posted, re-issued, in review,
+  before start date, cancelled, not used) and lists the lines posted.
+- **Review**: what must be decided, once per name, with the fix; invoices
+  waiting; Cancel invoice. A fix posts the waiting invoices at once.
+- **Payouts**: tiles (to pay, paid today, on hold), filters, and for the
+  ticked lines Mark paid (date, mode, reference and / or proof), Hold,
+  Release, Reopen, Cancel invoice.
+- **History**: the payout log; for admins the start date and Clear the
+  register (backup first, type CLEAR).
+- Database step 14: `payout_lines`, `payout_invoices` (a line or an
+  invoice cannot be posted twice - the database refuses).
+- `web/backend/payout_store.py`, `daily_api.py`; four pages in
+  `web/frontend`; `tests/test_web_daily.py` (8 tests).
+
+### Decided (Brinda, 09-10-2026)
+- **Saved matches are shared with the monthly tool** - one list for both.
+- **Staff may reopen a payment and cancel an invoice** (reason needed,
+  logged), as on the desktop.
+- **Start date 01-10-2026**: earlier invoices are left alone.
+- The register starts empty; nothing is brought from the Google Sheet.
+
+### Notes
+- A scan works on a throw-away copy of the masters in memory, so it can
+  never disturb a month read into the monthly tool.
+- The hidden "Check" seal of the Google register is not needed: nobody
+  can type into a database column. Two people scanning at the same moment
+  cannot double-post: the server posts inside one transaction.
+- Proofs are kept in `data/web/daily/proofs/` for now and move to the S3
+  bucket at deployment. The payout log is part of the read-only audit log.
+
+### Pending
+- Step 6: payout slip, summary, month check against the monthly Labour
+  and Spot incentive reports, Excel export of the register.
+- Google client ID (Brinda); AWS credentials and web address (client).
+
 ## [0.26.0] – 2026-10-09 – Web tool step 4: the monthly reports in the browser
 
 The whole monthly tool now works on the web: Generate reports, Scan
