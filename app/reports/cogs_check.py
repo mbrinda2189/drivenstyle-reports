@@ -39,8 +39,9 @@ SECTIONS
 
 "Zoho cost" of an invoice is the COGS Zoho posted (the COGS file); with only
 the FIFO file it is the FIFO cost of the invoice's lines instead - the
-heading says which. Difference = Zoho - master: plus means Zoho's cost is
-higher (Zoho's profit lower).
+heading says which. Difference = tool (master) - Zoho, the same way round
+as the blocks under the P&L (v0.33.1; Zoho - master in v0.33.0): MINUS
+means Zoho's cost is higher (Zoho's profit lower).
 
 Only the invoices IN these reports are compared (open Scan review issues
 leave an invoice out, as everywhere); section A still shows the rest so the
@@ -184,7 +185,7 @@ class Comparison:
             elif g["no_stock"] and not g["lot_qty"]:
                 note = "Every unit sold with no stock in Zoho"
             rows.append(dict(g, master_unit=master_unit, zoho_unit=zoho_unit, note=note,
-                             gap=(g["lot_qty"] * (zoho_unit - master_unit)
+                             gap=(g["lot_qty"] * (master_unit - zoho_unit)
                                   if g["lot_qty"] and master_unit != "" else 0.0)))
         # largest difference on the costed qty first; not-tracked items after
         return sorted(rows, key=lambda r: (r["note"] == NOT_TRACKED, -abs(r["gap"]),
@@ -216,8 +217,8 @@ def invoice_cols(c: Comparison, short: bool = False) -> list[Col]:
         Col("Sales", "sales", "money", 13, total="sum"),
         Col("Master cost (tool)", "master", "money", 13, total="sum"),
         Col(c.zoho_label, "zoho", "money", 13, total="sum"),
-        Col("Difference (Zoho - master)", "diff", "money", 13,
-            formula="={zoho}{r}-{master}{r}", total="sum"),
+        Col("Difference (tool - Zoho)", "diff", "money", 13,
+            formula="={master}{r}-{zoho}{r}", total="sum"),
     ]
     if short:
         return cols
@@ -241,8 +242,8 @@ def summary_cols(c: Comparison) -> list[Col]:
         Col("Invoices", "invoices", "qty", 10, total="sum"),
         Col("Master cost (tool)", "master", "money", 15, total="sum"),
         Col(c.zoho_label, "zoho", "money", 15, total="sum"),
-        Col("Difference (Zoho - master)", "diff", "money", 15,
-            formula="={zoho}{r}-{master}{r}", total="sum"),
+        Col("Difference (tool - Zoho)", "diff", "money", 15,
+            formula="={master}{r}-{zoho}{r}", total="sum"),
     ]
 
 
@@ -252,7 +253,7 @@ def cogs_sheet(ws: Worksheet, d: MonthData, z: ZohoCosts) -> None:
     row = title(ws, "COGS check - master sheet vs Zoho", d.label, [
         "The tool's product cost = Product master cost price x qty (the master sheet). "
         "Zoho's = its FIFO stock lots. Nothing here changes the P&L or any other sheet.",
-        "Difference = Zoho - master: plus means Zoho's cost is higher. Only invoices in these "
+        "Difference = tool - Zoho, as under the P&L: minus means Zoho's cost is higher. Only invoices in these "
         "reports are compared (open Scan review issues are left out, as everywhere).",
         *([f"Zoho files: {files}."] if files else [])])
 
@@ -288,7 +289,7 @@ def cogs_sheet(ws: Worksheet, d: MonthData, z: ZohoCosts) -> None:
             Col("Master cost per unit", "master_unit", "money", 12),
             Col("Difference per unit", "unit_diff", "money", 12,
                 formula='=IF(OR({zoho_unit}{r}="",{master_unit}{r}=""),"",'
-                        '{zoho_unit}{r}-{master_unit}{r})'),
+                        '{master_unit}{r}-{zoho_unit}{r})'),
             Col("Difference on qty costed", "gap", "money", 13,
                 formula='=IF({unit_diff}{r}="",0,{unit_diff}{r}*{lot_qty}{r})', total="sum"),
             Col("Qty sold with no stock", "no_stock", "qty", 10, total="sum"),

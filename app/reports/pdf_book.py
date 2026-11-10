@@ -23,6 +23,8 @@ WHAT IS IN THE PDF, in this order (the client's note of 05-10-2026, v0.13.0)
                                                cars delivered (v0.33.0, fitment.py)
      3. Top 10 products / top 10 services by gross profit (high-profit items)
      4. Penetration by location                (needs the delivery list)
+                                               + how the month's invoices are
+                                               counted (v0.33.1)
      5. OE accessories by location, by model   (needs the delivery list)
      6. Branches by gross profit
      7. Packages vs sales
@@ -485,7 +487,7 @@ def _penetration_location(ws, d, link):
     per = '=IF({cars}{r}=0,"",{dns_value}{r}/{cars}{r})'
     rows = sorted(rr._group_rows(link, lambda c: c.location),
                   key=lambda g: -(g["dns"] / g["cars"] if g["cars"] else 0))
-    table(ws, row, rr.list_cols(link, [
+    t = table(ws, row, rr.list_cols(link, [
         Col("Location", "name", width=24),
         Col("Cars delivered", "cars", "qty", 12, total="sum"),
         Col("Took DNS", "dns", "qty", 12, total="sum"),
@@ -494,6 +496,8 @@ def _penetration_location(ws, d, link):
         Col("DNS value per car delivered", "per", "money", 14, formula=per, total=per),
         Col("Invoiced (with GST)", "invoiced", "money", 14, total="sum"),
     ]), rows)
+    # v0.33.1: every invoice of the month accounted for (why only N cars).
+    rr.count_box(ws, t["next"], link, note=False)
     _finish(ws)
 
 

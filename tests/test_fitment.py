@@ -172,3 +172,55 @@ def test_months_before_v033_show_blank_in_the_trend():
                               "internal", "took")}
     total = _total([dict(full, **f) for f in figures])
     assert get(total) == 0.2                     # 4 of the 20 cars that HAVE the figures
+
+
+# ---------------------------------------------------------------------------
+# v0.33.1 - how the month's invoices are counted (under the penetration table)
+# ---------------------------------------------------------------------------
+def test_every_invoice_is_counted(world):
+    """Brinda: "out of 131 invoices why only 47 cars?" - the box puts every
+    invoice in one of four groups, adding up to the month."""
+    from types import SimpleNamespace as NS
+    from app.reports.data import COUNTER_SALE
+    from app.reports.rto_reports import invoice_groups
+    masters, irepo, tmp_path = world
+    d = build_month(masters, irepo, InputsRepo(masters), 2026, 9)
+    link = Linked(d, read_rto(write_report(tmp_path / "Car_Sales_Report.xlsx")))
+    groups = invoice_groups(link)
+    assert [g["invoices"] for g in groups] == [2, 0, 1, 0]       # DNS-3: TN45 BK5353
+    assert groups[0]["cars"] == 2
+    assert round(sum(g["sales"] for g in groups), 2) == d.sales
+
+    # B (VIN digits, car not in this list) and D (counter sale / nothing given)
+    def inv(vin, customer="X", car="Creta"):
+        return NS(vin=vin, customer=customer, car=car, segment="SUV", sales=100.0)
+    link.other = [inv("123456"), inv("", "SUGUMAR 449676"), inv("-"), inv(""),
+                  inv("TN37 AB1234", car=COUNTER_SALE)]
+    assert [g["invoices"] for g in invoice_groups(link)][1:] == [2, 0, 3]
+
+
+def test_count_box_on_sheet_13_and_the_pdf(world):
+    masters, irepo, tmp_path = world
+    out = tmp_path / "out"
+    out.mkdir()
+    report = write_report(tmp_path / "Car_Sales_Report.xlsx")
+    r = generate(masters, irepo, InputsRepo(masters), 2026, 9, out, ["Profit & loss"],
+                 rto_path=str(report))
+    rows = list(openpyxl.load_workbook(r.path)["13 New-car penetration"].iter_rows(
+        values_only=True))
+    first = [row[0] for row in rows]
+    at = first.index("How the month's invoices are counted")
+    assert first[at + 1].startswith("Penetration counts only the cars delivered")
+    assert rows[at + 2][:4] == ("Invoices of the month", "Invoices", "Cars", "Sales (excl. GST)")
+    assert rows[at + 3][:3] == ("A. Cars delivered this month that took DNS (the table above)",
+                                2, 2)
+    assert rows[at + 7][0] == "All invoices of the month"
+    assert at < first.index("Floor mat and sunfilm - cars delivered")
+
+    d = build_month(masters, irepo, InputsRepo(masters), 2026, 9)
+    pdf = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "p.xlsx",
+                                                    rto=read_rto(report)))["Report"]
+    text = [row[0] for row in pdf.iter_rows(values_only=True)]
+    at = text.index("How the month's invoices are counted")
+    assert text[at + 1] == "Invoices of the month"           # no description in the PDF
+    assert text.index("Penetration by location") < at

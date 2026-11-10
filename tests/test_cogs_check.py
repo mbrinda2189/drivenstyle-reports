@@ -177,7 +177,7 @@ def test_cogs_sheet_and_pnl(world):
     head = rows[c + 1]
     assert one[head.index("Zoho FIFO cost of the lines")] == 150
     assert one[head.index("Lines sold with no stock")] == 1
-    assert str(one[head.index("Difference (Zoho - master)")]).startswith("=")
+    assert one[head.index("Difference (tool - Zoho)")] == "=E{0}-F{0}".format(c + 3 + 1)  # v0.33.1: tool - Zoho
 
     # D. item by item: Horn 150 a unit in Zoho, 100 in the master
     d = next(i for i, t in enumerate(first) if str(t).startswith("D. Item by item"))

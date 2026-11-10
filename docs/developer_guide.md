@@ -336,7 +336,7 @@ rough line counts, to show you where the weight is.
 | `data.py` (534) | **every figure the reports need for one month** (`build_month`). The heart of the calculations. |
 | `packages.py` | recognises a package sale on an invoice |
 | `workbook.py` (1065) | writes the monthly Excel workbook |
-| `rto_reports.py` | the new-car reports and the executive summary; `list_cols` leaves out the list's own DNS figures when the list has none |
+| `rto_reports.py` | the new-car reports and the executive summary; `list_cols` leaves out the list's own DNS figures when the list has none; (v0.33.1) `invoice_groups` / `count_box` - how the month's invoices are counted under the penetration table |
 | `trend.py` | month-on-month trend; Excel sheet 4, and (v0.31.0) the PDF's last section - six months, key figures and change only (`PDF_MONTHS`) |
 | `pdf_book.py` (767) | lays out the PDF version of the reports |
 | `fitment.py` | v0.33.0: floor mat and sunfilm against the cars delivered (the word rules live here) |

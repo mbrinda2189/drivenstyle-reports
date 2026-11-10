@@ -60,6 +60,22 @@ delivered, how many took an OE (dealer) full floor mat, a DNS full floor
 mat, DNS sunfilm side & rear and DNS sunfilm front - cars, % of cars
 delivered and quantity. The rules are in app/reports/fitment.py.
 
+HOW THE MONTH'S INVOICES ARE COUNTED (v0.33.1)
+---------------------------------------------
+Brinda (10-11-2026): "out of 131 invoices why only 47 cars are shown?"
+Penetration looks only at the cars delivered this month, so most invoices
+are not in it. Under the penetration tables (sheet 13 and the PDF) a box
+accounts for every invoice of the month (`invoice_groups`):
+    A. cars delivered this month           linked by the VIN (the table)
+    B. VIN not in this month's list        six VIN digits, but the car is
+                                           not in this list (delivered in
+                                           an earlier month)
+    C. older cars                          a registration number, no VIN
+    D. counter sales / no vehicle          counter sale, or no VIN or
+                                           registration given
+    A + B + C + D = every invoice in the reports; sales add up to the
+    month's sales.
+
 Sales are after discount and exclude GST (as everywhere in the workbook);
 "Invoice total" includes GST, to compare with the list's DNS value.
 
@@ -76,7 +92,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from app.data.rto_list import RtoCar, dns_given, vin6
 from app.reports.fitment import fitments
-from app.reports.data import Invoice, MonthData
+from app.reports.data import COUNTER_SALE, Invoice, MonthData
 from app.reports.workbook import (
     AMBER_TINT, MONEY, NAVY, PCT, SLATE, Col, _finish, _font, exec_label,
     section, table, title)
@@ -206,6 +222,58 @@ def fitment_cols(pdf: bool = False) -> list[Col]:
     ]
 
 
+COUNT_NOTE = ("Penetration counts only the cars delivered this month. The other invoices are "
+              "for cars delivered earlier or for older cars, so they are not part of the %.")
+
+
+def invoice_groups(link: Linked) -> list[dict]:
+    """v0.33.1: every invoice of the month in one of four groups - see the
+    module notes. Each group: what, invoices, cars (group A only), sales."""
+    groups = [dict(what="A. Cars delivered this month that took DNS (the table above)",
+                   invoices=0, cars=0, sales=0.0),
+              dict(what="B. VIN not in this month's delivery list (delivered earlier)",
+                   invoices=0, cars="", sales=0.0),
+              dict(what="C. Older cars (registration number, no VIN)",
+                   invoices=0, cars="", sales=0.0),
+              dict(what="D. Counter sales / no vehicle given",
+                   invoices=0, cars="", sales=0.0)]
+    groups[0]["cars"] = len(link.invoices_of)
+    for inv in link.linked:
+        groups[0]["invoices"] += 1
+        groups[0]["sales"] += inv.sales
+    for inv in link.other:
+        plate = " ".join(str(inv.vin or "").split()).strip("- ")
+        if vin6(inv.vin) or vin6(inv.customer):
+            g = groups[1]
+        elif plate and COUNTER_SALE not in (inv.car, inv.segment):
+            g = groups[2]
+        else:
+            g = groups[3]
+        g["invoices"] += 1
+        g["sales"] += inv.sales
+    for g in groups:
+        g["sales"] = round(g["sales"], 2)
+    return groups
+
+
+def count_box(ws: Worksheet, row: int, link: Linked, note: bool = True) -> int:
+    """Write the "How the month's invoices are counted" box; next free row.
+    `note`: the explanation line above it - Excel only; the PDF has no
+    descriptions under headings (the client's note of 05-10-2026), and the
+    four row labels say the same."""
+    row = section(ws, row, "How the month's invoices are counted")
+    if note:
+        ws.cell(row, 1, COUNT_NOTE).font = _font(color=SLATE, size=9)
+        row += 1
+    t = table(ws, row, [
+        Col("Invoices of the month", "what", width=58),
+        Col("Invoices", "invoices", "qty", 10, total="sum"),
+        Col("Cars", "cars", "qty", 8),
+        Col("Sales (excl. GST)", "sales", "money", 15, total="sum"),
+    ], invoice_groups(link), total_label="All invoices of the month")
+    return t["next"]
+
+
 def penetration_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
     notes = [
         "Source: the dealership's delivery (RTO) list. A car 'took DNS' when the list shows "
@@ -221,8 +289,9 @@ def penetration_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
     row = section(ws, t["next"], "By model")
     t = table(ws, row, list_cols(link, _penetration_cols("Model")),
               _group_rows(link, lambda c: c.model_group))
+    row = count_box(ws, t["next"], link)                     # v0.33.1
     # v0.33.0: floor mat and sunfilm against the cars delivered
-    row = section(ws, t["next"], "Floor mat and sunfilm - cars delivered")
+    row = section(ws, row, "Floor mat and sunfilm - cars delivered")
     ws.cell(row, 1, FITMENT_NOTE).font = _font(color=SLATE, size=9)
     table(ws, row + 1, fitment_cols(), fitments(link))
     _finish(ws)

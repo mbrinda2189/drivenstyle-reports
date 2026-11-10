@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.33.0** (tags v0.1.0 … v0.33.0 on GitHub
+Current version: **v0.33.1** (tags v0.1.0 … v0.33.1 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -239,8 +239,15 @@ Branding page is filled (home page + `/privacy`).
   VC = 7,64,073.39. FIFO is filtered by BILL date -> export from start of
   business to TODAY. Biggest gaps: Sunfilm Side and Rear - GEN (not stock-
   tracked; Zoho ~11.5k per car?) - client to check its purchase rate.
-  PROPOSED, not built: penetration "how the month's invoices are counted"
-  box (A 55 / B 19 / C 55 / D 2 = 131) under sheet 13 + PDF.
+- v0.33.1 (Brinda "okay", 10-11-2026): rto_reports.invoice_groups /
+  count_box under the penetration tables (sheet 13 + PDF, no note line in
+  the PDF - client rule): A delivered this month / B VIN not in list / C
+  registration no. / D counter sale or nothing; Oct A 55 (47 cars) B 19 C 56
+  D 1 = 131, sales 14,05,111.88. Sheet 18 differences now TOOL - ZOHO (like
+  the P&L blocks). Oct client points from the real sheet 18: Sunfilm Side &
+  Rear GEN master 619 vs Zoho ~11,568 posted per car; Blaupunkt roll master
+  25,424 per unit but sold per car; 110 units sold with no stock in Zoho
+  (master 1,85,177) - bills entered late.
 - ON HOLD (Brinda, 10-11-2026 - "let the staff work on it today"):
   (1) Daily Review: say "N uploaded PDFs not scanned yet - press Scan" instead
   of "Nothing to decide" when the inbox holds PDFs of waiting invoices

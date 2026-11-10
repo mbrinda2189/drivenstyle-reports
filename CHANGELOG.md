@@ -6,6 +6,34 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.1] – 2026-11-10 – How the month's invoices are counted; COGS difference sign
+
+Brinda (10-11-2026): "out of 131 invoices why only 47 cars are shown?" -
+the penetration table counts only the cars delivered this month. She
+approved the box proposed, and the sign change on sheet 18 ("okay").
+
+### Added
+- **"How the month's invoices are counted"** under the penetration tables
+  (sheet 13 and the PDF's Penetration by location): every invoice of the
+  month in one group - A. cars delivered this month (the table), B. VIN not
+  in this month's list (delivered earlier), C. older cars (registration
+  number, no VIN), D. counter sales / no vehicle given - with invoices,
+  cars (A) and sales; the total is all the month's invoices and sales
+  (`rto_reports.invoice_groups`, `count_box`). Excel adds one line: only
+  delivered cars count for the %; the PDF has no description lines (the
+  client's rule), the row labels say it.
+
+### Changed
+- **Sheet 18 COGS check**: differences are now **tool − Zoho** (were Zoho −
+  master), the same way round as the "tool vs Zoho" blocks under the P&L.
+  Minus = Zoho's cost is higher.
+
+### Checked
+- October (Invoice (5) + Car Sales Report): A 55 invoices / 47 cars, B 19,
+  C 56, D 1 = 131; sales add up to 14,05,111.88. (The earlier rough count
+  said C 55 / D 2: one invoice with a registration number is an older car.)
+- 312 passed / 5 skipped.
+
 ## [0.33.0] – 2026-11-10 – Floor mat & sunfilm statistics, COGS check against Zoho
 
 Two requests from the client via Brinda (10-11-2026): floor mat and sunfilm
@@ -51,11 +79,6 @@ sheet". Brinda: "yes, go with v0.33.0" on the defaults offered.
 - The FIFO report is filtered by the BILL date: export it from the start
   of the business to today (a bill dated later can cost an earlier sale).
 - 310 passed / 5 skipped.
-
-### Pending
-- Penetration table: a box tying the month's invoices to the table
-  (delivered cars / delivered another month / older cars / counter sales) -
-  proposed, awaiting Brinda's go-ahead.
 
 ## [0.32.0] – 2026-11-10 – Discounts shown, Zoho expense upload, labour vs Zoho
 
