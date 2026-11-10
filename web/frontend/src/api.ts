@@ -330,6 +330,27 @@ export interface Inputs {
   auto_rates: { key: string; head: string; pct: number }[];
 }
 
+/** Zoho's Expense export, read for Monthly inputs (v0.32.0, expenses_api.py). */
+export interface ExpenseAccount {
+  account: string;                     // Zoho expense account
+  amount: number;                      // the month's total, excluding GST
+  gst: number;
+  rows: number;
+  head: string;                        // saved match, or the tool's first suggestion
+  saved: boolean;                      // true when the head was confirmed before
+  labour_kind: string;                 // Sunfilm / Floor mat / Other
+}
+export interface ExpensePreview {
+  file: { name: string; at: string; by: string } | null;
+  accounts?: ExpenseAccount[];
+  heads?: string[];
+  labour?: string;                     // "(labour)"
+  not_used?: string;                   // "(not used)"
+  total?: number;
+  other_months?: number;
+  no_date?: number;
+}
+
 export interface GenerateResult { run: Run; payments_used: boolean; rto_used: boolean; pdf_error: string }
 type FixReply = { done: string; scan: ScanSummary | null; issues: Issue[] };
 type MatchRef = Pick<SavedMatch, "store" | "kind" | "key">;
@@ -372,6 +393,12 @@ export const monthlyApi = {
     ask<Inputs>("PUT", `/monthly/${month}/inputs`, { costs, threshold }),
   saveRates: (rates: Record<string, number>) =>
     ask<Inputs["auto_rates"]>("PUT", "/monthly/auto-rates", { rates }),
+  expenses: (month: string) => ask<ExpensePreview>("GET", `/monthly/${month}/expenses`),
+  uploadExpenses: (month: string, file: File) =>
+    sendFile<ExpensePreview>(`/monthly/${month}/expenses`, file),
+  applyExpenses: (month: string, matches: Record<string, string>) =>
+    ask<{ heads: [string, number][]; labour: Record<string, number>; total: number }>(
+      "POST", `/monthly/${month}/expenses/apply`, { matches }),
 };
 
 // ---- the daily payouts (v0.27.0, staff and admins) ------------------------------

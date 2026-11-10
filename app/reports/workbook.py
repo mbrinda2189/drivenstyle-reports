@@ -360,9 +360,15 @@ def cover_sheet(ws: Worksheet, d: MonthData, sheets: list[str], user: str,
 # ---------------------------------------------------------------------------
 # 1 Invoice-wise profitability
 # ---------------------------------------------------------------------------
+# v0.32.0: discount as a share of the price before discount (sales + discount).
+DISC_PCT = '=IF(({sales}{r}+{discount}{r})=0,"",{discount}{r}/({sales}{r}+{discount}{r}))'
+
+
 def invoice_sheet(ws: Worksheet, d: MonthData) -> None:
     row = title(ws, "Invoice-wise profitability", d.label,
-                ["Sales are after discount, before GST. Gross profit = sales − product cost − labour."])
+                ["Sales are after discount, before GST. Gross profit = sales − product cost − labour.",
+                 "Discount is shown excluding GST, like sales; Discount % = discount ÷ "
+                 "(sales + discount), i.e. of the price before discount."])
     cols = [
         Col("Invoice no", "invoice_no", width=17),
         Col("Date", "date", "date", 11),
@@ -372,7 +378,10 @@ def invoice_sheet(ws: Worksheet, d: MonthData) -> None:
         Col("Car", "car", width=16),
         Col("Items", "items", "qty", 7, total="sum"),
         Col("Sales", "sales", "money", 13, total="sum"),
+        # v0.32.0: the discount EXCLUDING GST (same basis as Sales), and what
+        # share of the price before discount it was.
         Col("Discount", "discount", "money", 11, total="sum"),
+        Col("Discount %", "disc_pct", "pct", 9, formula=DISC_PCT, total=DISC_PCT),
         Col("GST", "gst", "money", 11, total="sum"),
         Col("Rounding", "rounding", "money", 9, total="sum"),
         Col("Invoice total", "total", "money", 13, total="sum"),
@@ -387,7 +396,7 @@ def invoice_sheet(ws: Worksheet, d: MonthData) -> None:
                  executive=exec_label(i.executive, i.branch)
                  + (f" ({i.printed_executive})" if i.printed_executive else ""),
                  car=i.car + (f" ({i.printed_car})" if i.printed_car else ""),
-                 items=i.items, sales=i.sales, discount=i.discount, gst=i.gst,
+                 items=i.items, sales=i.sales, discount=i.sales_discount, gst=i.gst,
                  rounding=i.rounding, total=i.total, cost=i.cost, labour=i.labour)
             for i in sorted(d.invoices, key=lambda x: (x.invoice_date, x.invoice_no))]
     t = table(ws, row, cols, rows, filters=True)
@@ -777,20 +786,22 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
 # ---------------------------------------------------------------------------
 def executive_sheet(ws: Worksheet, d: MonthData, incentive_sheet_name: str | None) -> None:
     row = title(ws, "Executive-wise sales", d.label,
-                ["Executives are shown with their branch (two people may share a name)."])
+                ["Executives are shown with their branch (two people may share a name).",
+                 "Discount given excludes GST; Discount % = discount ÷ (sales + discount)."])
     execs: dict[str, dict] = {}
     for i in d.invoices:
         key = exec_label(i.executive, i.branch)
         e = execs.setdefault(key, dict(executive=key, branch=i.branch, invoices=0, items=0.0,
-                                       sales=0.0, cost=0.0, labour=0.0))
+                                       sales=0.0, discount=0.0, cost=0.0, labour=0.0))
         e["invoices"] += 1
         e["items"] += i.items
         e["sales"] += i.sales
+        e["discount"] += i.sales_discount          # v0.32.0
         e["cost"] += i.cost
         e["labour"] += i.labour
     rows = sorted(execs.values(), key=lambda e: -e["sales"])
     for e in rows:
-        for k in ("sales", "cost", "labour"):
+        for k in ("sales", "discount", "cost", "labour"):
             e[k] = round(e[k], 2)
     cols = [
         Col("Executive", "executive", width=26),
@@ -798,6 +809,9 @@ def executive_sheet(ws: Worksheet, d: MonthData, incentive_sheet_name: str | Non
         Col("Invoices", "invoices", "qty", 9, total="sum"),
         Col("Items", "items", "qty", 8, total="sum"),
         Col("Sales", "sales", "money", 14, total="sum"),
+        # v0.32.0: who gives how much discount (excluding GST, like sales)
+        Col("Discount given", "discount", "money", 13, total="sum"),
+        Col("Discount %", "disc_pct", "pct", 9, formula=DISC_PCT, total=DISC_PCT),
         Col("Product cost", "cost", "money", 14, total="sum"),
         Col("Labour", "labour", "money", 12, total="sum"),
         Col("Gross profit", "gp", "money", 14, formula=GP, total="sum"),
@@ -884,7 +898,16 @@ def _statement(ws: Worksheet, row: int, d: MonthData, net: bool,
 
     cost = round(sum(i.cost for i in d.invoices), 2)
     labour = round(sum(i.labour for i in d.invoices), 2)
-    put("Sales (excluding GST)", d.sales, bold=True)
+    if net and d.discount:
+        # v0.32.0 (Profit & loss only): how sales were arrived at, as in
+        # Zoho's own P&L - price before discount, less the discount given.
+        # Both exclude GST. "% of sales" is not shown for these two lines.
+        before = put("Sales before discount", round(d.sales + d.discount, 2), pct=False)
+        disc = put("Less: discount given", d.discount, pct=False, indent=1)
+        sales_row = row + 1
+        put("Sales (excluding GST)", f"=B{before}-B{disc}", bold=True)
+    else:
+        put("Sales (excluding GST)", d.sales, bold=True)
     row += 1
     ws.cell(row, 1, "Direct costs").font = _font(True, NAVY)
     c1 = put("Product cost", cost, indent=1)
@@ -942,7 +965,36 @@ def pnl_sheet(ws: Worksheet, d: MonthData, largest_first: bool = False) -> None:
     if not d.has_inputs:
         row = banner(ws, row, "No indirect costs were entered for this month.", 3)
     _statement(ws, row, d, net=True, largest_first=largest_first)
+    if d.books_labour:
+        _labour_vs_books(ws, d)
     _finish(ws)
+
+
+def _labour_vs_books(ws: Worksheet, d: MonthData) -> None:
+    """
+    v0.32.0 (Brinda, 10-11-2026): under the Profit & loss, the tool's labour
+    - the figure the P&L uses (Product master labour charge x quantity) -
+    beside the labour booked in Zoho for the month (its labour accounts in
+    the uploaded expense file), and the difference. Information only: the
+    P&L and every other figure keep the tool's labour.
+    """
+    tool = d.labour_by_kind
+    kinds = [k for k in LABOUR_GROUPS if tool.get(k) or d.books_labour.get(k)]
+    row = _bottom_row(ws) + 2
+    row = section(ws, row, "Labour - tool vs Zoho")
+    table(ws, row, [
+        Col("Labour", "kind", width=38),
+        Col("Tool (used in P&L)", "tool", "money", 16, total="sum"),
+        Col("As per Zoho", "books", "money", 16, total="sum"),
+        Col("Difference", "diff", "money", 14, formula="={tool}{r}-{books}{r}", total="sum"),
+    ], [dict(kind=k, tool=tool.get(k, 0.0), books=d.books_labour.get(k, 0.0))
+        for k in kinds])
+
+
+def _bottom_row(ws: Worksheet) -> int:
+    """The last row with anything in it."""
+    return max((c.row for row in ws.iter_rows() for c in row if c.value is not None),
+               default=1)
 
 
 # ---------------------------------------------------------------------------

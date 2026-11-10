@@ -6,6 +6,53 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.32.0] – 2026-11-10 – Discounts shown, Zoho expense upload, labour vs Zoho
+
+Brinda, 10-11-2026: "why aren't the discounts calculated?"; "instead of
+manually entering the expenses can we upload the expenses file and ask the
+tool to autocategorise?"; and for labour, "take what the tool takes in the
+PL and also show the amount in zoho and indicate the difference" (labour
+only). She approved the defaults offered for all three.
+
+### Added
+- **Discounts in the reports.** Sales were always after discount; the
+  discount itself is now shown, EXCLUDING GST like sales:
+  - Profit & loss (Excel and PDF): *Sales before discount*, *Less: discount
+    given*, then Sales (as a formula of the two).
+  - Invoice-wise (sheet 1): Discount % beside Discount; Executive-wise
+    (sheet 8): Discount given and Discount %.
+  - Summary headline and Trend: discount given and discount %.
+  - `Invoice.sales_discount`, `MonthData.discount` (the lines' stored
+    discount shares). On October's export these add up to Zoho's Discount
+    account (1,98,215.48) to the paisa; the ₹1 labour lines' share (about
+    ₹10) is left out, as their value is left out of sales.
+- **Zoho expense upload on Monthly inputs** (`app/data/expenses_io.py`,
+  `web/backend/expenses_api.py`, `pages/ZohoExpenses.tsx`): the month's
+  Expense export (.xlsx / .csv) is added up per Zoho account, excluding GST
+  (Total − Tax Amount); each account gets a head - remembered once confirmed
+  (`expense_accounts`), otherwise a first suggestion (labour accounts →
+  labour; incentive → Incentives; Zoho's usual names → the usual heads;
+  "salary" in a description → Salaries; same name). "Use these figures"
+  replaces the month's heads (logged), largest first. Rows of other months
+  are left out and counted.
+- **Labour - tool vs Zoho** under the Profit & loss (Excel and PDF), when
+  Zoho expenses were uploaded: tool / as per Zoho / difference by Sunfilm,
+  Floor mat, Other. The P&L keeps the tool's labour (`books_labour`,
+  `MonthData.books_labour`, `labour_by_kind`).
+- Schema step 15: `expense_accounts`, `books_labour`.
+
+### Changed
+- Invoice-wise "Discount" is now excluding GST (it was Zoho's invoice
+  discount including GST on GST invoices).
+
+### Checked
+- October's real Expense.xlsx: all 29 accounts get the right head first
+  time (12 staff accounts → Salaries); heads 6,63,692.38 against Zoho's
+  operating expenses 6,63,691.13 (Other expenses 2,849.00 in the file,
+  2,847.75 in Zoho's P&L); labour as per Zoho 85,050 (Sunfilm 62,200, Floor
+  mat 22,850). Upload and apply tried in a browser.
+- 299 passed / 5 skipped.
+
 ## [0.31.0] – 2026-11-10 – Trend at the end of the PDF
 
 Brinda (10-11-2026): the monthly PDF should also show the trend, at the end.

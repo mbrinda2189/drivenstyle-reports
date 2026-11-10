@@ -19,6 +19,11 @@
  *                        PRODUCT COST - do not type them as heads. The two
  *                        percentages are ONE setting for all months.
  *
+ *   ZOHO EXPENSES        (v0.32.0, ZohoExpenses.tsx) upload the month's Zoho
+ *                        Expense export instead of typing: each Zoho account
+ *                        goes to a head (remembered), labour accounts are
+ *                        kept only to show beside the tool's labour in the P&L.
+ *
  * Edits are held until "Save inputs" (the heading says "unsaved changes").
  * The server refuses a head entered twice or a negative amount, and writes
  * every saved change to the audit log (app/data/inputs_repo.py).
@@ -26,6 +31,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ApiError, Inputs, inr, monthlyApi } from "../api";
 import { MonthPicker, useMonth } from "../month";
+import ZohoExpenses from "./ZohoExpenses";
 
 type CostRow = { head: string; amount: string };
 
@@ -166,6 +172,12 @@ export default function MonthlyInputs({ onExpired }: { onExpired: () => void }) 
       <div className="row-actions left">
         <button className="btn primary" disabled={!dirty && data.saved} onClick={() => void save()}>Save inputs</button>
       </div>
+
+      <ZohoExpenses month={month} dirty={dirty} onError={fail}
+                    onApplied={(message) => {
+                      setProblem("");
+                      monthlyApi.inputs(month).then((reply) => { show(reply); setNotice(message); }).catch(fail);
+                    }} />
     </>
   );
 }

@@ -23,6 +23,7 @@ ADDRESSES IN THIS VERSION
     DELETE /api/users/{id}      remove a user                   (admin only)
     /api/masters..., /api/audit...   see masters_api.py (v0.24.0)
     /api/masters/.../import..., /export   see imports_api.py (v0.25.0)
+    /api/monthly/{month}/expenses...      see expenses_api.py (v0.32.0)
     /api/monthly/...                 see monthly_api.py (v0.26.0, admin only)
     /api/daily/...                   see daily_api.py (v0.27.0) and
                                      daily_reports.py (v0.28.0)
@@ -71,7 +72,7 @@ from app import __version__
 from app.data.database import connect
 from app.data.users_repo import UserError, UsersRepo
 from web.backend import (
-    config, daily_api, daily_reports, imports_api, masters_api, monthly_api,
+    config, daily_api, daily_reports, expenses_api, imports_api, masters_api, monthly_api,
     privacy)
 from web.backend.security import COOKIE, Sessions, SignInError, verify_google
 
@@ -249,6 +250,8 @@ def create_app(settings: config.Settings | None = None) -> FastAPI:
                            settings.data_dir / "uploads")
     # The monthly reports tool (v0.26.0) - admins only.
     monthly_api.add_routes(api, connection, admin, settings.data_dir)
+    # Zoho expense upload on Monthly inputs (v0.32.0) - admins only.
+    expenses_api.add_routes(api, connection, admin, settings.data_dir)
     # The daily payouts (v0.27.0) - staff and admins.
     daily_api.add_routes(api, connection, current_user, admin, settings.data_dir)
     # Payout slip, summary, month check, Excel (v0.28.0) - read-only.

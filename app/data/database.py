@@ -65,6 +65,8 @@ TABLES (schema version 14)
     Monthly inputs and reports (step 4, see inputs_repo.py):
     monthly_costs     indirect cost heads and amounts per month
     monthly_settings  per-month settings, e.g. the high-profit threshold
+    expense_accounts  Zoho expense account -> Monthly-inputs head (v0.32.0)
+    books_labour      the month's labour as booked in Zoho, by kind (v0.32.0)
     report_runs       every workbook generated: month, file, when, by whom,
                       invoices, sales and gross profit, and the payments
                       export used (so History can regenerate it)
@@ -132,7 +134,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -573,6 +575,27 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
         invoice_no  TEXT    NOT NULL UNIQUE,
         cells       TEXT    NOT NULL                    -- register.INVOICE_HEADERS
+    );
+    """,
+    # --- 14 -> 15 : Zoho expense upload (v0.32.0) -------------------------------
+    # expense_accounts: which Monthly-inputs head each Zoho expense account
+    # goes to, decided once on the upload screen and remembered for every
+    # later month. `head` is a head name, or one of the two markers in
+    # inputs_repo: "(labour)" - a labour account, not an expense head (the
+    # tool works labour out itself; the amount is only shown beside the
+    # tool's labour) - and "(not used)" - left out altogether.
+    # books_labour: the month's labour as booked in Zoho, by kind
+    # (Sunfilm / Floor mat / Other), for the comparison in the P&L.
+    """
+    CREATE TABLE IF NOT EXISTS expense_accounts (
+        account  TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,   -- Zoho's account name
+        head     TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS books_labour (
+        month   TEXT NOT NULL,                                -- YYYY-MM
+        kind    TEXT NOT NULL,                                -- Sunfilm / Floor mat / Other
+        amount  REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY (month, kind)
     );
     """,
 ]

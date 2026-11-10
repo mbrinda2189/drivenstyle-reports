@@ -481,6 +481,8 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
                          + sum(a for _, _, a in m.auto_indirect), 2)
         n = len(m.invoices)
         return dict(sales=m.sales, gp=m.gross_profit,
+                    discount=m.discount,                      # v0.32.0
+                    disc_pct=_ratio(m.discount, m.sales + m.discount),
                     margin=_ratio(m.gross_profit, m.sales), indirect=indirect,
                     net=round(m.gross_profit - indirect, 2), invoices=n,
                     avg=round(m.sales / n, 2) if n else 0.0, cogs=m.cogs)
@@ -489,6 +491,8 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
     cols = ["This month"] + ([previous.label, "Change"] if previous else [])
     head("Headline figures", *cols)
     for label, key, fmt in (("Sales (excluding GST)", "sales", MONEY),
+                            ("Discount given (excl. GST)", "discount", MONEY),   # v0.32.0
+                            ("Discount % of price before discount", "disc_pct", PCT),
                             ("Gross profit", "gp", MONEY),
                             ("Gross margin %", "margin", PCT),
                             ("Indirect costs", "indirect", MONEY),

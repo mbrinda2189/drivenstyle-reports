@@ -323,7 +323,8 @@ rough line counts, to show you where the weight is.
 | `invoice_export.py` (347) | read Zoho's invoice export (`Invoice.csv` / `.xlsx`) |
 | `invoice_reader.py` (498) | read **one invoice PDF** (used by the daily payouts) |
 | `invoices_repo.py` (1052) | store invoices, match them to the masters, everything behind Scan review |
-| `inputs_repo.py` (251) | the monthly inputs and the history of generated reports |
+| `inputs_repo.py` | the monthly inputs, the history of generated reports, and (v0.32.0) the remembered Zoho expense-account matches and the month's labour as per Zoho |
+| `expenses_io.py` | v0.32.0: reads Zoho's Expense export per account (excl. GST) and suggests a head for each account |
 | `payments_io.py` | read Zoho's "Payments Received" export |
 | `rto_list.py` | read the dealership's delivery (RTO) list - the hand-made RTO list (.xlsx) or the dealership's Car Sales Report (.xls, read with `xlrd`, no DNS columns) |
 
@@ -361,7 +362,8 @@ rough line counts, to show you where the weight is.
 | `security.py` (84) | checks Google's answer; makes and reads the sign-in cookie |
 | `masters_api.py` (263) | addresses for the Masters screen and the Audit log |
 | `imports_api.py` (344) | masters from and to Excel |
-| `monthly_api.py` (593) | the whole monthly reports tool (administrators only) |
+| `monthly_api.py` | the whole monthly reports tool (administrators only) |
+| `expenses_api.py` | v0.32.0: upload Zoho's Expense export on Monthly inputs, preview, apply |
 | `payout_store.py` (431) | the payout register, kept in the database |
 | `daily_api.py` (394) | addresses for the daily payouts |
 | `daily_reports.py` (279) | payout slip, summary, month check, Excel export |
@@ -390,6 +392,7 @@ rough line counts, to show you where the weight is.
 | `src/pages/Generate.tsx` | monthly: upload files, read invoices, generate |
 | `src/pages/ScanReview.tsx` | monthly: fix unclear lines |
 | `src/pages/MonthlyInputs.tsx` | monthly: costs typed by hand |
+| `src/pages/ZohoExpenses.tsx` | v0.32.0: the Zoho expenses panel on Monthly inputs |
 | `src/pages/History.tsx` | monthly: reports made so far |
 | `src/pages/DailyScan.tsx` | daily: upload PDFs and scan |
 | `src/pages/DailyReview.tsx` | daily: fix unclear invoices |

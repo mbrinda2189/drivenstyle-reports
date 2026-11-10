@@ -86,7 +86,8 @@ def month_figures(m: MonthData, rto: dict | None) -> dict:
                      + sum(a for _, _, a in m.auto_indirect), 2)
     rto = rto or {}
     return dict(
-        invoices=len(m.invoices), sales=m.sales, product=cat("Product"),
+        invoices=len(m.invoices), sales=m.sales, discount=m.discount,
+        product=cat("Product"),
         service=cat("Service"), cost=cost, labour=labour, gp=m.gross_profit,
         indirect=indirect, net=round(m.gross_profit - indirect, 2),
         packages=sum(1 for i in m.invoices if i.package),
@@ -100,6 +101,9 @@ ROWS = (  # (label, key or function of the figures, number format, bold)
     ("Sales (excluding GST)", "sales", MONEY, True),
     ("  Product sales", "product", MONEY, False),
     ("  Service sales", "service", MONEY, False),
+    ("Discount given (excl. GST)", "discount", MONEY, False),          # v0.32.0
+    ("Discount % of price before discount",
+     lambda f: _ratio(f["discount"], f["sales"] + f["discount"]), PCT, False),
     ("Product cost", "cost", MONEY, False),
     ("Labour", "labour", MONEY, False),
     ("Gross profit", "gp", MONEY, True),
@@ -117,7 +121,7 @@ ROWS = (  # (label, key or function of the figures, number format, bold)
     ("DNS penetration %", lambda f: _ratio(f["took"], f["cars"])
      if f["cars"] else "", PCT, False),
 )
-ADDED = ("invoices", "sales", "product", "service", "cost", "labour", "gp", "indirect",
+ADDED = ("invoices", "sales", "discount", "product", "service", "cost", "labour", "gp", "indirect",
          "net", "packages", "incentive", "internal", "cars", "took")
 
 

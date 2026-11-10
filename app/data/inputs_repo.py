@@ -24,6 +24,15 @@ and the list of workbooks generated, shown on the History screen.
     has_inputs(year, month)            were costs saved for the month?
     record_run(...) / runs()           generated workbooks, newest first
 
+ZOHO EXPENSE UPLOAD (v0.32.0, see app/data/expenses_io.py)
+    expense_matches()                  Zoho expense account -> head, as the
+                                       user confirmed them (remembered for
+                                       every later month)
+    save_expense_matches(matches)      (logged, only what changed)
+    books_labour(year, month)          labour booked in Zoho, by kind - only
+                                       shown beside the tool's own labour
+    save_books_labour(year, month, by_kind)   replace the month's (logged)
+
 Every change is written to the audit log (master "Monthly inputs") with
 old and new values, in the same transaction as the change.
 """
@@ -185,6 +194,56 @@ class InputsRepo:
                     "inputs", None, "Report settings – all months", "Edited",
                     f"{head} (% of product cost)", f"{old[key]:g}%", f"{pct:g}%",
                     "Monthly inputs")
+
+    # ------------------------------------------------------------------
+    # Zoho expense upload (v0.32.0)
+    # ------------------------------------------------------------------
+    def expense_matches(self) -> dict[str, str]:
+        """Zoho expense account (lower case) -> head, "(labour)" or "(not used)"."""
+        return {r["account"].lower(): r["head"] for r in self.conn.execute(
+            "SELECT account, head FROM expense_accounts")}
+
+    def save_expense_matches(self, matches: dict[str, str]) -> None:
+        """Remember each account's head (account name as Zoho writes it ->
+        head). Only new or changed matches are written and logged."""
+        old = self.expense_matches()
+        with self.conn:
+            for account, head in matches.items():
+                head = " ".join(str(head).split())
+                if not account or not head or old.get(account.lower()) == head:
+                    continue
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO expense_accounts(account, head) VALUES (?, ?)",
+                    (account, head))
+                self.masters._audit(
+                    "inputs", None, "Zoho expense account matches",
+                    "Edited" if account.lower() in old else "Added", account,
+                    old.get(account.lower(), ""), head, "Monthly inputs")
+
+    def books_labour(self, year: int, month: int) -> dict[str, float]:
+        """Kind -> labour booked in Zoho for the month (empty if no expense
+        file was uploaded for it)."""
+        return {r["kind"]: float(r["amount"]) for r in self.conn.execute(
+            "SELECT kind, amount FROM books_labour WHERE month = ? ORDER BY kind",
+            (month_key(year, month),))}
+
+    def save_books_labour(self, year: int, month: int, by_kind: dict[str, float]) -> None:
+        """Replace the month's labour as booked in Zoho (logged)."""
+        key = month_key(year, month)
+        old = self.books_labour(year, month)
+        new = {k: round(float(v), 2) for k, v in by_kind.items()}
+        if old == new:
+            return
+        with self.conn:
+            self.conn.execute("DELETE FROM books_labour WHERE month = ?", (key,))
+            self.conn.executemany(
+                "INSERT INTO books_labour(month, kind, amount) VALUES (?, ?, ?)",
+                [(key, k, v) for k, v in new.items()])
+            show = lambda d: ", ".join(f"{k} {format_inr(v)}" for k, v in sorted(d.items()))
+            self.masters._audit(
+                "inputs", None, f"Labour as per Zoho – {month_label(year, month)}",
+                "Edited" if old else "Added", "Labour by kind", show(old), show(new),
+                "Monthly inputs")
 
     # ------------------------------------------------------------------
     # Generated reports

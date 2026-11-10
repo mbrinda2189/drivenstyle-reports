@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.31.0** (tags v0.1.0 … v0.31.0 on GitHub
+Current version: **v0.32.0** (tags v0.1.0 … v0.32.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -216,6 +216,17 @@ Branding page is filled (home page + `/privacy`).
   own page, only with 2+ months: last 6 months + their total, key figures +
   change only (trend_sheet last= / by_month_tables=; pdf_book fresh=).
   Brinda chose the defaults offered: 6 months, no branch / product tables.
+- v0.32.0 (Brinda, 10-11-2026, defaults approved): discounts shown (P&L
+  before/discount/sales, sheets 1 and 8, summary, trend) - EXCL. GST from the
+  stored line shares (Invoice.sales_discount; = Zoho's Discount account);
+  Zoho Expense upload on Monthly inputs (expenses_io.py, expenses_api.py,
+  ZohoExpenses.tsx; schema 15 expense_accounts + books_labour; amounts =
+  Total - Tax Amount; matches remembered; apply REPLACES the month's heads);
+  "Labour - tool vs Zoho" under the P&L - LABOUR ONLY (Brinda: "only
+  labour"), P&L keeps the tool's labour. Invoice (5).xlsx is October's right
+  export (131 invoices = Zoho P&L); Invoice (4) had 5 more (DNS-477/478/479/
+  493/495, 2,02,050) since removed in Zoho - DNS-479 is posted in the daily
+  payouts (labour 1,500 + incentive 961.51): Brinda to cancel it there.
 - ON HOLD (Brinda, 10-11-2026 - "let the staff work on it today"):
   (1) Daily Review: say "N uploaded PDFs not scanned yet - press Scan" instead
   of "Nothing to decide" when the inbox holds PDFs of waiting invoices

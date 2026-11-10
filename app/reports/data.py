@@ -232,6 +232,22 @@ class Invoice:
         return round(sum(l.sales for l in self.lines), 2)
 
     @property
+    def sales_discount(self) -> float:
+        """
+        The discount on this invoice's lines, EXCLUDING GST (v0.32.0) - the
+        same basis as sales, so sales + discount = the lines at Zoho's
+        price before discount. Each line's share is stored when the invoice
+        is read (invoices_repo: before tax - Item Total). It differs from
+        `discount` above, which is Zoho's "Entity Discount Amount" as given
+        on the invoice: tax inclusive where the invoice carries GST. On the
+        October 2026 export these line shares add up to Zoho's "Discount"
+        account in its Profit & Loss to the paisa. The Rs. 1 labour lines
+        are not in `lines`, so their (tiny) discount is not counted - just
+        as their value is not in sales.
+        """
+        return round(sum(l.discount for l in self.lines), 2)
+
+    @property
     def incentive_payable(self) -> float:
         """
         Spot incentive for this invoice by the confirmed rule (the same
@@ -296,6 +312,11 @@ class MonthData:
     threshold: float                       # high-profit margin %
     has_inputs: bool                       # indirect costs were entered
     auto_rates: tuple = AUTO_INDIRECT      # (head, share of COGS, word)
+    # v0.32.0: labour as booked in Zoho for the month (from the uploaded
+    # Zoho expense file), by kind - "Sunfilm" / "Floor mat" / "Other". Only
+    # SHOWN beside the tool's own labour in the Profit & loss; never used
+    # in any figure. Empty when no expense file was uploaded for the month.
+    books_labour: dict = field(default_factory=dict)
 
     @property
     def label(self) -> str:
@@ -308,6 +329,22 @@ class MonthData:
     @property
     def sales(self) -> float:
         return round(sum(i.sales for i in self.invoices), 2)
+
+    @property
+    def discount(self) -> float:
+        """Discount given on the included invoices, excluding GST (v0.32.0;
+        see Invoice.sales_discount). Sales + discount = sales before discount."""
+        return round(sum(i.sales_discount for i in self.invoices), 2)
+
+    @property
+    def labour_by_kind(self) -> dict[str, float]:
+        """The tool's labour by kind (Floor mat / Sunfilm / Other), the same
+        split as the Labour sheet."""
+        out = {g: 0.0 for g in LABOUR_GROUPS}
+        for l in self.lines:
+            if l.labour:
+                out[labour_group(l.product)] += l.labour
+        return {g: round(v, 2) for g, v in out.items()}
 
     @property
     def cogs(self) -> float:
@@ -525,7 +562,8 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
                      inputs.costs(year, month), inputs.threshold(year, month),
                      inputs.has_inputs(year, month),
                      tuple((head, rates[key] / 100, word)
-                           for key, head, _, word in AUTO_HEADS))
+                           for key, head, _, word in AUTO_HEADS),
+                     inputs.books_labour(year, month))
 
 
 def trend_months(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
