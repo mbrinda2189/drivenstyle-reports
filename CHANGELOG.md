@@ -6,6 +6,27 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.31.0] – 2026-11-10 – Trend at the end of the PDF
+
+Brinda (10-11-2026): the monthly PDF should also show the trend, at the end.
+It had been left out since the client's note of 05-10-2026 (v0.19.0).
+
+### Added
+- **PDF: "Trend analysis (month on month)" as the last section**, starting on
+  a page of its own, when the tool holds two or more months. It shows the
+  key figures and the change from the previous month for the **last six
+  months** plus a Total of those six - eight columns, like every other PDF
+  table. No charts; sales by branch and top products stay in Excel.
+- `trend.trend_sheet(..., last=, by_month_tables=)` and `trend.PDF_MONTHS`
+  (6); `pdf_book._page_breaks(..., fresh=)` starts a section on a new page.
+
+### Unchanged
+- The Excel Trend sheet (up to 12 months, all parts, charts).
+
+### Checked
+- A PDF made with three months: the trend is page 5 of 5, on its own page.
+- 292 passed / 5 skipped.
+
 ## [0.30.0] – 2026-11-10 – Delivery list from the dealership's Car Sales Report
 
 From October 2026 the client sends the dealership's "Car Sales Report"

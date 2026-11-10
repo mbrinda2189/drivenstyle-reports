@@ -142,13 +142,15 @@ def test_pdf_version_layout(world):  # noqa: F811
               "By location - OE accessories", "By model - OE accessories",
               "Branches by gross profit", "Packages vs sales", "Labour calculation",
               "Vehicle-wise average per car", "Spot incentive calculation",
-              "Payment mode analysis"]
+              "Payment mode analysis",
+              "Trend analysis (month on month)"]   # v0.31.0: last, with 2+ months
     order = [text.index(t) for t in wanted]
     assert order == sorted(order) and text[0] == "Profit & loss"      # P&L on page 1
     for gone in ("Headline figures", "Drive N Style – Executive summary",
                  "Points needing attention", "Service vs product profitability",
                  "Indirect vs direct cost %", "New-car vs other business",
-                 "Trend analysis (month on month)", "By model - DNS accessories"):
+                 "By model - DNS accessories",
+                 "Sales by branch", "Top 10 products by sales"):   # Excel-only trend parts
         assert gone not in text
     # no descriptions under the headings, no "Prepared on" line
     assert not any(c.value and c.font.sz == 9 for row in ws.iter_rows(max_col=1) for c in row)
@@ -220,10 +222,12 @@ def test_pdf_version_layout(world):  # noqa: F811
     _page_breaks(sheet, [(1, 5), (8, 8 + rows_per_page + 9)], scale)
     assert [b.id for b in sheet.row_breaks.brk] == [7, 7 + rows_per_page]
 
-    # without the delivery list the new-car sections are simply left out
+    # without the delivery list the new-car sections are simply left out - and
+    # with only one month there is no trend to show (v0.31.0)
     ws = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "p2.xlsx"))["Report"]
     text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
     assert "New-car business" not in text and "Penetration by location" not in text
+    assert "Trend analysis (month on month)" not in text
     assert text[0] == "Profit & loss" and "Branches by gross profit" in text
 
     # the Excel workbook is unchanged: summary, notes and gross-profit ranking stay
@@ -249,3 +253,34 @@ def test_trend_sheet_and_saved_delivery_totals(world):  # noqa: F811
     assert col["Cars delivered (delivery list)"] == 4 and col["DNS penetration %"] == 0.75
     assert "Sales by branch" in col and "Top 10 products by sales" in col
     assert len(ws._charts) == 2                      # lines + penetration bars
+
+
+def test_pdf_trend_last_six_months_on_its_own_page(world):  # noqa: F811
+    """v0.31.0 (Brinda, 10-11-2026): the trend is the PDF's last section, on a
+    page of its own, with the latest six months + their total (8 columns),
+    key figures and change only - no charts, no branch / product tables."""
+    import dataclasses
+    from app.reports.data import build_month
+    from app.reports.pdf_book import write_pdf_workbook
+    masters, irepo, tmp_path = world
+    inputs = InputsRepo(masters)
+    d = build_month(masters, irepo, inputs, 2026, 9)
+    # eight "months" with different labels (the same invoices each time)
+    months = [dataclasses.replace(d, month=m) for m in range(3, 11)]   # Mar ... Oct
+    ws = openpyxl.load_workbook(write_pdf_workbook(d, months, None, tmp_path / "t.xlsx"))["Report"]
+    rows = list(ws.iter_rows(values_only=True))
+    first = [r[0] for r in rows]
+    at = first.index("Trend analysis (month on month)")
+    assert at == max(i for i, v in enumerate(first) if v == "Trend analysis (month on month)"
+                     or v == "Payment mode analysis")          # it is the last section
+    head = rows[first.index("Particulars", at)]
+    assert list(head[:8]) == ["Particulars", "May 2026", "Jun 2026", "Jul 2026", "Aug 2026",
+                              "Sep 2026", "Oct 2026", "Total"]
+    assert ws.max_column <= 8
+    sales = rows[first.index("Sales (excluding GST)", at)]
+    assert sales[7] == round(6 * sales[1], 2)                  # Total = the six shown
+    assert "Change from the previous month" in first[at:]
+    assert "Sales by branch" not in first and "Top 10 products by sales" not in first
+    assert not ws._charts
+    # it starts a fresh page: a page break right before its heading
+    assert at in [b.id for b in ws.row_breaks.brk]             # break after row `at`

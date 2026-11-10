@@ -335,7 +335,7 @@ rough line counts, to show you where the weight is.
 | `packages.py` | recognises a package sale on an invoice |
 | `workbook.py` (1065) | writes the monthly Excel workbook |
 | `rto_reports.py` | the new-car reports and the executive summary; `list_cols` leaves out the list's own DNS figures when the list has none |
-| `trend.py` (250) | month-on-month trend |
+| `trend.py` | month-on-month trend; Excel sheet 4, and (v0.31.0) the PDF's last section - six months, key figures and change only (`PDF_MONTHS`) |
 | `pdf_book.py` (767) | lays out the PDF version of the reports |
 | `pdf_export.py` (193) | turns a workbook into a PDF (LibreOffice on Linux, Excel on Windows) |
 | `generate.py` (173) | builds a month's workbook in one call |

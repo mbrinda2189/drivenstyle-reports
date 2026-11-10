@@ -28,10 +28,20 @@ WHAT IS IN THE PDF, in this order (the client's note of 05-10-2026, v0.13.0)
      9. Vehicle-wise average per car           by segment
     10. Spot incentive                         by executive + "Internal team"
     11. Payment modes                          by mode, by account
+    12. Trend (month on month)                 v0.31.0, see below
 Nothing else: no headline figures, no descriptions under the headings, no
 "Prepared on" line, and none of the sections left off the note (executive
 summary, service vs product, indirect vs direct, new-car vs other, DNS
-penetration by model, trend). All of those remain in the Excel workbook.
+penetration by model). All of those remain in the Excel workbook.
+
+TREND AT THE END (Brinda, 10-11-2026, v0.31.0)
+----------------------------------------------
+The trend was left out with the client's note of 05-10-2026. It is back as
+the LAST section, starting on a page of its own, when the tool holds two
+or more months: key figures and change from the previous month for the
+latest six months plus their total (eight columns, like every other
+table). Branch and product tables and the charts stay in Excel only. See
+trend.py, "IN THE PDF".
 
 LAYOUT (v0.10.3)
 ----------------
@@ -53,7 +63,7 @@ LAYOUT (v0.10.3)
   as the page and the 10 pt text prints at (or very near) 10 pt. For this
   the New-car penetration table, 11 columns in Excel, is shown here as two
   tables with the same figures: DNS accessories, then OE accessories.
-  (A Trend page with many months is wider and prints smaller.)
+  The Trend section shows at most six months, so it fits the same width.
 * Footer on every page: "Drive N Style - <month>" on the left and
   "Page x of y" on the right.
 * No graphs. (The Excel Trend sheet keeps its charts.)
@@ -672,7 +682,8 @@ def print_scale(report: Worksheet) -> int:
     return max(50, min(100, int(room / width * 100) - SCALE_SAFETY)) if width else 100
 
 
-def _page_breaks(report: Worksheet, blocks: list[tuple[int, int]], scale: int) -> None:
+def _page_breaks(report: Worksheet, blocks: list[tuple[int, int]], scale: int,
+                 fresh: set[int] | None = None) -> None:
     """
     A heading must never be left at the foot of a page with its table on
     the next one (v0.19.1). Excel cannot "keep a heading with its table", so
@@ -688,7 +699,11 @@ def _page_breaks(report: Worksheet, blocks: list[tuple[int, int]], scale: int) -
     although the page before it was half empty.) A table longer than a whole
     page starts on a fresh page and is itself cut by the tool where the page
     is full, so the count never drifts from what Excel prints.
+
+    v0.31.0: `fresh` = first rows of pieces that must START a page (the
+    Trend section), whatever room is left on the page before.
     """
+    fresh = fresh or set()
     page = PAGE_POINTS / (scale / 100) * PAGE_USE
     height = lambda r: report.row_dimensions[r].height or 15.0
     used = 0.0
@@ -700,7 +715,7 @@ def _page_breaks(report: Worksheet, blocks: list[tuple[int, int]], scale: int) -
 
     for n, (first, last) in enumerate(blocks):
         need = sum(height(r) for r in range(first, last + 1))
-        if used and used + need > page:
+        if used and (first in fresh or used + need > page):
             new_page(first)
         if need <= page:
             used += need
@@ -719,6 +734,9 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
                        previous: MonthData | None = None,
                        rto_by_month: dict | None = None) -> Path:
     """Write the temporary workbook that Excel turns into the PDF."""
+    # Imported here, not at the top: trend.py imports workbook.py, which
+    # imports this module lazily - the same pattern as workbook.py uses.
+    from app.reports.trend import PDF_MONTHS, trend_sheet
     link = rr.Linked(data, rto) if rto is not None else None
     wb = Workbook()
     report = wb.active
@@ -738,10 +756,18 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
              ("Vehicle-wise", lambda ws: _vehicle(ws, data)),
              ("Spot incentive", lambda ws: _incentive(ws, data)),
              ("Payment modes", lambda ws: _payments(ws, data, payments))]
-    row, blocks = 1, []
+    # v0.31.0: the trend comes last, on a page of its own, when there is
+    # something to compare (two or more months). Last six months only.
+    if len(months) >= 2:
+        plan.append(("Trend", lambda ws: trend_sheet(
+            ws, data, months, rto_by_month, charts=False, last=PDF_MONTHS,
+            by_month_tables=False)))
+    row, blocks, fresh = 1, [], set()
     for name, writer in plan:
         part = wb.create_sheet(name)
         writer(part)
+        if name == "Trend":
+            fresh.add(row)
         rows = _append(report, part, row)
         blocks += _blocks(report, row, row + rows - 1)
         row += rows + GAP_ROWS
@@ -763,7 +789,7 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
     report.oddFooter.left.size = report.oddFooter.right.size = 9
     last_row, last_col = _used(report)
     report.print_area = f"A1:{get_column_letter(last_col)}{last_row}"
-    _page_breaks(report, blocks, scale)
+    _page_breaks(report, blocks, scale, fresh)
     wb.calculation.fullCalcOnLoad = True
     path = Path(path)
     wb.save(path)

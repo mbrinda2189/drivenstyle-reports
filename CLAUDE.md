@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.30.0** (tags v0.1.0 … v0.30.0 on GitHub
+Current version: **v0.31.0** (tags v0.1.0 … v0.31.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -212,6 +212,10 @@ Branding page is filled (home page + `/privacy`).
   DNS figures (never show them as 0); "took DNS" comes from invoices.
   Server needs `xlrd` (in web/backend/requirements.txt - deploy installs).
   This session could not push: Brinda applies the commit on her PC.
+- v0.31.0 (Brinda, 10-11-2026): Trend back in the PDF as the LAST section,
+  own page, only with 2+ months: last 6 months + their total, key figures +
+  change only (trend_sheet last= / by_month_tables=; pdf_book fresh=).
+  Brinda chose the defaults offered: 6 months, no branch / product tables.
 - ON HOLD (Brinda, 10-11-2026 - "let the staff work on it today"):
   (1) Daily Review: say "N uploaded PDFs not scanned yet - press Scan" instead
   of "Nothing to decide" when the inbox holds PDFs of waiting invoices

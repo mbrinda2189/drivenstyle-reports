@@ -7,8 +7,8 @@ WHAT THE CLIENT ASKED FOR
 To track progress month by month once several months are in the tool. The
 old Trend sheet had only ten rows and no charts.
 
-WHAT THE SHEET SHOWS NOW (workbook sheet "4 Trend", and a page of the PDF
-when two or more months exist)
+WHAT THE SHEET SHOWS NOW (workbook sheet "4 Trend"; the PDF's last section
+when two or more months exist - see "IN THE PDF" below)
     1. Key figures - one column per month (up to the last 12 that have been
        read) and a "Total" column:
          invoices, sales, product / service sales, product cost, labour,
@@ -36,6 +36,17 @@ workbook is generated with the list (inputs_repo.save_rto_month).
 "Total" adds the months up; percentages and averages in that column are
 worked out again from the totals (never an average of percentages).
 
+IN THE PDF (v0.31.0)
+--------------------
+Brinda (10-11-2026): the trend goes at the END of the PDF, on a page of its
+own, whenever the tool holds two or more months. The PDF keeps tables to at
+most eight columns so the print stays readable, so it shows the LAST SIX
+months (`PDF_MONTHS`) plus a Total of those six, and only parts 1 and 2
+(key figures, change from the previous month) - no charts, no branch or
+product tables. pdf_book.py calls trend_sheet(..., charts=False,
+last=PDF_MONTHS, by_month_tables=False). The Excel sheet is unchanged: up
+to 12 months, all five parts.
+
 HOW TO BUILD UP A TREND
 -----------------------
 Read each month's Zoho invoice export once (Generate reports > step 2) and
@@ -60,6 +71,7 @@ from app.reports.data import MonthData
 from app.reports.workbook import (
     MONEY, NAVY, PCT, _finish, _font, rule, section, title)
 
+PDF_MONTHS = 6     # months shown in the PDF (label + 6 months + Total = 8 columns)
 PALETTE = ("1F5FBF", "2E9E6B", "E08A1E", "C0392B", "7D4CDB", "17A2B8",
            "D4AC0D", "8E5B3A", "5B6B82", "E0559B")
 COUNT = "0"
@@ -154,9 +166,17 @@ def _colour(chart) -> None:
 
 
 def trend_sheet(ws: Worksheet, d: MonthData, months: list[MonthData],
-                rto_by_month: dict[str, dict] | None = None, charts: bool = True) -> None:
-    """`charts=False` (v0.10.3): the PDF version carries no graphs."""
+                rto_by_month: dict[str, dict] | None = None, charts: bool = True,
+                last: int | None = None, by_month_tables: bool = True) -> None:
+    """
+    Write the trend. The Excel sheet uses the defaults. For the PDF
+    (v0.31.0): `charts=False` - no graphs; `last=6` - only the latest six
+    months, so the table fits eight columns ("Total" is then the total of
+    those six); `by_month_tables=False` - key figures and change only.
+    """
     rto_by_month = rto_by_month or {}
+    if last:
+        months = months[-last:]
     labels = [m.label[:3] + " " + str(m.year) for m in months]
     figures = [month_figures(m, rto_by_month.get(month_key(m.year, m.month)))
                for m in months]
@@ -210,10 +230,11 @@ def trend_sheet(ws: Worksheet, d: MonthData, months: list[MonthData],
             _put(ws, row, name, values + [round(sum(values), 2)], MONEY)
         return row
 
-    by_month("Sales by branch", "Branch",
-             lambda m: [(i.branch or "(no branch)", i.sales) for i in m.invoices], None)
-    by_month("Top 10 products by sales", "Product / service",
-             lambda m: [(l.product, l.sales) for l in m.lines], 10)
+    if by_month_tables:                 # not in the PDF (v0.31.0)
+        by_month("Sales by branch", "Branch",
+                 lambda m: [(i.branch or "(no branch)", i.sales) for i in m.invoices], None)
+        by_month("Top 10 products by sales", "Product / service",
+                 lambda m: [(l.product, l.sales) for l in m.lines], 10)
 
     # --- 5. charts ---------------------------------------------------------------
     if not charts:
