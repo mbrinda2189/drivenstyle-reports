@@ -284,6 +284,11 @@ def write_workbook(data: MonthData, trend: list[MonthData],
     link = rr.Linked(data, rto) if rto is not None else None
     if link is not None:
         written += rr.write_rto_sheets(wb, data, link)
+    if data.zoho_costs is not None and data.zoho_costs.given:
+        # v0.33.0: product cost, master sheet vs Zoho (app/reports/cogs_check.py)
+        from app.reports.cogs_check import SHEET as COGS_SHEET, cogs_sheet
+        cogs_sheet(wb.create_sheet(COGS_SHEET), data, data.zoho_costs)
+        written.append(COGS_SHEET)
     left = wb.create_sheet("Not included")
     not_included_sheet(left, data)
     summary = wb.create_sheet(rr.SUMMARY_SHEET, 1)          # right after the Cover
@@ -967,6 +972,9 @@ def pnl_sheet(ws: Worksheet, d: MonthData, largest_first: bool = False) -> None:
     _statement(ws, row, d, net=True, largest_first=largest_first)
     if d.books_labour:
         _labour_vs_books(ws, d)
+    if d.zoho_costs is not None and d.zoho_costs.given:     # v0.33.0
+        from app.reports.cogs_check import pnl_block      # (it imports this module)
+        pnl_block(ws, d, d.zoho_costs, _bottom_row(ws) + 2)
     _finish(ws)
 
 

@@ -160,7 +160,9 @@ def _number(value) -> float:
     return parse_inr(str(value or "")) or 0.0
 
 
-def _rows(path: Path) -> list[list]:
+def table_rows(path: Path) -> list[list]:
+    """Every row of a .csv or the first sheet of an .xlsx, as lists of cell
+    values (also used for Zoho's COGS and FIFO reports, zoho_costs.py)."""
     ext = path.suffix.lower()
     if ext == ".csv":
         for encoding in ("utf-8-sig", "cp1252"):
@@ -179,11 +181,14 @@ def _rows(path: Path) -> list[list]:
     raise ExpenseFileError("Choose Zoho's Expense export (.xlsx or .csv).")
 
 
+_rows = table_rows        # the old name
+
+
 def read_expenses(path: str | Path, year: int, month: int) -> ExpenseFile:
     """The month's rows of Zoho's Expense export, added up per account."""
     path = Path(path)
     try:
-        rows = _rows(path)
+        rows = table_rows(path)
     except ExpenseFileError:
         raise
     except Exception as exc:

@@ -238,6 +238,7 @@ back-posting, no daily rounding of incentive, and every control.
 | 5 | v0.27.0 | **Done.** Daily payouts: upload PDFs and Scan, Review with shared matches, Payouts (Mark paid with reference / proof, Hold, Release, Reopen, Cancel invoice), History; register in database tables; start date 01-10-2026 |
 | 6 | v0.28.0 | **Done.** Summary screen: payout slip (to pay / paid on a day), summary by person, day and month, month check against the monthly tool, Excel export of the register |
 | after 7 | v0.32.0 | Discounts in the reports; Zoho expense upload on Monthly inputs; labour tool vs Zoho under the P&L (schema step 15) |
+| after 7 | v0.33.0 | Floor mat & sunfilm vs cars delivered; Zoho COGS / FIFO uploads on Generate and sheet 18 COGS check (schema step 16) |
 | after 7 | v0.31.0 | Monthly PDF ends with the Trend (last six months, own page) |
 | after 7 | v0.30.0 | Delivery list may be the dealership's Car Sales Report (.xls upload, no DNS columns); `xlrd` added to the server's libraries |
 | 7 | v0.29.0 | **Done - installed 09-10-2026.** `deploy/deploy.ps1` (from the PC) and `deploy/install.sh` (on the server): own user and folders, service, one nginx site, HTTPS, LibreOffice, nightly backup, rollback; `docs/deployment.md`; privacy page `/privacy` |

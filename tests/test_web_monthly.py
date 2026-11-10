@@ -91,7 +91,8 @@ def test_files_are_checked_when_uploaded(world):
     settings, admin, _, export = world
     start = admin.get(f"{M}/overview").json()
     assert start["label"] == "September 2026" and start["scan"] is None
-    assert start["files"] == {"invoices": None, "payments": None, "rto": None}
+    assert start["files"] == {"invoices": None, "payments": None, "rto": None,
+                              "cogs": None, "fifo": None}          # v0.33.0: two more
     assert len(start["reports"]) == 12 and start["masters"]["products"] == 9
     assert admin.post(f"{M}/read", headers=H).status_code == 400          # nothing uploaded
     files = put_file(admin, "invoices", export, "C:\\Zoho\\Invoice.csv").json()

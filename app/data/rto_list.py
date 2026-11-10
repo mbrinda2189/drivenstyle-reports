@@ -71,8 +71,27 @@ Brinda's decision (10-11-2026): read this file as it is. So:
   over, and the next sheet is tried - otherwise the list would be read as
   "no cars delivered".
 * Its other sheets ("Part Wise - List", "CBE - CS OCT'26" ...) are the
-  dealership's own accessory invoices, line by line. They are not used:
-  the OE total per car is already on "Act Del List".
+  dealership's own accessory invoices, line by line. The OE total per car
+  is already on "Act Del List"; the lines are read only for the PART NAMES
+  (v0.33.0, below).
+
+THE DEALER'S ACCESSORY LINES (v0.33.0)
+--------------------------------------
+The client asked for floor-mat and sunfilm figures against the cars
+delivered, including "OE full mat" - a full floor mat sold by the
+dealership itself. "Act Del List" gives only an OE total per car, so the
+sheets with the dealer's accessory invoices are read too:
+
+    Part Wise - List      WIN (= the VIN) | Invoice Status | Part Name | Qty
+    CBE - CS OCT'26 ...   VIN No | Part Name | Qty   (counter sales)
+
+A sheet is used when its heading row has Part Name, Qty and WIN or VIN No.
+Each line is given to the delivered car with the same last six VIN digits
+(`RtoCar.oe_parts`, part name -> qty). Lines whose Invoice Status is "C"
+(cancelled) are left out; "N" and "F" (free) lines count. Lines for cars
+not in the delivery list (older cars at the counter) are not used.
+An RTO list without such sheets simply gives no parts; its "OE Accessories
+List" text is still looked at (app/reports/fitment.py).
 
 This module has no database and no Qt code.
 """
@@ -80,7 +99,7 @@ This module has no database and no Qt code.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
@@ -115,6 +134,9 @@ class RtoCar:
     # because nobody filled them, NOT because the car took nothing - the
     # reports use `dns_given` below to leave those figures out.
     dns_columns: bool = True
+    # v0.33.0: the dealer's own accessory lines for this car (part name as
+    # printed -> quantity), from the Car Sales Report's part-wise sheets.
+    oe_parts: dict[str, float] = field(default_factory=dict)
 
     @property
     def has_dns(self) -> bool:
@@ -148,6 +170,12 @@ REQUIRED = ("customer", "model", "vin")
 # file, the list "has no DNS columns" (see RtoCar.dns_columns).
 DNS_FIELDS = ("dns_list", "dns_value", "executive_contribution", "team_contribution",
               "incentive", "remarks")
+
+
+# v0.33.0: the dealer's accessory-line sheets (see module notes).
+PART_HEADINGS = {"partname": "part", "qty": "qty", "win": "vin", "vinno": "vin",
+                 "invoicestatus": "status"}
+CANCELLED = "C"
 
 
 def _key(text) -> str:
@@ -267,6 +295,7 @@ def read_rto(path: str | Path) -> list[RtoCar]:
                 found_headings = True
                 cars = _cars(rows[h + 1:], cols, h + 2)
                 if cars:
+                    _add_parts(cars, sheets)
                     return cars
                 break                       # headings but no car: next sheet
     if found_headings:
@@ -303,3 +332,31 @@ def _cars(rows: list[tuple], cols: dict[str, int], first_row: int) -> list[RtoCa
             incentive=_amount(get(row, "incentive")), remarks=_text(get(row, "remarks")),
             dns_columns=has_dns))
     return out
+
+
+def _add_parts(cars: list[RtoCar], sheets: list[list[tuple]]) -> None:
+    """
+    v0.33.0: give each delivered car the dealer's accessory lines for it,
+    from every sheet with Part Name, Qty and WIN / VIN No headings (see
+    module notes). Cancelled lines (Invoice Status "C") are left out.
+    """
+    by_vin = {c.vin6: c for c in cars if c.vin6}
+    for rows in sheets:
+        for h, heading_row in enumerate(rows[:5]):
+            cols = {PART_HEADINGS[_key(c)]: i for i, c in enumerate(heading_row)
+                    if _key(c) in PART_HEADINGS}
+            if not all(f in cols for f in ("part", "qty", "vin")):
+                continue
+            for row in rows[h + 1:]:
+                def get(field):
+                    i = cols.get(field)
+                    return row[i] if i is not None and i < len(row) else None
+                car = by_vin.get(vin6(get("vin")))
+                part = _text(get("part"))
+                if car is None or not part:
+                    continue
+                if _text(get("status")).upper() == CANCELLED:
+                    continue
+                qty = _amount(get("qty")) or 1.0
+                car.oe_parts[part] = round(car.oe_parts.get(part, 0.0) + qty, 2)
+            break

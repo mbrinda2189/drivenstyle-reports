@@ -120,6 +120,9 @@ an older database then upgrades it in place without losing data.
                      (Zoho goods / service)
     step 13 (v0.23.0) users of the web tool (sign-in list with roles)
     step 14 (v0.27.0) the daily payout register of the web tool
+    step 15 (v0.32.0) Zoho expense accounts -> heads; labour as per Zoho
+    step 16 (v0.33.0) rto_months: cars that took a full floor mat (OE /
+                     DNS) and sunfilm (side & rear / front), for the trend
 
 A step is either a block of SQL or a Python function taking the connection
 (used when values must be worked out in Python, e.g. contact-number keys).
@@ -134,7 +137,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -598,7 +601,22 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
         PRIMARY KEY (month, kind)
     );
     """,
+    # --- 15 -> 16 : floor mat and sunfilm per month, for the trend (v0.33.0) ---
+    # Cars delivered in the month that took each (app/reports/fitment.py),
+    # kept when a workbook is made with the delivery list. NULL (not 0) for
+    # months generated before v0.33.0: the trend then shows them blank
+    # instead of a false "none".
+    # A function, so a column that is already there is not added twice.
+    lambda conn: _step_16(conn),
 ]
+
+
+def _step_16(conn: sqlite3.Connection) -> None:
+    """rto_months gains the four floor mat / sunfilm counts (v0.33.0)."""
+    have = {r[1] for r in conn.execute("PRAGMA table_info(rto_months)")}
+    for column in ("oe_mat", "dns_mat", "film_side", "film_front"):
+        if column not in have:
+            conn.execute(f"ALTER TABLE rto_months ADD COLUMN {column} INTEGER")
 
 
 def connect(path: str | Path | None = None) -> sqlite3.Connection:

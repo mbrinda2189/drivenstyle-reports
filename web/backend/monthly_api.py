@@ -29,6 +29,11 @@ WHAT IS DIFFERENT ON THE WEB
           rto        the dealership's delivery (RTO) list        - optional
                      (.xlsx, or the dealership's Car Sales Report as
                      .xls - v0.30.0)
+          cogs       Zoho's Account Transactions of the Cost of  - optional
+                     Goods Sold account (v0.33.0)
+          fifo       Zoho's FIFO Cost Lot Tracking report        - optional
+                     (v0.33.0) - either of the two adds sheet 18
+                     "COGS check" (app/reports/cogs_check.py)
       They stay there so that History > Regenerate can use them again
       without a new upload. A new upload of the same kind replaces the old.
     * WORKBOOKS ARE DOWNLOADED. They are written to data/web/output/ and
@@ -65,6 +70,7 @@ from app.data.invoices_repo import (
 from app.data.masters_repo import MastersRepo
 from app.data.payments_io import PaymentsFileError, read_payments
 from app.data.rto_list import RtoFileError, read_rto
+from app.data.zoho_costs import ZohoCostFileError, read_cogs, read_fifo
 from app.reports.generate import GenerateError, generate, make_pdf
 from app.reports.issues_export import (
     default_file_name, export_issues, export_matches, matches_file_name)
@@ -83,6 +89,9 @@ FILE_KINDS = {
     # .xls too (v0.30.0): the dealership's Car Sales Report comes as an
     # old-style .xls file; app/data/rto_list.py reads it with xlrd.
     "rto": ("Delivery (RTO) list", (".xlsx", ".xls")),
+    # v0.33.0: Zoho's cost of goods sold, for the "COGS check" sheet
+    "cogs": ("Zoho COGS (Account Transactions)", (".xlsx", ".csv")),
+    "fifo": ("Zoho FIFO Cost Lot Tracking", (".xlsx", ".csv")),
 }
 
 
@@ -143,6 +152,12 @@ def add_routes(api: FastAPI, connection, admin, data_dir: Path) -> None:
         path = months_dir / month / note["stored"] if note else None
         return path if path and path.is_file() else None
 
+    def uploaded_names(month: str) -> dict[str, str]:
+        """The COGS / FIFO files' names as uploaded, for the sheet's notes."""
+        saved = notes(month)
+        return {label: saved[kind]["name"] for kind, label in (("cogs", "COGS"), ("fifo", "FIFO"))
+                if kind in saved}
+
     def files_for_screen(month: str) -> dict:
         saved = notes(month)
         return {kind: ({"name": saved[kind]["name"], "at": saved[kind]["at"],
@@ -177,10 +192,15 @@ def add_routes(api: FastAPI, connection, admin, data_dir: Path) -> None:
                 read_payments(trial)
             elif kind == "rto":
                 read_rto(trial)
+            elif kind == "cogs":
+                read_cogs(trial)
+            elif kind == "fifo":
+                read_fifo(trial)
             else:
                 year, mon = ym(month)
                 classify_export(trial, year, mon, FIRM_GSTIN)
-        except (PaymentsFileError, RtoFileError, ExportFileError) as exc:
+        except (PaymentsFileError, RtoFileError, ExportFileError,
+                ZohoCostFileError) as exc:
             trial.unlink(missing_ok=True)
             raise HTTPException(400, str(exc)) from exc
         for old in folder.glob(f"{kind}.*"):
@@ -298,17 +318,21 @@ def add_routes(api: FastAPI, connection, admin, data_dir: Path) -> None:
                   who: dict) -> dict:
         output_dir.mkdir(parents=True, exist_ok=True)
         payments, rto = stored(month, "payments"), stored(month, "rto")
+        cogs, fifo = stored(month, "cogs"), stored(month, "fifo")        # v0.33.0
         with connection() as conn:
             masters, invoices, inputs = repos(conn, who)
             try:
                 result = generate(masters, invoices, inputs, year, mon, output_dir, reports,
-                                  str(payments or ""), str(rto or ""), pdf=pdf)
+                                  str(payments or ""), str(rto or ""), pdf=pdf,
+                                  cogs_path=str(cogs or ""), fifo_path=str(fifo or ""),
+                                  file_names=uploaded_names(month))
             except GenerateError as exc:
                 raise HTTPException(400, str(exc)) from exc
             run = next(r for r in inputs.runs(latest_per_month=False)
                        if r["file_path"] == str(result.path))
             return {"run": run_for_screen(run), "payments_used": result.payments_used,
-                    "rto_used": rto is not None, "pdf_error": result.pdf_error}
+                    "rto_used": rto is not None, "pdf_error": result.pdf_error,
+                    "cogs_used": cogs is not None or fifo is not None}
 
     # ---- History ----------------------------------------------------------------------------
     def find_run(inputs: InputsRepo, run_id: int) -> dict:
@@ -364,7 +388,9 @@ def add_routes(api: FastAPI, connection, admin, data_dir: Path) -> None:
             try:
                 make_pdf(masters, invoices, inputs, year, mon, run["file_path"],
                          str(stored(run["month"], "payments") or ""),
-                         str(stored(run["month"], "rto") or ""))
+                         str(stored(run["month"], "rto") or ""),
+                         str(stored(run["month"], "cogs") or ""),
+                         str(stored(run["month"], "fifo") or ""))
             except (PdfError, GenerateError) as exc:
                 raise HTTPException(400, str(exc)) from exc
             return run_for_screen(run)

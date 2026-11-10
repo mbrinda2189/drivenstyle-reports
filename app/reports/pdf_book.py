@@ -19,6 +19,8 @@ WHAT IS IN THE PDF, in this order (the client's note of 05-10-2026, v0.13.0)
 ----------------------------------------------------------------------------
      1. Profit & loss                          (first page)
      2. New-car business                       five lines (needs the list)
+                                               + floor mat and sunfilm against the
+                                               cars delivered (v0.33.0, fitment.py)
      3. Top 10 products / top 10 services by gross profit (high-profit items)
      4. Penetration by location                (needs the delivery list)
      5. OE accessories by location, by model   (needs the delivery list)
@@ -29,6 +31,9 @@ WHAT IS IN THE PDF, in this order (the client's note of 05-10-2026, v0.13.0)
     10. Spot incentive                         by executive + "Internal team"
     11. Payment modes                          by mode, by account
     12. Trend (month on month)                 v0.31.0, see below
+  and between 11 and 12, only when a Zoho COGS report was uploaded (v0.33.0):
+        Product cost - master vs Zoho            the summary of sheet 18 and
+                                                 the 10 invoices that differ most
 Nothing else: no headline figures, no descriptions under the headings, no
 "Prepared on" line, and none of the sections left off the note (executive
 summary, service vs product, indirect vs direct, new-car vs other, DNS
@@ -101,6 +106,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from app.data.payments_io import Payment
 from app.reports import rto_reports as rr
+from app.reports.fitment import fitments
 from app.reports.data import (
     LABOUR_GROUPS, MonthData, labour_group, round_up_10, segment_group)
 from openpyxl.styles import PatternFill
@@ -452,6 +458,23 @@ def _new_car(ws, d, link):
         ws.cell(row, 1, label).font = _font()
         cell = ws.cell(row, 2, value)
         cell.font, cell.number_format = _font(True), fmt
+    # v0.33.0: floor mat and sunfilm against the cars delivered (the client's
+    # request, 10-11-2026) - the same table as on sheet 13.
+    row = section(ws, row + 2, "Floor mat and sunfilm - cars delivered")
+    table(ws, row, rr.fitment_cols(pdf=True), fitments(link))
+    _finish(ws)
+
+
+def _cogs(ws, d):
+    """v0.33.0: product cost, master vs Zoho - the summary of sheet 18 and
+    the ten invoices with the biggest difference (the rest is in Excel)."""
+    from app.reports.cogs_check import Comparison, invoice_cols, summary_cols
+    c = Comparison(d, d.zoho_costs)
+    row = title(ws, "Product cost - master vs Zoho", d.label)
+    rows = c.invoice_rows()
+    t = table(ws, row, summary_cols(c), c.summary_rows(rows))
+    row = section(ws, t["next"], "The 10 invoices that differ most (all in Excel, sheet 18)")
+    table(ws, row, invoice_cols(c, short=True), rows[:10], total_label="Total of these 10")
     _finish(ws)
 
 
@@ -756,6 +779,8 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
              ("Vehicle-wise", lambda ws: _vehicle(ws, data)),
              ("Spot incentive", lambda ws: _incentive(ws, data)),
              ("Payment modes", lambda ws: _payments(ws, data, payments))]
+    if data.zoho_costs is not None and data.zoho_costs.given:      # v0.33.0
+        plan.append(("Product cost - master vs Zoho", lambda ws: _cogs(ws, data)))
     # v0.31.0: the trend comes last, on a page of its own, when there is
     # something to compare (two or more months). Last six months only.
     if len(months) >= 2:

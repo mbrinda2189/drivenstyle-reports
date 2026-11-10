@@ -317,6 +317,11 @@ class MonthData:
     # SHOWN beside the tool's own labour in the Profit & loss; never used
     # in any figure. Empty when no expense file was uploaded for the month.
     books_labour: dict = field(default_factory=dict)
+    # v0.33.0: Zoho's cost of goods sold reports uploaded on Generate
+    # (app/data/zoho_costs.ZohoCosts), or None. Only SHOWN beside the
+    # master cost (sheet 18 COGS check, a block under the P&L); never used
+    # in any figure. Set by reports/generate.py, not by build_month.
+    zoho_costs: object = None
 
     @property
     def label(self) -> str:

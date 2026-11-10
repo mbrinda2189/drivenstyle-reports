@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.32.0** (tags v0.1.0 … v0.32.0 on GitHub
+Current version: **v0.33.0** (tags v0.1.0 … v0.33.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -227,6 +227,20 @@ Branding page is filled (home page + `/privacy`).
   export (131 invoices = Zoho P&L); Invoice (4) had 5 more (DNS-477/478/479/
   493/495, 2,02,050) since removed in Zoho - DNS-479 is posted in the daily
   payouts (labour 1,500 + incentive 961.51): Brinda to cancel it there.
+- v0.33.0 (Brinda, 10-11-2026, defaults approved): (1) fitment.py - OE full
+  mat (dealer part lines of the Car Sales Report by VIN, rto_list.oe_parts,
+  status C left out, "FULL FLOOR MAT" only), DNS full mat ("full floor mat"),
+  sunfilm side & rear / front; cars + % of delivered + qty; sheet 13, Summary,
+  PDF New-car business, Trend (schema 16: rto_months counts, NULL = before).
+  Oct: 32 / 20 / 22 / 16 of 219. (2) COGS check: uploads "cogs" (Account
+  Transactions, Cost of Goods Sold) + "fifo" (FIFO Cost Lot Tracking) on
+  Generate -> sheet 18 (zoho_costs.py, cogs_check.py), P&L block, PDF page;
+  P&L KEEPS master cost. Oct COGS = 7,65,567.18 inv + 4,510 bill - 6,003.79
+  VC = 7,64,073.39. FIFO is filtered by BILL date -> export from start of
+  business to TODAY. Biggest gaps: Sunfilm Side and Rear - GEN (not stock-
+  tracked; Zoho ~11.5k per car?) - client to check its purchase rate.
+  PROPOSED, not built: penetration "how the month's invoices are counted"
+  box (A 55 / B 19 / C 55 / D 2 = 131) under sheet 13 + PDF.
 - ON HOLD (Brinda, 10-11-2026 - "let the staff work on it today"):
   (1) Daily Review: say "N uploaded PDFs not scanned yet - press Scan" instead
   of "Nothing to decide" when the inbox holds PDFs of waiting invoices

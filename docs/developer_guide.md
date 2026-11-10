@@ -326,7 +326,8 @@ rough line counts, to show you where the weight is.
 | `inputs_repo.py` | the monthly inputs, the history of generated reports, and (v0.32.0) the remembered Zoho expense-account matches and the month's labour as per Zoho |
 | `expenses_io.py` | v0.32.0: reads Zoho's Expense export per account (excl. GST) and suggests a head for each account |
 | `payments_io.py` | read Zoho's "Payments Received" export |
-| `rto_list.py` | read the dealership's delivery (RTO) list - the hand-made RTO list (.xlsx) or the dealership's Car Sales Report (.xls, read with `xlrd`, no DNS columns) |
+| `zoho_costs.py` | v0.33.0: reads Zoho's COGS Account Transactions and FIFO Cost Lot Tracking reports |
+| `rto_list.py` | read the dealership's delivery (RTO) list - the hand-made RTO list (.xlsx) or the dealership's Car Sales Report (.xls, read with `xlrd`, no DNS columns); from v0.33.0 also the dealer's part lines per car (`oe_parts`) |
 
 ### 5.3 `app/reports/` - the figures and the output (no screens)
 
@@ -338,6 +339,8 @@ rough line counts, to show you where the weight is.
 | `rto_reports.py` | the new-car reports and the executive summary; `list_cols` leaves out the list's own DNS figures when the list has none |
 | `trend.py` | month-on-month trend; Excel sheet 4, and (v0.31.0) the PDF's last section - six months, key figures and change only (`PDF_MONTHS`) |
 | `pdf_book.py` (767) | lays out the PDF version of the reports |
+| `fitment.py` | v0.33.0: floor mat and sunfilm against the cars delivered (the word rules live here) |
+| `cogs_check.py` | v0.33.0: sheet 18 COGS check - master cost vs Zoho, invoice and item; the P&L block |
 | `pdf_export.py` (193) | turns a workbook into a PDF (LibreOffice on Linux, Excel on Windows) |
 | `generate.py` (173) | builds a month's workbook in one call |
 | `issues_export.py` | Scan review issues as an Excel file |
@@ -578,10 +581,10 @@ You will need this when a feature needs a new table or column.
 **The rule: steps are only ever added at the end. An old step is never
 edited**, because databases in use have already run it.
 
-1. Open `app/data/database.py`. Find `SCHEMA_VERSION = 14` and the list
+1. Open `app/data/database.py`. Find `SCHEMA_VERSION = 16` and the list
    `_MIGRATIONS`.
 2. Add a new step at the **end** of the list, written like the last one.
-3. Raise `SCHEMA_VERSION` by one (to 15).
+3. Raise `SCHEMA_VERSION` by one (to 17).
 4. Add a test, copying `tests/test_database_upgrade.py`: it builds a
    database at the old version, upgrades it, and checks the data survived.
 5. Run all the tests.

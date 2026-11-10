@@ -53,6 +53,13 @@ figure is LEFT OUT:
 Penetration still works: "took DNS" then comes from the linked invoices.
 `Linked.dns_given` says which case applies; `list_cols` drops the columns.
 
+FLOOR MAT AND SUNFILM (v0.33.0)
+-------------------------------
+Sheet 13, the Summary and the PDF's New-car business show, for the cars
+delivered, how many took an OE (dealer) full floor mat, a DNS full floor
+mat, DNS sunfilm side & rear and DNS sunfilm front - cars, % of cars
+delivered and quantity. The rules are in app/reports/fitment.py.
+
 Sales are after discount and exclude GST (as everywhere in the workbook);
 "Invoice total" includes GST, to compare with the list's DNS value.
 
@@ -68,6 +75,7 @@ from openpyxl.styles import Alignment, PatternFill
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.data.rto_list import RtoCar, dns_given, vin6
+from app.reports.fitment import fitments
 from app.reports.data import Invoice, MonthData
 from app.reports.workbook import (
     AMBER_TINT, MONEY, NAVY, PCT, SLATE, Col, _finish, _font, exec_label,
@@ -176,6 +184,28 @@ def _penetration_cols(first: str) -> list[Col]:
     ]
 
 
+FITMENT_NOTE = ("Cars = delivered cars that took it (each car once); % of the cars delivered "
+                "this month. OE = the dealer's own full floor mat (Car Sales Report part lines); "
+                "DNS = Drive N Style's invoices linked by the VIN.")
+
+
+def fitment_cols(pdf: bool = False) -> list[Col]:
+    """v0.33.0: the floor mat and sunfilm table. Sheet 13 works the % out
+    with a formula from the "Cars delivered" column; the PDF (narrow page)
+    leaves that column out and shows the % as a figure."""
+    if pdf:
+        return [Col("Particulars", "name", width=34), Col("Cars", "cars", "qty", 10),
+                Col("% of cars delivered", "pct", "pct", 13), Col("Qty", "qty", "qty", 10)]
+    return [
+        Col("Particulars", "name", width=30),
+        Col("Cars", "cars", "qty", 10),
+        Col("% of cars delivered", "pct", "pct", 12,
+            formula='=IF({delivered}{r}=0,"",{cars}{r}/{delivered}{r})'),
+        Col("Qty", "qty", "qty", 10),
+        Col("Cars delivered", "delivered", "qty", 11),
+    ]
+
+
 def penetration_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
     notes = [
         "Source: the dealership's delivery (RTO) list. A car 'took DNS' when the list shows "
@@ -189,8 +219,12 @@ def penetration_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
     t = table(ws, row, list_cols(link, _penetration_cols("Location")),
               _group_rows(link, lambda c: c.location))
     row = section(ws, t["next"], "By model")
-    table(ws, row, list_cols(link, _penetration_cols("Model")),
-          _group_rows(link, lambda c: c.model_group))
+    t = table(ws, row, list_cols(link, _penetration_cols("Model")),
+              _group_rows(link, lambda c: c.model_group))
+    # v0.33.0: floor mat and sunfilm against the cars delivered
+    row = section(ws, t["next"], "Floor mat and sunfilm - cars delivered")
+    ws.cell(row, 1, FITMENT_NOTE).font = _font(color=SLATE, size=9)
+    table(ws, row + 1, fitment_cols(), fitments(link))
     _finish(ws)
 
 
@@ -524,6 +558,11 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
         put("Sales from delivered cars (excl. GST)", new_sales)
         put("Sales from other business (excl. GST)", other_sales)
         put("Share of sales from delivered cars", _ratio(new_sales, d.sales), fmt=PCT)
+
+        # v0.33.0: floor mat and sunfilm against the cars delivered
+        head("Floor mat and sunfilm (cars delivered)", "Cars", "% of cars", "Qty")
+        for f in fitments(link):
+            put(f["name"], f["cars"], f["pct"], f["qty"], fmt=("0", PCT, "0"))
 
         by_loc = _group_rows(link, lambda c: c.location)
         if highest_first:     # PDF version (v0.10.5): highest penetration % first

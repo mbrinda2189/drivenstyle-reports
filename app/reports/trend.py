@@ -93,7 +93,11 @@ def month_figures(m: MonthData, rto: dict | None) -> dict:
         packages=sum(1 for i in m.invoices if i.package),
         incentive=m.incentive_payable,     # each executive rounded up to Rs. 10
         internal=m.internal_incentive,
-        cars=rto.get("cars"), took=rto.get("took_dns"))
+        cars=rto.get("cars"), took=rto.get("took_dns"),
+        # v0.33.0: cars that took a full floor mat / sunfilm (None for months
+        # generated before v0.33.0 - shown blank)
+        oe_mat=rto.get("oe_mat"), dns_mat=rto.get("dns_mat"),
+        film_side=rto.get("film_side"), film_front=rto.get("film_front"))
 
 
 ROWS = (  # (label, key or function of the figures, number format, bold)
@@ -120,9 +124,15 @@ ROWS = (  # (label, key or function of the figures, number format, bold)
     ("Cars fitted with DNS accessories", "took", COUNT, False),
     ("DNS penetration %", lambda f: _ratio(f["took"], f["cars"])
      if f["cars"] else "", PCT, False),
+    # v0.33.0: % of the cars delivered that took each (app/reports/fitment.py)
+    ("Full floor mat – OE (dealer) %", lambda f: _ratio(f["oe_mat"], f.get("fit_cars", f["cars"])), PCT, False),
+    ("Full floor mat – DNS %", lambda f: _ratio(f["dns_mat"], f.get("fit_cars", f["cars"])), PCT, False),
+    ("Sunfilm side & rear – DNS %", lambda f: _ratio(f["film_side"], f.get("fit_cars", f["cars"])), PCT, False),
+    ("Sunfilm front – DNS %", lambda f: _ratio(f["film_front"], f.get("fit_cars", f["cars"])), PCT, False),
 )
 ADDED = ("invoices", "sales", "discount", "product", "service", "cost", "labour", "gp", "indirect",
-         "net", "packages", "incentive", "internal", "cars", "took")
+         "net", "packages", "incentive", "internal", "cars", "took", "oe_mat", "dns_mat",
+         "film_side", "film_front")
 
 
 def _ratio(a, b):
@@ -134,6 +144,10 @@ def _total(figures: list[dict]) -> dict:
     for k in ADDED:
         values = [f[k] for f in figures if f[k] is not None]
         out[k] = round(sum(values), 2) if values else None
+    # The floor mat / sunfilm % of the total: only over the months that have
+    # those figures (generated from v0.33.0), not over every month's cars.
+    fit = [f["cars"] for f in figures if f.get("oe_mat") is not None and f["cars"]]
+    out["fit_cars"] = sum(fit) if fit else None
     return out
 
 

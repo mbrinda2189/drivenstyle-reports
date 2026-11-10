@@ -234,7 +234,8 @@ export const importApi = {
 // ---- the monthly reports tool (v0.26.0, admins only) ---------------------------
 /** One of the month's three uploaded files, or null when not uploaded. */
 export type MonthFile = { name: string; at: string; by: string } | null;
-export type FileKind = "invoices" | "payments" | "rto";
+// cogs / fifo (v0.33.0): Zoho's cost of goods sold reports, for the COGS check sheet
+export type FileKind = "invoices" | "payments" | "rto" | "cogs" | "fifo";
 
 /** What the last reading of the month's invoices gave. */
 export interface ScanSummary {

@@ -10,6 +10,9 @@
  *   2  Upload Zoho's invoice export  (Invoice.csv or .xlsx)        needed
  *   3  Upload Zoho's payments export (for the payment mode report) optional
  *   4  Upload the delivery (RTO) list (for the new-car sheets)     optional
+ *   5  Upload Zoho's COGS Account Transactions and / or            optional
+ *      FIFO Cost Lot Tracking (v0.33.0, sheet 18 "COGS check":
+ *      product cost, master sheet vs Zoho)
  *      then  [Read invoices]  ->  [Generate workbook]
  *
  * WHAT IS DIFFERENT FROM THE DESKTOP SCREEN
@@ -44,6 +47,12 @@ const FILES: { kind: FileKind; step: string; title: string; about: string; accep
   { kind: "rto", step: "Step 4 · optional", title: "Delivery (RTO) list",
     about: "The dealership's list of cars delivered (RTO list, or the Car Sales Report .xls), for the new-car reports.",
     accept: ".xlsx,.xls" },
+  { kind: "cogs", step: "Step 5 · optional", title: "Zoho COGS (Account Transactions)",
+    about: "Reports › Account Transactions, account Cost of Goods Sold, the month. Compared with the master cost on sheet 18.",
+    accept: ".xlsx,.csv" },
+  { kind: "fifo", step: "Step 5 · optional", title: "Zoho FIFO Cost Lot Tracking",
+    about: "Reports › FIFO Cost Lot Tracking, from the start of the business to TODAY (it is filtered by the bill date). Zoho's cost per item on sheet 18.",
+    accept: ".xlsx,.csv" },
 ];
 const MASTERS: [string, string][] = [["products", "Products"], ["executives", "Sales executives"],
                                      ["cars", "Cars"], ["incentives", "Incentives"]];

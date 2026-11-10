@@ -266,15 +266,21 @@ class InputsRepo:
     # Delivery (RTO) list totals per month - for the trend (v0.10.0)
     # ------------------------------------------------------------------
     def save_rto_month(self, year: int, month: int, cars: int, took_dns: int,
-                       dns_value: float, oe_value: float) -> None:
+                       dns_value: float, oe_value: float,
+                       fitted: dict[str, int] | None = None) -> None:
         """Keep the month's delivery-list totals (replaced each time the
-        month is generated with a list)."""
+        month is generated with a list). `fitted` (v0.33.0): cars that took
+        each of fitment.KEYS - oe_mat, dns_mat, film_side, film_front."""
+        fitted = fitted or {}
         with self.conn:
             self.conn.execute(
                 "INSERT OR REPLACE INTO rto_months(month, cars, took_dns, dns_value, "
-                "oe_value, saved_at) VALUES (?,?,?,?,?,?)",
+                "oe_value, saved_at, oe_mat, dns_mat, film_side, film_front) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (month_key(year, month), cars, took_dns, round(dns_value, 2),
-                 round(oe_value, 2), datetime.now().isoformat(timespec="seconds")))
+                 round(oe_value, 2), datetime.now().isoformat(timespec="seconds"),
+                 fitted.get("oe_mat"), fitted.get("dns_mat"), fitted.get("film_side"),
+                 fitted.get("film_front")))
 
     def rto_months(self) -> dict[str, dict]:
         """Month ("YYYY-MM") -> its saved delivery-list totals."""

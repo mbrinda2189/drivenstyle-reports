@@ -6,6 +6,57 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.33.0] – 2026-11-10 – Floor mat & sunfilm statistics, COGS check against Zoho
+
+Two requests from the client via Brinda (10-11-2026): floor mat and sunfilm
+figures against the cars delivered, and the cost of goods sold "at invoice
+level ... what costing is Zoho taking for each item, compared to the master
+sheet". Brinda: "yes, go with v0.33.0" on the defaults offered.
+
+### Added
+- **Floor mat and sunfilm against the cars delivered** (`app/reports/fitment.py`):
+  OE full floor mat (the dealer's), DNS full floor mat, DNS sunfilm side &
+  rear and front - cars, % of the cars delivered, qty. On sheet 13 (new
+  section), the Summary, the PDF's New-car business and the Trend (% rows).
+  Counts each delivered car once; only this month's delivered cars.
+  - OE = the dealer's accessory lines in the Car Sales Report ("Part Wise -
+    List" and the counter-sale sheets, by VIN; Invoice Status "C" left
+    out): part name with "FULL FLOOR MAT". 3D / cabin / dual-layer / boot
+    mats are not counted. `RtoCar.oe_parts` (`rto_list._add_parts`).
+  - DNS = invoice lines linked by VIN: "full floor mat" in the name (the PVC
+    Full Floor Mat items); "sunfilm" + side / rear, or + front / windshield.
+    Labour charge lines and the roll are not counted.
+  - Schema step 16: `rto_months` keeps the four counts per month (blank in
+    the trend for months generated earlier).
+- **COGS check - master sheet vs Zoho** (`app/data/zoho_costs.py`,
+  `app/reports/cogs_check.py`): two optional uploads on Generate (step 5) -
+  Zoho's **Account Transactions** of the Cost of Goods Sold account and the
+  **FIFO Cost Lot Tracking** report. Either adds sheet **18 COGS check**:
+  A. how Zoho's P&L COGS is made up (invoices, bills, vendor credits);
+  B. summary - agree / Zoho higher / lower / no COGS posted;
+  C. invoice by invoice - sales, master cost, Zoho cost, difference, margin
+  % both ways, biggest difference first; D. item by item - Zoho's FIFO cost
+  per unit vs the master cost per unit, items not tracked as stock in Zoho;
+  E. units sold with no stock (Zoho costs them at 0).
+  Under the P&L a short "Product cost - tool vs Zoho" block; in the PDF the
+  summary and the 10 invoices that differ most. **The P&L keeps the master
+  cost.**
+
+### Checked
+- October's real files: OE full mat 32 cars (14.6 %), DNS full mat 20
+  (9.1 %, qty 21), sunfilm side & rear 22 (10.0 %), front 16 (7.3 %) of 219.
+- Account Transactions: 7,65,567.18 on 103 invoices + bill 4,510.00 -
+  vendor credits 6,003.79 = 7,64,073.39 = Zoho's P&L COGS. FIFO: 216 sale
+  rows in October, 72 sold with no stock. Sheet recalculated: 0 errors.
+- The FIFO report is filtered by the BILL date: export it from the start
+  of the business to today (a bill dated later can cost an earlier sale).
+- 310 passed / 5 skipped.
+
+### Pending
+- Penetration table: a box tying the month's invoices to the table
+  (delivered cars / delivered another month / older cars / counter sales) -
+  proposed, awaiting Brinda's go-ahead.
+
 ## [0.32.0] – 2026-11-10 – Discounts shown, Zoho expense upload, labour vs Zoho
 
 Brinda, 10-11-2026: "why aren't the discounts calculated?"; "instead of

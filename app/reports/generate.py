@@ -5,9 +5,13 @@ generate.py - Build a month's workbook in one call
 WHAT THIS MODULE DOES
 ---------------------
 `generate(masters, invoices, inputs, year, month, out_dir, reports,
-payments_path)` is used by the Generate page and by History > Regenerate:
+payments_path, rto_path, cogs_path=, fifo_path=)` is used by the Generate
+page and by History > Regenerate:
 
-    1. reads the payments export, if one is given (payments_io.py)
+    1. reads the optional files: payments export (payments_io.py), delivery
+       list (rto_list.py) and - v0.33.0 - Zoho's COGS Account Transactions
+       and FIFO Cost Lot Tracking reports (zoho_costs.py), which add sheet
+       "18 COGS check"
     2. works out the month's figures and the trend months (data.py)
     3. writes DriveNStyle_<Mon>-<YYYY>_Reports.xlsx in `out_dir`
        (workbook.py), replacing an earlier file of the same name
@@ -32,6 +36,8 @@ from app.data.invoices_repo import InvoicesRepo, MONTH_NAMES
 from app.data.masters_repo import MastersRepo
 from app.data.payments_io import PaymentsFileError, read_payments
 from app.data.rto_list import RtoFileError, read_rto
+from app.data.zoho_costs import ZohoCostFileError, ZohoCosts, read_cogs, read_fifo
+from app.reports.fitment import counts as fitment_counts
 from app.reports.data import build_month, scanned_months, trend_months
 from app.reports.pdf_book import write_pdf_workbook
 from app.reports.pdf_export import PdfError, export_pdf, pdf_path_for
@@ -81,6 +87,21 @@ def _read_inputs(payments_path: str, rto_path: str):
     return payments, rto
 
 
+def _read_costs(cogs_path: str, fifo_path: str) -> ZohoCosts:
+    """v0.33.0: Zoho's COGS reports, either or both (see zoho_costs.py)."""
+    z = ZohoCosts()
+    try:
+        if cogs_path:
+            z.cogs = read_cogs(cogs_path)
+            z.names["COGS"] = Path(cogs_path).name
+        if fifo_path:
+            z.fifo = read_fifo(fifo_path)
+            z.names["FIFO"] = Path(fifo_path).name
+    except ZohoCostFileError as exc:
+        raise GenerateError(str(exc)) from exc
+    return z
+
+
 def _previous(masters, invoices, inputs, year: int, month: int):
     """The month before (if it has been read), for the executive summary."""
     earlier = [m for m in scanned_months(invoices) if m < (year, month)]
@@ -90,25 +111,31 @@ def _previous(masters, invoices, inputs, year: int, month: int):
 def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
              year: int, month: int, out_dir: str | Path, reports: list[str],
              payments_path: str = "", rto_path: str = "",
-             pdf: bool = False) -> GenerateResult:
+             pdf: bool = False, cogs_path: str = "", fifo_path: str = "",
+             file_names: dict[str, str] | None = None) -> GenerateResult:
     if invoices.scan_run(year, month) is None:
         raise GenerateError("This month's invoices have not been read yet.")
     out_dir = Path(out_dir)
     if not out_dir.is_dir():
         raise GenerateError(f"The folder “{out_dir}” does not exist.")
     payments, rto = _read_inputs(payments_path, rto_path)
+    costs = _read_costs(cogs_path, fifo_path)
+    # the names the files were uploaded with (the web keeps them as cogs.xlsx ...)
+    costs.names.update({k: v for k, v in (file_names or {}).items() if k in costs.names})
 
     # Products added or imported since the invoices were read also take
     # Zoho's item type as their category, unless it was set by hand.
     invoices.apply_zoho_categories()
     data = build_month(masters, invoices, inputs, year, month)
+    data.zoho_costs = costs if costs.given else None
     if rto is not None:
         # v0.10.0: keep the list's totals so the trend can show penetration
         # month by month (the list itself is not stored).
         link = Linked(data, rto)
         inputs.save_rto_month(year, month, len(rto),
                               sum(link.took_dns(c) for c in rto),
-                              sum(c.dns_value for c in rto), sum(c.oe_value for c in rto))
+                              sum(c.dns_value for c in rto), sum(c.oe_value for c in rto),
+                              fitted=fitment_counts(link))      # v0.33.0
     want_trend = "Trend analysis (month on month)" in reports
     trend = (trend_months(masters, invoices, inputs, year, month)
              if want_trend or pdf else [])
@@ -160,14 +187,17 @@ def _make_pdf(data, trend, payments, rto, previous, rto_by_month, workbook_path:
 
 def make_pdf(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
              year: int, month: int, workbook_path: str | Path,
-             payments_path: str = "", rto_path: str = "") -> Path:
+             payments_path: str = "", rto_path: str = "", cogs_path: str = "",
+             fifo_path: str = "") -> Path:
     """
     The PDF for a month from History: built from the data as it is NOW
     (masters and Scan review fixes made since are included), saved beside
     the workbook it belongs to. Raises PdfError / GenerateError.
     """
     payments, rto = _read_inputs(payments_path, rto_path)
+    costs = _read_costs(cogs_path, fifo_path)
     data = build_month(masters, invoices, inputs, year, month)
+    data.zoho_costs = costs if costs.given else None
     return _make_pdf(data, trend_months(masters, invoices, inputs, year, month), payments,
                      rto, _previous(masters, invoices, inputs, year, month),
                      inputs.rto_months(), Path(workbook_path), masters.user)
