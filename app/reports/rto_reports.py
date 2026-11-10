@@ -38,6 +38,21 @@ The two are shown side by side and NOT forced to agree: the differences
 are exactly what report 15 is for. A car "took DNS" for penetration when
 the list shows a DNS value or list, OR an invoice is linked to it.
 
+WHEN THE LIST HAS NO DNS COLUMNS (v0.30.0)
+------------------------------------------
+From October 2026 the client sends the dealership's Car Sales Report,
+which has the cars and OE accessories but none of Drive N Style's own
+columns (see app/data/rto_list.py). Showing "DNS value (list) 0.00" would
+look like a fact, so instead (Brinda, 10-11-2026) every "as per list" DNS
+figure is LEFT OUT:
+    * columns DNS value (list), DNS value per car, DNS accessories (list),
+      Incentive (list) and the Difference columns built on them;
+    * the summary lines "DNS value as per list" / "... per car delivered";
+    * report 15's comparison (nothing to compare with) - the sheet says so;
+    * report 14's remark counts (the file has no Remarks column).
+Penetration still works: "took DNS" then comes from the linked invoices.
+`Linked.dns_given` says which case applies; `list_cols` drops the columns.
+
 Sales are after discount and exclude GST (as everywhere in the workbook);
 "Invoice total" includes GST, to compare with the list's DNS value.
 
@@ -52,7 +67,7 @@ from datetime import datetime
 from openpyxl.styles import Alignment, PatternFill
 from openpyxl.worksheet.worksheet import Worksheet
 
-from app.data.rto_list import RtoCar, vin6
+from app.data.rto_list import RtoCar, dns_given, vin6
 from app.reports.data import Invoice, MonthData
 from app.reports.workbook import (
     AMBER_TINT, MONEY, NAVY, PCT, SLATE, Col, _finish, _font, exec_label,
@@ -63,6 +78,13 @@ RTO_SHEETS = ("13 New-car penetration", "14 Missed opportunity",
               "17 Consultant scorecard")
 SUMMARY_SHEET = "Summary"
 AGREE_WITHIN = 1.0          # rupees: list value vs invoice total "agrees"
+# Columns that show the list's OWN DNS figures (or are worked out from them).
+# Left out when the list has no DNS columns - see the module notes.
+LIST_ONLY_KEYS = {"dns_value", "per", "listed", "dns_list", "inc_list", "diff",
+                  "remarks"}
+NO_DNS_NOTE = ("This month's delivery list is the dealership's Car Sales Report: it has no "
+               "DNS columns, so the list's own DNS figures are left out. 'Took DNS' comes "
+               "from the Zoho invoices linked to each car by the VIN.")
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +95,8 @@ class Linked:
 
     def __init__(self, d: MonthData, cars: list[RtoCar]):
         self.cars = cars
+        # False for the dealership's Car Sales Report (no DNS columns).
+        self.dns_given = dns_given(cars)
         by_vin = {c.vin6: c for c in cars if c.vin6}
         self.invoices_of: dict[int, list[Invoice]] = defaultdict(list)  # car row -> invoices
         self.other: list[Invoice] = []
@@ -92,6 +116,14 @@ class Linked:
     @property
     def linked(self) -> list[Invoice]:
         return [i for invs in self.invoices_of.values() for i in invs]
+
+
+def list_cols(link: Linked, cols: list[Col]) -> list[Col]:
+    """`cols` as they are when the list has its DNS columns; otherwise without
+    the columns that would only show the list's (missing) DNS figures."""
+    if link.dns_given:
+        return cols
+    return [c for c in cols if c.key not in LIST_ONLY_KEYS]
 
 
 def _sum(invoices: list[Invoice], attr: str) -> float:
@@ -145,15 +177,20 @@ def _penetration_cols(first: str) -> list[Col]:
 
 
 def penetration_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
-    row = title(ws, "New-car penetration", d.label, [
+    notes = [
         "Source: the dealership's delivery (RTO) list. A car 'took DNS' when the list shows "
         "DNS accessories or an invoice is linked to it (last six digits of the VIN).",
         "OE = the car maker's accessories. 'OE listed, value blank' = accessories are named "
-        "in the list but no value was filled in, so OE value is understated."])
+        "in the list but no value was filled in, so OE value is understated."]
+    if not link.dns_given:
+        notes.append(NO_DNS_NOTE)
+    row = title(ws, "New-car penetration", d.label, notes)
     row = section(ws, row, "By location")
-    t = table(ws, row, _penetration_cols("Location"), _group_rows(link, lambda c: c.location))
+    t = table(ws, row, list_cols(link, _penetration_cols("Location")),
+              _group_rows(link, lambda c: c.location))
     row = section(ws, t["next"], "By model")
-    table(ws, row, _penetration_cols("Model"), _group_rows(link, lambda c: c.model_group))
+    table(ws, row, list_cols(link, _penetration_cols("Model")),
+          _group_rows(link, lambda c: c.model_group))
     _finish(ws)
 
 
@@ -166,17 +203,20 @@ def missed_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
         "Cars delivered this month with no DNS accessories (none in the list and no invoice "
         "linked). Remarks are as written in the list.",
         "Remarks such as 'will update later' or 'waiting for customer' are a follow-up list."])
-    counts: dict[str, int] = defaultdict(int)
-    for c in missed:
-        counts[c.remarks.upper() or "(no remark)"] += 1
-    row = section(ws, row, "By remark")
-    t = table(ws, row, [
-        Col("Remark", "remark", width=40),
-        Col("Cars", "cars", "qty", 10, total="sum"),
-    ], [dict(remark=k, cars=v) for k, v in sorted(counts.items(), key=lambda x: -x[1])],
-        empty_text="Every delivered car took DNS accessories.")
-    row = section(ws, t["next"], "Cars without DNS accessories")
-    table(ws, row, [
+    if link.dns_given:
+        # Count by remark - only when the list has a Remarks column (v0.30.0).
+        counts: dict[str, int] = defaultdict(int)
+        for c in missed:
+            counts[c.remarks.upper() or "(no remark)"] += 1
+        row = section(ws, row, "By remark")
+        t = table(ws, row, [
+            Col("Remark", "remark", width=40),
+            Col("Cars", "cars", "qty", 10, total="sum"),
+        ], [dict(remark=k, cars=v) for k, v in sorted(counts.items(), key=lambda x: -x[1])],
+            empty_text="Every delivered car took DNS accessories.")
+        row = t["next"]
+    row = section(ws, row, "Cars without DNS accessories")
+    table(ws, row, list_cols(link, [
         Col("Delivery date", "date", "date", 12),
         Col("Customer", "customer", width=28),
         Col("Model", "model", width=16),
@@ -186,7 +226,7 @@ def missed_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
         Col("OE accessories", "oe_list", width=36),
         Col("OE value", "oe_value", "money", 12, total="sum"),
         Col("Remark", "remarks", width=32),
-    ], [dict(date=c.delivered, customer=c.customer, model=c.model, vin=c.vin,
+    ]), [dict(date=c.delivered, customer=c.customer, model=c.model, vin=c.vin,
              consultant=c.consultant, location=c.location, oe_list=c.oe_list,
              oe_value=c.oe_value, remarks=c.remarks) for c in missed],
         filters=True, empty_text="Every delivered car took DNS accessories.")
@@ -206,6 +246,10 @@ def _status(car: RtoCar, invoices: list[Invoice]) -> str:
 
 
 def reconcile_rows(link: Linked) -> list[dict]:
+    """Car-by-car comparison of the list's DNS value with the invoices.
+    Empty when the list has no DNS columns: there is nothing to compare."""
+    if not link.dns_given:
+        return []
     rows = []
     for c in link.cars:
         invs = link.invoices(c)
@@ -222,6 +266,14 @@ def reconcile_rows(link: Linked) -> list[dict]:
 
 
 def reconcile_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
+    if not link.dns_given:
+        # v0.30.0: the dealership's Car Sales Report has no DNS value to check.
+        title(ws, "RTO list vs invoices", d.label, [
+            NO_DNS_NOTE,
+            "There is therefore nothing to compare with the invoices this month. The cars "
+            "and their invoices are on sheets 13, 14 and 16."])
+        _finish(ws)
+        return
     rows = reconcile_rows(link)
     row = title(ws, "RTO list vs invoices", d.label, [
         "Each delivered car with a DNS value in the list or an invoice in Zoho. 'DNS value "
@@ -335,11 +387,16 @@ def source_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
 # 17 Consultant scorecard
 # ---------------------------------------------------------------------------
 def scorecard_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
-    row = title(ws, "Consultant scorecard", d.label, [
+    notes = [
         "Sales consultants as named in the delivery list. 'Incentive (list)' is the Executive "
         "Incentive column of the list; 'Incentive (tool)' is the spot incentive the tool "
         "works out for the invoices linked to the consultant's cars.",
-        "The two are shown side by side for checking; neither is changed."])
+        "The two are shown side by side for checking; neither is changed."]
+    if not link.dns_given:
+        notes = ["Sales consultants as named in the delivery list. 'Incentive (tool)' is the "
+                 "spot incentive the tool works out for the invoices linked to the "
+                 "consultant's cars.", NO_DNS_NOTE]
+    row = title(ws, "Consultant scorecard", d.label, notes)
     groups: dict[tuple, dict] = {}
     for c in link.cars:
         key = (c.consultant.upper() or "(not given)", c.location)
@@ -359,7 +416,7 @@ def scorecard_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
         for k in ("listed", "sales", "cost", "labour", "inc_list", "inc_tool"):
             g[k] = round(g[k], 2)
     pen = '=IF({cars}{r}=0,"",{dns}{r}/{cars}{r})'
-    table(ws, row, [
+    table(ws, row, list_cols(link, [
         Col("Sales consultant", "consultant", width=28),
         Col("Location", "location", width=12),
         Col("Cars delivered", "cars", "qty", 10, total="sum"),
@@ -374,7 +431,7 @@ def scorecard_sheet(ws: Worksheet, d: MonthData, link: Linked) -> None:
         Col("Incentive (tool)", "inc_tool", "money", 13, total="sum"),
         Col("Difference", "diff", "money", 12, formula="={inc_tool}{r}-{inc_list}{r}",
             total="sum"),
-    ], rows, filters=True)
+    ]), rows, filters=True)
     _finish(ws, "C" + str(row + 1))
 
 
@@ -456,8 +513,9 @@ def summary_sheet(ws: Worksheet, d: MonthData, previous: MonthData | None,
         put("Cars delivered", cars, fmt="0")
         put("Cars fitted with DNS accessories", took, fmt="0")
         put("DNS penetration %", _ratio(took, cars), fmt=PCT, bold=True)
-        put("DNS value as per list", listed)
-        put("DNS value per car delivered", round(listed / cars, 2) if cars else 0.0)
+        if link.dns_given:          # not in the dealership's Car Sales Report
+            put("DNS value as per list", listed)
+            put("DNS value per car delivered", round(listed / cars, 2) if cars else 0.0)
         put("OE accessories value as per list", oe)
         put("Sales from delivered cars (excl. GST)", new_sales)
         put("Sales from other business (excl. GST)", other_sales)

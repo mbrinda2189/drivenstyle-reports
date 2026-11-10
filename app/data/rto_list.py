@@ -34,11 +34,45 @@ READING RULES
 -------------
 * The heading row is found by its headings (not by position), so extra
   title rows above it do not matter. Empty columns are ignored.
-* A row without a customer name is skipped.
+* A row without a customer name is skipped, and so is a repeat of the
+  heading row (a list grouped by executive repeats it above each group).
 * Values are "-" or blank when there is nothing: read as 0 / empty.
 * The delivery date is text like 01.09.26; a real Excel date also works.
 * Model names are typed many ways ("I20", "I 20", "All New i20", "New
   Venue"): `model_key` reduces them to one name so they can be grouped.
+
+THE DEALERSHIP'S OWN "CAR SALES REPORT" (v0.30.0)
+-------------------------------------------------
+From October 2026 the client sends the dealership's "Car Sales Report"
+(Car_Sales_Report_-_Oct26.xls) instead of the hand-made RTO list. Its
+"Act Del List" sheet has the same first nine columns as the September list
+- S.NO up to OE Total Value - but NOT the six columns Drive N Style's staff
+used to add by hand:
+
+    DNS Accessories List | DNS Total Value | Executive Contribution |
+    DNS Team Contribution | Executive Incentive | Remarks
+
+Brinda's decision (10-11-2026): read this file as it is. So:
+
+* Only Customer Name, Model and VIN No are REQUIRED headings. The DNS
+  columns are optional; when they are missing, `RtoCar.dns_columns` is
+  False for every car, and the reports leave the list's own DNS figures
+  (DNS value as per list, Executive Incentive, the list-vs-invoice check)
+  out instead of showing zeros. Whether a car TOOK DNS accessories still
+  comes from the Zoho invoices linked to it by the VIN - so penetration,
+  missed opportunity, new-car vs other business and OE figures all work.
+* The OE heading may carry a note in brackets: "OE Total Value (NDP)" (NDP
+  = the dealer's net price) is read as OE Total Value.
+* The file is an old-style Excel file (.xls, made by WPS Sheets). openpyxl
+  reads only .xlsx, so .xls files are read with the small `xlrd` library;
+  the rows come out the same way, so the rest of this module is shared.
+* The report's first sheet ("Sheet1") holds the heading row and nothing
+  else. A sheet whose headings match but which has no car in it is passed
+  over, and the next sheet is tried - otherwise the list would be read as
+  "no cars delivered".
+* Its other sheets ("Part Wise - List", "CBE - CS OCT'26" ...) are the
+  dealership's own accessory invoices, line by line. They are not used:
+  the OE total per car is already on "Act Del List".
 
 This module has no database and no Qt code.
 """
@@ -76,6 +110,11 @@ class RtoCar:
     team_contribution: str
     incentive: float            # "Executive Incentive" column
     remarks: str
+    # v0.30.0: False when the file has no DNS columns at all (the
+    # dealership's Car Sales Report). The DNS fields above are then empty
+    # because nobody filled them, NOT because the car took nothing - the
+    # reports use `dns_given` below to leave those figures out.
+    dns_columns: bool = True
 
     @property
     def has_dns(self) -> bool:
@@ -84,6 +123,13 @@ class RtoCar:
     @property
     def has_oe(self) -> bool:
         return self.oe_value > 0 or bool(self.oe_list)
+
+
+def dns_given(cars: list[RtoCar]) -> bool:
+    """True when the delivery list carries Drive N Style's own columns (DNS
+    Total Value and the rest). False for the dealership's Car Sales Report,
+    which has only the car and OE columns (v0.30.0)."""
+    return any(c.dns_columns for c in cars)
 
 
 # heading (letters and digits only, lower case) -> field
@@ -97,11 +143,18 @@ HEADINGS = {
     "dnsteamcontribution": "team_contribution",
     "executiveincentive": "incentive", "remarks": "remarks",
 }
-REQUIRED = ("customer", "model", "vin", "dns_value")
+REQUIRED = ("customer", "model", "vin")
+# The columns Drive N Style's staff add by hand. If none of them is in the
+# file, the list "has no DNS columns" (see RtoCar.dns_columns).
+DNS_FIELDS = ("dns_list", "dns_value", "executive_contribution", "team_contribution",
+              "incentive", "remarks")
 
 
 def _key(text) -> str:
-    return re.sub(r"[^a-z0-9]", "", str(text or "").lower())
+    """Heading -> lookup key: letters and digits only, lower case, and a note
+    in brackets at the end dropped ("OE Total Value  (NDP)" -> "oetotalvalue")."""
+    text = re.sub(r"\([^)]*\)\s*$", "", str(text or ""))
+    return re.sub(r"[^a-z0-9]", "", text.lower())
 
 
 def _text(value) -> str:
@@ -162,23 +215,66 @@ def model_key(model: str) -> str:
     return text or "(not given)"
 
 
-def read_rto(path: str | Path) -> list[RtoCar]:
-    """Read the delivery list; raises RtoFileError with a plain message."""
+def _sheets(path: Path) -> list[list[tuple]]:
+    """
+    Every sheet of the workbook as a list of rows (tuples of cell values),
+    in the workbook's order. .xlsx is read with openpyxl; old-style .xls
+    (the dealership's Car Sales Report) with xlrd, whose dates are turned
+    into real dates so both kinds of file give the same values.
+    """
+    if path.suffix.lower() == ".xls":
+        import xlrd                         # only needed for .xls files
+        book = xlrd.open_workbook(str(path))
+
+        def value(cell):
+            if cell.ctype == xlrd.XL_CELL_DATE:
+                try:
+                    return xlrd.xldate.xldate_as_datetime(cell.value, book.datemode)
+                except (ValueError, OverflowError):
+                    return cell.value
+            if cell.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK):
+                return None
+            return cell.value
+        return [[tuple(value(c) for c in sheet.row(r)) for r in range(sheet.nrows)]
+                for sheet in book.sheets()]
+    wb = load_workbook(str(path), data_only=True, read_only=True)
     try:
-        wb = load_workbook(str(path), data_only=True, read_only=True)
+        return [list(ws.iter_rows(values_only=True)) for ws in wb.worksheets]
+    finally:
+        wb.close()
+
+
+def read_rto(path: str | Path) -> list[RtoCar]:
+    """
+    Read the delivery list; raises RtoFileError with a plain message.
+
+    The first sheet whose heading row has Customer Name, Model and VIN No
+    AND at least one car under it is used. A sheet with the headings but no
+    car (the Car Sales Report's "Sheet1") is passed over.
+    """
+    path = Path(path)
+    try:
+        sheets = _sheets(path)
     except Exception as exc:
-        raise RtoFileError(f"“{Path(path).name}” could not be opened as an Excel "
+        raise RtoFileError(f"“{path.name}” could not be opened as an Excel "
                            f"file ({exc}).") from exc
-    for ws in wb.worksheets:
-        rows = list(ws.iter_rows(values_only=True))
+    found_headings = False
+    for rows in sheets:
         for h, heading_row in enumerate(rows[:15]):
             cols = {HEADINGS[_key(c)]: i for i, c in enumerate(heading_row)
                     if _key(c) in HEADINGS}
             if all(f in cols for f in REQUIRED):
-                return _cars(rows[h + 1:], cols, h + 2)
+                found_headings = True
+                cars = _cars(rows[h + 1:], cols, h + 2)
+                if cars:
+                    return cars
+                break                       # headings but no car: next sheet
+    if found_headings:
+        raise RtoFileError(f"“{path.name}” has the delivery list's headings but no car "
+                           "in it.")
     raise RtoFileError(
-        f"“{Path(path).name}” does not look like the delivery (RTO) list: no row "
-        "with the headings Customer Name, Model, VIN No and DNS Total Value was found.")
+        f"“{path.name}” does not look like the delivery (RTO) list: no row "
+        "with the headings Customer Name, Model and VIN No was found.")
 
 
 def _cars(rows: list[tuple], cols: dict[str, int], first_row: int) -> list[RtoCar]:
@@ -186,11 +282,13 @@ def _cars(rows: list[tuple], cols: dict[str, int], first_row: int) -> list[RtoCa
         i = cols.get(field)
         return row[i] if i is not None and i < len(row) else None
 
+    has_dns = any(f in cols for f in DNS_FIELDS)
     out = []
     for n, row in enumerate(rows, start=first_row):
         customer = _text(get(row, "customer"))
-        if not customer:
-            continue
+        if not customer or _key(customer) == "customername":
+            continue                        # empty, or the heading row repeated
+                                            # (lists grouped by executive repeat it)
         vin = _text(get(row, "vin"))
         model = _text(get(row, "model"))
         out.append(RtoCar(
@@ -202,5 +300,6 @@ def _cars(rows: list[tuple], cols: dict[str, int], first_row: int) -> list[RtoCa
             dns_list=_text(get(row, "dns_list")), dns_value=_amount(get(row, "dns_value")),
             executive_contribution=_text(get(row, "executive_contribution")),
             team_contribution=_text(get(row, "team_contribution")),
-            incentive=_amount(get(row, "incentive")), remarks=_text(get(row, "remarks"))))
+            incentive=_amount(get(row, "incentive")), remarks=_text(get(row, "remarks")),
+            dns_columns=has_dns))
     return out

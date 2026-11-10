@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.29.1** (tags v0.1.0 … v0.29.1 on GitHub
+Current version: **v0.30.0** (tags v0.1.0 … v0.30.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -204,6 +204,24 @@ Branding page is filled (home page + `/privacy`).
 - v0.29.1: `docs/developer_guide.md` - handover guide for a new,
   inexperienced developer. Keep it true when folders, addresses, roles,
   settings or the release routine change.
+- v0.30.0 (Brinda, 10-11-2026): the delivery list may be the dealership's
+  "Car Sales Report" .xls (sheet "Act Del List": cars + OE only, no DNS
+  columns). rto_list: REQUIRED = customer, model, vin; `dns_columns` /
+  `dns_given`; xlrd for .xls; "(NDP)" heading note ignored; heading-only
+  sheets passed over. Reports: `rto_reports.list_cols` drops the list's own
+  DNS figures (never show them as 0); "took DNS" comes from invoices.
+  Server needs `xlrd` (in web/backend/requirements.txt - deploy installs).
+  This session could not push: Brinda applies the commit on her PC.
+- ON HOLD (Brinda, 10-11-2026 - "let the staff work on it today"):
+  (1) Daily Review: say "N uploaded PDFs not scanned yet - press Scan" instead
+  of "Nothing to decide" when the inbox holds PDFs of waiting invoices
+  (review() skips inbox files on purpose). (2) A vehicle / salesperson
+  printed as only "-" (no letters or digits): payout_store.save_match saves it
+  "for all invoices" but vehicle_key("-") == "", so _set_target writes an
+  invoice_overrides row for invoice_no "" and nothing changes - treat such
+  text as "missing" in invoices_repo._match_car / _match_executive, refuse a
+  blank invoice_no in _set_target, delete the stray "" overrides. Staff were
+  told to write "No vehicle" (match it once to Others) or leave it blank.
 
 ## Working rules (from Brinda – always follow)
 

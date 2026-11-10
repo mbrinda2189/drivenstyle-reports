@@ -2,6 +2,7 @@
 # Install with:  pip install -r web/backend/requirements.txt
 openpyxl>=3.1         # Excel files (same as the desktop tool)
 pdfplumber>=0.11      # invoice PDFs (same as the desktop tool)
+xlrd>=2.0             # old-style .xls files: the dealership's Car Sales Report
 fastapi>=0.110        # the web server framework
 uvicorn>=0.29         # runs the server:  python -m uvicorn web.backend.main:app
 itsdangerous>=2.1     # signs the sign-in cookie

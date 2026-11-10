@@ -397,7 +397,7 @@ def _penetration(ws, d, link):
         first = heading.capitalize()
         by_pen = sorted(rows, key=lambda g: -(g["dns"] / g["cars"] if g["cars"] else 0))
         row = section(ws, row, f"By {heading} - DNS accessories")
-        t = table(ws, row, [
+        t = table(ws, row, rr.list_cols(link, [
             Col(first, "name", width=24),
             Col("Cars delivered", "cars", "qty", 12, total="sum"),
             Col("Took DNS", "dns", "qty", 12, total="sum"),
@@ -405,7 +405,7 @@ def _penetration(ws, d, link):
             Col("DNS value (list)", "dns_value", "money", 14, total="sum"),
             Col("DNS value per car delivered", "per", "money", 14, formula=per, total=per),
             Col("Invoiced (with GST)", "invoiced", "money", 14, total="sum"),
-        ], by_pen)                                  # highest penetration % first
+        ]), by_pen)                                 # highest penetration % first
         row = section(ws, t["next"], f"By {heading} - OE accessories")
         t = table(ws, row, [
             Col(first, "name", width=24),
@@ -433,8 +433,11 @@ def _new_car(ws, d, link):
             ("Cars delivered", cars, "0"),
             ("Cars fitted with DNS accessories", took, "0"),
             ("DNS penetration %", took / cars if cars else "", PCT),
-            ("DNS value as per list", listed, MONEY),
-            ("DNS value per car delivered", round(listed / cars, 2) if cars else 0.0, MONEY)):
+            # v0.30.0: these two only when the list has DNS columns - the
+            # dealership's Car Sales Report does not (see rto_reports notes).
+            *((("DNS value as per list", listed, MONEY),
+               ("DNS value per car delivered", round(listed / cars, 2) if cars else 0.0,
+                MONEY)) if link.dns_given else ())):
         row += 1
         ws.cell(row, 1, label).font = _font()
         cell = ws.cell(row, 2, value)
@@ -449,7 +452,7 @@ def _penetration_location(ws, d, link):
     per = '=IF({cars}{r}=0,"",{dns_value}{r}/{cars}{r})'
     rows = sorted(rr._group_rows(link, lambda c: c.location),
                   key=lambda g: -(g["dns"] / g["cars"] if g["cars"] else 0))
-    table(ws, row, [
+    table(ws, row, rr.list_cols(link, [
         Col("Location", "name", width=24),
         Col("Cars delivered", "cars", "qty", 12, total="sum"),
         Col("Took DNS", "dns", "qty", 12, total="sum"),
@@ -457,7 +460,7 @@ def _penetration_location(ws, d, link):
         Col("DNS value (list)", "dns_value", "money", 14, total="sum"),
         Col("DNS value per car delivered", "per", "money", 14, formula=per, total=per),
         Col("Invoiced (with GST)", "invoiced", "money", 14, total="sum"),
-    ], rows)
+    ]), rows)
     _finish(ws)
 
 

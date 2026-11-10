@@ -182,11 +182,15 @@ def test_change_a_saved_match_and_delete_a_dated_price(tmp_path):
         irepo.change_match(m, 99999)
 
     pid = masters.list_rows("products")[0]["id"]
+    # A rate dated after the product's first one. It was 1-11-2026 until
+    # v0.30.0, which stopped being "later" once that day passed (the product
+    # is created with today's date) - so a date far ahead is used now.
+    LATER = day(2099, 1, 1)
     masters.import_records("products", [dict(name="Horn", selling_price=300, cost_price=150,
-                                             _row=2)], day(2026, 11, 1))
+                                             _row=2)], LATER)
     dates = [h["effective_from"] for h in masters.rate_history("products", pid)]
-    assert len(dates) == 2 and dates[0] == day(2026, 11, 1)
-    masters.delete_rate("products", pid, day(2026, 11, 1))
+    assert len(dates) == 2 and dates[0] == LATER
+    masters.delete_rate("products", pid, LATER)
     assert len(masters.rate_history("products", pid)) == 1
     assert masters.get("products", pid)["cost_price"] == 100        # earlier amounts again
     with pytest.raises(MasterError):                                # never the last one

@@ -101,7 +101,11 @@ def test_files_are_checked_when_uploaded(world):
     assert wrong.status_code == 400 and admin.get(f"{M}/overview").json()["files"]["payments"] is None
     assert put_file(admin, "invoices", b"not,an,export\n1,2,3\n", "x.csv").status_code == 400
     assert admin.get(f"{M}/overview").json()["files"]["invoices"]["name"] == "Invoice.csv"
-    assert put_file(admin, "rto", b"x", "list.csv").status_code == 400     # .xlsx only
+    assert put_file(admin, "rto", b"x", "list.csv").status_code == 400     # .xlsx / .xls only
+    # v0.30.0: .xls is accepted as a kind of file (the Car Sales Report), but a
+    # file that is not a readable delivery list is still refused.
+    bad_xls = put_file(admin, "rto", b"x", "Car_Sales_Report.xls")
+    assert bad_xls.status_code == 400 and "could not be opened" in bad_xls.json()["detail"]
     assert put_file(admin, "salaries", b"x", "a.csv").status_code == 404
     assert put_file(admin, "invoices", export, "a.csv", "/api/monthly/2026-13").status_code == 404
     kept = sorted(p.name for p in (settings.data_dir / "months" / "2026-09").iterdir())

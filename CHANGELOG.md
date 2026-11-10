@@ -6,6 +6,54 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.30.0] – 2026-11-10 – Delivery list from the dealership's Car Sales Report
+
+From October 2026 the client sends the dealership's "Car Sales Report"
+(`Car_Sales_Report_-_Oct26.xls`) instead of the hand-made RTO list. Its
+"Act Del List" sheet has the cars and the OE accessories but none of
+Drive N Style's own columns. Brinda's decision (10-11-2026): read it as it
+is, take "took DNS" from the invoices, and leave the list's own DNS figures
+out rather than show zeros.
+
+### Changed
+- **`app/data/rto_list.py`**: only Customer Name, Model and VIN No are
+  required now; the DNS columns (DNS Accessories List, DNS Total Value,
+  Executive / DNS Team Contribution, Executive Incentive, Remarks) are
+  optional. `RtoCar.dns_columns` and `dns_given(cars)` say whether the list
+  had them. A note in brackets after a heading is ignored, so
+  "OE Total Value  (NDP)" reads as OE Total Value. A sheet with the
+  headings but no car (the report's "Sheet1") is passed over; a repeated
+  heading row (lists grouped by executive) is skipped.
+- **Old-style `.xls` files are read** (with `xlrd`), with dates turned into
+  real dates, so the report can be uploaded as the client sends it.
+- **`app/reports/rto_reports.py` and `pdf_book.py`**: when the list has no
+  DNS columns, the "as per list" DNS figures are left out - DNS value
+  (list), DNS value per car, DNS accessories (list), Incentive (list) and
+  their Difference columns, the Summary / PDF lines "DNS value as per
+  list" and "per car delivered", the count by remark, and sheet 15's
+  comparison (the sheet says there is nothing to compare). A note on
+  sheets 13 and 17 says why. Penetration, missed opportunity, new-car vs
+  other business, OE figures and the trend work as before. The PDF's
+  "New-car business" therefore has three lines for such a month.
+- **Upload**: the web Generate screen (step 4) and the desktop file picker
+  accept `.xls` as well as `.xlsx` for the delivery list.
+
+### Added
+- `xlrd` in `requirements.txt` and `web/backend/requirements.txt` (the
+  server installs it on the next deploy); `xlwt` in `requirements-dev.txt`
+  (tests only, to write a small .xls).
+- Tests: the report's shape as .xlsx and .xls, heading-only and grouped
+  lists, and a workbook built from a list without DNS columns.
+
+### Fixed
+- `tests/test_others.py` used 1-11-2026 as a date "after" a product's first
+  price; since that day has passed the test failed. It now uses 1-1-2099.
+
+### Checked
+- The real October file: 219 cars, all with delivery date and VIN, OE value
+  22,48,845.65, 8 locations; workbook and LibreOffice PDF made from it.
+- 291 passed / 5 skipped.
+
 ## [0.29.1] – 2026-10-09 – Developer guide; the web tool is live
 
 Documentation only - no change to any program.

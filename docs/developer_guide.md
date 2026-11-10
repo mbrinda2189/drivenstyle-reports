@@ -325,7 +325,7 @@ rough line counts, to show you where the weight is.
 | `invoices_repo.py` (1052) | store invoices, match them to the masters, everything behind Scan review |
 | `inputs_repo.py` (251) | the monthly inputs and the history of generated reports |
 | `payments_io.py` | read Zoho's "Payments Received" export |
-| `rto_list.py` (206) | read the dealership's delivery (RTO) list |
+| `rto_list.py` | read the dealership's delivery (RTO) list - the hand-made RTO list (.xlsx) or the dealership's Car Sales Report (.xls, read with `xlrd`, no DNS columns) |
 
 ### 5.3 `app/reports/` - the figures and the output (no screens)
 
@@ -334,7 +334,7 @@ rough line counts, to show you where the weight is.
 | `data.py` (534) | **every figure the reports need for one month** (`build_month`). The heart of the calculations. |
 | `packages.py` | recognises a package sale on an invoice |
 | `workbook.py` (1065) | writes the monthly Excel workbook |
-| `rto_reports.py` (588) | the new-car reports and the executive summary |
+| `rto_reports.py` | the new-car reports and the executive summary; `list_cols` leaves out the list's own DNS figures when the list has none |
 | `trend.py` (250) | month-on-month trend |
 | `pdf_book.py` (767) | lays out the PDF version of the reports |
 | `pdf_export.py` (193) | turns a workbook into a PDF (LibreOffice on Linux, Excel on Windows) |

@@ -230,7 +230,8 @@ class GeneratePage(ScrollPage):
             "sheets (penetration, missed opportunity, list vs invoices, scorecard).")
         card.body.addWidget(self.step_rto)
         self.rto_picker = PathPicker(
-            "No file chosen", mode="file", file_filter="Excel workbook (*.xlsx)")
+            "No file chosen", mode="file",
+            file_filter="Excel workbook (*.xlsx *.xls)")   # .xls: Car Sales Report (v0.30.0)
         self.rto_picker.layout().setContentsMargins(36, 0, 0, 0)
         self.rto_picker.pathChanged.connect(lambda p: self.step_rto.set_done(bool(p)))
         card.body.addWidget(self.rto_picker)

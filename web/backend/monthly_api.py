@@ -27,6 +27,8 @@ WHAT IS DIFFERENT ON THE WEB
           invoices   Zoho's invoice export (.csv / .xlsx)        - needed
           payments   Zoho's "Payments Received" export           - optional
           rto        the dealership's delivery (RTO) list        - optional
+                     (.xlsx, or the dealership's Car Sales Report as
+                     .xls - v0.30.0)
       They stay there so that History > Regenerate can use them again
       without a new upload. A new upload of the same kind replaces the old.
     * WORKBOOKS ARE DOWNLOADED. They are written to data/web/output/ and
@@ -78,7 +80,9 @@ _MONTH = re.compile(r"^(\d{4})-(\d{2})$")
 FILE_KINDS = {
     "invoices": ("Zoho invoice export", (".csv", ".xlsx")),
     "payments": ("Zoho payments export", (".csv", ".xlsx")),
-    "rto": ("Delivery (RTO) list", (".xlsx",)),
+    # .xls too (v0.30.0): the dealership's Car Sales Report comes as an
+    # old-style .xls file; app/data/rto_list.py reads it with xlrd.
+    "rto": ("Delivery (RTO) list", (".xlsx", ".xls")),
 }
 
 

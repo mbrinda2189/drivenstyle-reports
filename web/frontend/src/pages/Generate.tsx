@@ -42,7 +42,8 @@ const FILES: { kind: FileKind; step: string; title: string; about: string; accep
   { kind: "payments", step: "Step 3 · optional", title: "Zoho payments export",
     about: "Payments Received export, for the payment mode report.", accept: ".csv,.xlsx" },
   { kind: "rto", step: "Step 4 · optional", title: "Delivery (RTO) list",
-    about: "The dealership's list of cars delivered, for the new-car reports.", accept: ".xlsx" },
+    about: "The dealership's list of cars delivered (RTO list, or the Car Sales Report .xls), for the new-car reports.",
+    accept: ".xlsx,.xls" },
 ];
 const MASTERS: [string, string][] = [["products", "Products"], ["executives", "Sales executives"],
                                      ["cars", "Cars"], ["incentives", "Incentives"]];
