@@ -962,7 +962,12 @@ def cost_split_sheet(ws: Worksheet, d: MonthData, largest_first: bool = False) -
     _finish(ws)
 
 
-def pnl_sheet(ws: Worksheet, d: MonthData, largest_first: bool = False) -> None:
+def pnl_sheet(ws: Worksheet, d: MonthData, largest_first: bool = False,
+              zoho: bool = True) -> None:
+    """The Profit & loss. `zoho=False` (v0.34.0, the MANAGEMENT PDF): leave
+    out the "Labour - tool vs Zoho" and "Product cost - tool vs Zoho" blocks
+    under it - they go to the internal team PDF instead (pdf_book.py,
+    _tool_vs_zoho). The Excel sheet keeps them."""
     row = title(ws, "Profit & loss", d.label,
                 ["Sales exclude GST (GST collected is not income). Invoices not included "
                  "(open issues) are not in these figures.",
@@ -970,12 +975,20 @@ def pnl_sheet(ws: Worksheet, d: MonthData, largest_first: bool = False) -> None:
     if not d.has_inputs:
         row = banner(ws, row, "No indirect costs were entered for this month.", 3)
     _statement(ws, row, d, net=True, largest_first=largest_first)
+    if zoho:
+        tool_vs_zoho(ws, d)
+    _finish(ws)
+
+
+def tool_vs_zoho(ws: Worksheet, d: MonthData) -> None:
+    """The two "tool vs Zoho" blocks: labour (v0.32.0) and product cost
+    (v0.33.0), each written below whatever is already on the sheet. Under
+    the P&L in Excel; in the internal team PDF from v0.34.0."""
     if d.books_labour:
         _labour_vs_books(ws, d)
     if d.zoho_costs is not None and d.zoho_costs.given:     # v0.33.0
         from app.reports.cogs_check import pnl_block      # (it imports this module)
         pnl_block(ws, d, d.zoho_costs, _bottom_row(ws) + 2)
-    _finish(ws)
 
 
 def _labour_vs_books(ws: Worksheet, d: MonthData) -> None:

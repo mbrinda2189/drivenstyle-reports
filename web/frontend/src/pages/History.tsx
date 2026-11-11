@@ -5,8 +5,9 @@
  * WHAT THIS SCREEN DOES
  * ---------------------
  * WORKBOOKS (the latest of each month, newest month first)
- *   Download     the Excel workbook (and the PDF when one was made)
- *   Make PDF     the PDF for that workbook, from the data as it is now
+ *   Download     the Excel workbook (and its two PDFs - management and
+ *                internal team, v0.34.0 - when they were made)
+ *   Make PDFs    both PDFs for that workbook, from the data as it is now
  *   Regenerate   the same reports again - e.g. after fixing Scan review
  *                issues or correcting a rate. Earlier months still use the
  *                amounts that applied then (effective dates).
@@ -114,12 +115,13 @@ export default function History({ onExpired }: { onExpired: () => void }) {
                     ) : (
                       <>
                         {r.available && <a className="btn primary" href={monthlyApi.downloadUrl(r.id)}>Download</a>}
-                        {r.pdf_available && <a className="btn" href={monthlyApi.downloadUrl(r.id, true)}>PDF</a>}
-                        {r.available && !r.pdf_available && pdfPossible && (
-                          <button className="btn" disabled={Boolean(busy)} onClick={() => void act("Making the PDF…", async () => {
+                        {r.pdf_available && <a className="btn" href={monthlyApi.downloadUrl(r.id, "management")}>Management PDF</a>}
+                        {r.internal_pdf_available && <a className="btn" href={monthlyApi.downloadUrl(r.id, "internal")}>Internal PDF</a>}
+                        {r.available && !(r.pdf_available && r.internal_pdf_available) && pdfPossible && (
+                          <button className="btn" disabled={Boolean(busy)} onClick={() => void act("Making the PDFs…", async () => {
                             await monthlyApi.makePdf(r.id);
-                            return `PDF made for ${r.label}.`;
-                          })}>Make PDF</button>
+                            return `Management and internal team PDFs made for ${r.label}.`;
+                          })}>Make PDFs</button>
                         )}
                         <button className="btn" disabled={Boolean(busy)} onClick={() => void act("Building the workbook…", async () => {
                           const done = await monthlyApi.regenerate(r.id);

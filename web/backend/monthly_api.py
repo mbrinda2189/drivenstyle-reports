@@ -75,7 +75,7 @@ from app.reports.generate import GenerateError, generate, make_pdf
 from app.reports.issues_export import (
     default_file_name, export_issues, export_matches, matches_file_name)
 from app.reports import pdf_export
-from app.reports.pdf_export import PdfError, pdf_path_for
+from app.reports.pdf_export import PDF_KINDS, PdfError, old_pdf_path_for, pdf_path_for
 from app.sample_data import REPORTS
 
 MAX_BYTES = 30 * 1024 * 1024
@@ -248,7 +248,11 @@ def add_routes(api: FastAPI, connection, admin, data_dir: Path) -> None:
                 "sales": run["sales"], "gross_profit": run["gross_profit"],
                 "reports": json.loads(run["reports_json"] or "[]"),
                 # A workbook made on the desktop tool is not on this server.
-                "available": here, "pdf_available": here and pdf_path_for(path).is_file()}
+                # v0.34.0: two PDFs - management (pdf_available, as before) and
+                # internal team. A run from before v0.34.0 has neither (its one
+                # PDF had the workbook's name): "Make PDF" makes both.
+                "available": here, "pdf_available": here and pdf_path_for(path).is_file(),
+                "internal_pdf_available": here and pdf_path_for(path, "internal").is_file()}
 
     @api.get("/api/monthly/{month}/overview")
     def overview(month: str, who: dict = Depends(admin)) -> dict:
@@ -353,13 +357,18 @@ def add_routes(api: FastAPI, connection, admin, data_dir: Path) -> None:
                     "pdf_possible": pdf_export.pdf_possible()}
 
     @api.get("/api/monthly/runs/{run_id}/download")
-    def download(run_id: int, pdf: bool = False, who: dict = Depends(admin)):
+    def download(run_id: int, pdf: bool = False, kind: str = "management",
+                 who: dict = Depends(admin)):
+        """The workbook, or with ?pdf=true one of its PDFs: ?kind=management
+        (default) or internal (v0.34.0)."""
+        if kind not in PDF_KINDS:
+            raise HTTPException(400, "Ask for the management or the internal PDF.")
         with connection() as conn:
             run = find_run(repos(conn, who)[2], run_id)
         shown = run_for_screen(run)
         path = Path(run["file_path"])
         if pdf:
-            path = pdf_path_for(path)
+            path = pdf_path_for(path, kind)
         if not shown["available"] or not path.is_file():
             raise HTTPException(404, "This file is not on the server. Use Regenerate to "
                                      "make it again.")
@@ -374,7 +383,8 @@ def add_routes(api: FastAPI, connection, admin, data_dir: Path) -> None:
             run = find_run(repos(conn, who)[2], run_id)
         year, mon = map(int, run["month"].split("-"))
         reports = [r for r in REPORTS if r in json.loads(run["reports_json"] or "[]")] or REPORTS
-        was_pdf = pdf_path_for(Path(run["file_path"])).is_file()
+        was_pdf = (pdf_path_for(Path(run["file_path"])).is_file()
+                   or old_pdf_path_for(Path(run["file_path"])).is_file())
         return _generate(run["month"], year, mon, reports, was_pdf, who)
 
     @api.post("/api/monthly/runs/{run_id}/pdf")
@@ -407,7 +417,8 @@ def add_routes(api: FastAPI, connection, admin, data_dir: Path) -> None:
         for path in paths:
             if output_dir.resolve() in path.resolve().parents:
                 path.unlink(missing_ok=True)
-                pdf_path_for(path).unlink(missing_ok=True)
+                for pdf in [old_pdf_path_for(path)] + [pdf_path_for(path, k) for k in PDF_KINDS]:
+                    pdf.unlink(missing_ok=True)
         return {"removed": removed}
 
     @api.delete("/api/monthly/{month}/invoices")

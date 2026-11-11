@@ -271,7 +271,8 @@ export default function Generate({ onExpired }: { onExpired: () => void }) {
                 {run.available
                   ? <a className="btn primary" href={monthlyApi.downloadUrl(run.id)}>Download workbook</a>
                   : <span className="muted">This workbook was made on the desktop tool. Generate to make it here.</span>}
-                {run.pdf_available && <a className="btn" href={monthlyApi.downloadUrl(run.id, true)}>Download PDF</a>}
+                {run.pdf_available && <a className="btn" href={monthlyApi.downloadUrl(run.id, "management")}>Management PDF</a>}
+                {run.internal_pdf_available && <a className="btn" href={monthlyApi.downloadUrl(run.id, "internal")}>Internal team PDF</a>}
               </div>
             </div>
           )}

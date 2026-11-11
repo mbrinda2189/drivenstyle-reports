@@ -157,7 +157,8 @@ class HistoryPage(ScrollPage):
             regen = button("Regenerate", "Ghost")
             regen.clicked.connect(lambda _=False, x=run: self._regenerate(x))
             pdf_btn = button("PDF", "Ghost")
-            pdf_btn.setToolTip("Save this workbook as one PDF beside it and open it "
+            pdf_btn.setToolTip("Save the management and internal team PDFs beside this "
+                               "workbook and open the management one "
                                "(needs Microsoft Excel on this PC).")
             pdf_btn.clicked.connect(lambda _=False, x=run: self._pdf(x))
             remove = button("Remove", "Ghost")
@@ -232,22 +233,23 @@ class HistoryPage(ScrollPage):
 
     def _pdf(self, run: dict) -> None:
         """
-        The month's PDF (summary tables and graphs - app/reports/pdf_book.py),
-        saved beside the workbook. It is built from the data as it is now.
+        The month's two PDFs (v0.34.0: management and internal team -
+        app/reports/pdf_book.py), saved beside the workbook. They are built
+        from the data as it is now; the management PDF is opened.
         """
         year, month = map(int, run["month"].split("-"))
         files = [run["payments_path"], run.get("rto_path") or ""]
         payments, rto = [f if f and Path(f).exists() else "" for f in files]
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            pdf = make_pdf(self.masters, self.invoices, self.inputs, year, month,
+            pdf, internal = make_pdf(self.masters, self.invoices, self.inputs, year, month,
                            run["file_path"], payments, rto)
         except (PdfError, GenerateError) as exc:
             QApplication.restoreOverrideCursor()
             QMessageBox.warning(self, "PDF not made", str(exc))
             return
         QApplication.restoreOverrideCursor()
-        self.toast(f"{pdf.name} saved.")
+        self.toast(f"{pdf.name} and {internal.name} saved.")
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(pdf)))
 
     def _open(self, path: str) -> None:

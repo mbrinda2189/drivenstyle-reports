@@ -6,6 +6,71 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.34.0] – 2026-11-11 – Two PDFs: management and internal team
+
+Brinda (11-11-2026), for the client: separate the PDF into one for the
+management and one for the internal team; trend first without a Total
+column; tool-vs-Zoho to the internal report; "How the month's invoices are
+counted" just after New-car business with lines clearly visible; Packages
+vs sales only in Excel. Defaults approved ("okay for all the above").
+
+### Added
+- **Internal team PDF** (`..._Internal_....pdf`): Labour calculation, Spot
+  incentive (by executive + Internal team), Payment modes, and "Tool vs
+  Zoho" - the labour and product-cost blocks that sit under the P&L in
+  Excel, followed by the master-vs-Zoho summary and the 10 invoices that
+  differ most (when the Zoho files were uploaded).
+  `pdf_book.write_pdf_workbook(..., part="internal")`.
+- Trend in the PDF: **"% change from the previous month"** for every key
+  figure, each month against the one before (first month blank); rows that
+  are percentages show the change in percentage points ("+2.1 pts")
+  (`trend._change_table`, `_change`, `POINTS`).
+- Web: `download?pdf=true&kind=management|internal`; runs carry
+  `internal_pdf_available`; Generate and History show "Management PDF" and
+  "Internal team PDF" (History: "Internal PDF") buttons; "Make PDFs" makes both.
+
+### Changed
+- **Management PDF** (`..._Management_....pdf`, was the one PDF): Trend
+  analysis is the FIRST section (was last) and has **no Total column**;
+  the Profit & loss starts on a new page after it and no longer carries the
+  "Labour - tool vs Zoho" / "Product cost - tool vs Zoho" blocks
+  (`pnl_sheet(zoho=False)`, blocks moved to `workbook.tool_vs_zoho`);
+  "How the month's invoices are counted" moved from under Penetration by
+  location to straight after New-car business, with shorter row labels so
+  every line prints in full (`rto_reports.count_box(short=True)`,
+  `SHORT_GROUP_LABELS`); Labour, Spot incentive and Payment modes moved to
+  the internal PDF; **Packages vs sales left out** (Excel only).
+- Footer names the report: "Drive N Style - <month> - Management" /
+  "- Internal team".
+- `pdf_export.pdf_path_for(workbook, kind)` gives the two names
+  ("_Reports_" in the workbook name becomes "_Management_" / "_Internal_");
+  `old_pdf_path_for` = the single PDF of earlier versions (removed with its
+  run; Regenerate still makes PDFs for such a run). `generate` returns
+  `pdf_path` (management) and `internal_pdf_path`; `make_pdf` returns both.
+- Desktop: Generate logs both files; History's PDF button makes both and
+  opens the management one.
+
+### Unchanged
+- The Excel workbook (its Trend sheet keeps the Total column and the short
+  change table; the P&L sheet keeps the tool-vs-Zoho blocks).
+
+### Checked
+- Both PDFs made with LibreOffice from the test data and looked at page by
+  page. 315 passed / 3 skipped (Qt screen tests not run here).
+
+### Noted for the client (not code)
+- October internal team incentive 9,000 = 3 car PPF x 3,000 (DNS26-GST-0806,
+  DNS-372, DNS-413). DNS-373 "Paint Protection Film Silver Matte - 5 Years -
+  DHC" has no Internal incentive in the Product master; if it is a car PPF,
+  entering 3,000 makes 12,000.
+- Client's October incentive list (57,700) vs tool (45,300 full / 42,233.77
+  after the discount rule): 9,200 on invoices not in October's export (7,750
+  of it paid on DNS-477/478/479/493/495, removed in Zoho); 1,800 on items with
+  no incentive group (Sunfilm Diamond-70, LED headlights, shark fin, rear
+  guard); 4,450 more / 2,900 less on other invoices (coating + sunfilm
+  combos, Lumar front, DNS-482 package); GST-0819 salesperson differs
+  (Faizal vs Saravanan).
+
 ## [0.33.1] – 2026-11-10 – How the month's invoices are counted; COGS difference sign
 
 Brinda (10-11-2026): "out of 131 invoices why only 47 cars are shown?" -

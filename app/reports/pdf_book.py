@@ -15,8 +15,41 @@ So the tool writes a second, temporary workbook laid out for reading -
 this module - and Excel turns THAT into the PDF (pdf_export.py). The
 temporary workbook is deleted afterwards.
 
-WHAT IS IN THE PDF, in this order (the client's note of 05-10-2026, v0.13.0)
-----------------------------------------------------------------------------
+TWO PDFs (Brinda, 11-11-2026, v0.34.0) - THIS IS THE CURRENT CONTENT
+-------------------------------------------------------------------
+The one PDF is now TWO, made from the same data, each its own temporary
+workbook (write_pdf_workbook(..., part=MANAGEMENT / INTERNAL)):
+
+  MANAGEMENT ("..._Management_....pdf") - for the owner:
+     1. Trend analysis       FIRST page, when 2+ months exist: last six
+                             months, NO Total column, and "% change from the
+                             previous month" for every row (trend.py)
+     2. Profit & loss        starts a new page; WITHOUT the "tool vs Zoho"
+                             blocks (pnl_sheet(zoho=False))
+     3. New-car business     (needs the delivery list)
+     4. How the month's invoices are counted   moved here, straight after
+                             New-car business; shorter row labels so every
+                             line prints in full (rto_reports.count_box(short=True))
+     5. Top 10 products / services
+     6. Penetration by location, 7. OE accessories   (delivery list)
+     8. Branches, 9. Vehicle-wise average per car
+     Packages vs sales is OUT of the PDF (Excel only).
+
+  INTERNAL TEAM ("..._Internal_....pdf") - for the staff who pay people:
+     1. Labour calculation (floor mat / sunfilm / other)
+     2. Spot incentive by executive + the "Internal team" line
+     3. Payment modes
+     4. Tool vs Zoho - labour and product cost (when the Zoho files were
+        uploaded), then the master-vs-Zoho summary + the 10 invoices that
+        differ most
+  Footer: "Drive N Style - <month> - Management" / "- Internal team".
+  The Excel workbook is unchanged.
+
+The history below explains how the layout came to be; where it disagrees
+with the list above, the list above wins.
+
+WHAT WAS IN THE ONE PDF, in this order (the client's note of 05-10-2026, v0.13.0)
+------------------------------------------------------------------------------
      1. Profit & loss                          (first page)
      2. New-car business                       five lines (needs the list)
                                                + floor mat and sunfilm against the
@@ -115,10 +148,14 @@ from openpyxl.styles import PatternFill
 
 from app.reports.workbook import (
     MONEY, NAVY, PCT, Col, _by_product, _finish, _font, exec_label, pnl_sheet,
-    section, table, title)
+    section, table, title, tool_vs_zoho)
 
 HEAD_FONT = _font(True, "FFFFFF")
 HEAD_FILL = PatternFill("solid", fgColor=NAVY)
+
+# v0.34.0: sections that must START a page. The trend is the management
+# PDF's first page; the P&L after it then starts a page of its own too.
+FRESH_PAGE = {"Profit & loss"}
 
 MARGIN = '=IF({sales}{r}=0,"",{gp}{r}/{sales}{r})'
 GP = "={sales}{r}-{cost}{r}-{labour}{r}"
@@ -480,6 +517,22 @@ def _cogs(ws, d):
     _finish(ws)
 
 
+def _count(ws, d, link):
+    """v0.34.0: "How the month's invoices are counted" (v0.33.1), now a
+    section of its own straight after the New-car business, with the
+    shorter row labels so every line prints in full."""
+    rr.count_box(ws, 1, link, note=False, short=True)
+    _finish(ws)
+
+
+def _tool_vs_zoho(ws, d):
+    """v0.34.0: the "Labour - tool vs Zoho" and "Product cost - tool vs Zoho"
+    blocks that sit under the P&L in Excel - in the INTERNAL team PDF only."""
+    title(ws, "Tool vs Zoho", d.label)
+    tool_vs_zoho(ws, d)
+    _finish(ws)
+
+
 def _penetration_location(ws, d, link):
     """DNS penetration by location, highest penetration % first."""
     row = title(ws, "Penetration by location", d.label)
@@ -496,8 +549,9 @@ def _penetration_location(ws, d, link):
         Col("DNS value per car delivered", "per", "money", 14, formula=per, total=per),
         Col("Invoiced (with GST)", "invoiced", "money", 14, total="sum"),
     ]), rows)
-    # v0.33.1: every invoice of the month accounted for (why only N cars).
-    rr.count_box(ws, t["next"], link, note=False)
+    # v0.34.0: "How the month's invoices are counted" moved up, to just after
+    # the New-car business (_count) - the client's order of 11-11-2026.
+    _finish(ws)
     _finish(ws)
 
 
@@ -755,52 +809,71 @@ def _page_breaks(report: Worksheet, blocks: list[tuple[int, int]], scale: int,
             used += sum(height(r) for r in range(last + 1, blocks[n + 1][0]))
 
 
+MANAGEMENT, INTERNAL = "management", "internal"          # v0.34.0: the two PDFs
+PART_TITLES = {MANAGEMENT: "Management", INTERNAL: "Internal team"}
+
+
 def write_pdf_workbook(data: MonthData, months: list[MonthData],
                        payments: list[Payment] | None, path: str | Path,
                        user: str = "", rto: list | None = None,
                        previous: MonthData | None = None,
-                       rto_by_month: dict | None = None) -> Path:
-    """Write the temporary workbook that Excel turns into the PDF."""
+                       rto_by_month: dict | None = None,
+                       part: str = MANAGEMENT) -> Path:
+    """Write the temporary workbook that Excel / LibreOffice turns into ONE
+    of the two PDFs (v0.34.0): `part` = MANAGEMENT or INTERNAL - see "TWO
+    PDFs" in the module notes."""
     # Imported here, not at the top: trend.py imports workbook.py, which
     # imports this module lazily - the same pattern as workbook.py uses.
     from app.reports.trend import PDF_MONTHS, trend_sheet
+    if part not in PART_TITLES:
+        raise ValueError(f"Unknown PDF part: {part}")
     link = rr.Linked(data, rto) if rto is not None else None
     wb = Workbook()
     report = wb.active
     report.title = "Report"
     with_list = link is not None
-    plan = [("Profit & loss", lambda ws: pnl_sheet(ws, data, largest_first=True))]
-    if with_list:
-        plan.append(("New-car business", lambda ws: _new_car(ws, data, link)))
-    plan.append(("High-profit products", lambda ws: _high_profit(ws, data)))
-    if with_list:
-        plan += [("Penetration by location",
-                  lambda ws: _penetration_location(ws, data, link)),
-                 ("OE accessories", lambda ws: _oe(ws, data, link))]
-    plan += [("Branches", lambda ws: _branches(ws, data)),
-             ("Packages vs sales", lambda ws: _packages_vs_sales(ws, data)),
-             ("Labour", lambda ws: _labour(ws, data)),
-             ("Vehicle-wise", lambda ws: _vehicle(ws, data)),
-             ("Spot incentive", lambda ws: _incentive(ws, data)),
-             ("Payment modes", lambda ws: _payments(ws, data, payments))]
-    if data.zoho_costs is not None and data.zoho_costs.given:      # v0.33.0
-        plan.append(("Product cost - master vs Zoho", lambda ws: _cogs(ws, data)))
-    # v0.31.0: the trend comes last, on a page of its own, when there is
-    # something to compare (two or more months). Last six months only.
-    if len(months) >= 2:
-        plan.append(("Trend", lambda ws: trend_sheet(
-            ws, data, months, rto_by_month, charts=False, last=PDF_MONTHS,
-            by_month_tables=False)))
+    plan = []
+    if part == MANAGEMENT:
+        # v0.34.0: the trend comes FIRST, when there is something to compare
+        # (two or more months): last six months, no Total column, and the
+        # "% change from the previous month" for every row.
+        if len(months) >= 2:
+            plan.append(("Trend", lambda ws: trend_sheet(
+                ws, data, months, rto_by_month, charts=False, last=PDF_MONTHS,
+                by_month_tables=False, total=False, change_all=True)))
+        # P&L without the tool-vs-Zoho blocks (they are internal, v0.34.0)
+        plan.append(("Profit & loss", lambda ws: pnl_sheet(
+            ws, data, largest_first=True, zoho=False)))
+        if with_list:
+            plan += [("New-car business", lambda ws: _new_car(ws, data, link)),
+                     ("Invoices counted", lambda ws: _count(ws, data, link))]
+        plan.append(("High-profit products", lambda ws: _high_profit(ws, data)))
+        if with_list:
+            plan += [("Penetration by location",
+                      lambda ws: _penetration_location(ws, data, link)),
+                     ("OE accessories", lambda ws: _oe(ws, data, link))]
+        # v0.34.0: Packages vs sales left out (Excel only - Brinda, 11-11-2026)
+        plan += [("Branches", lambda ws: _branches(ws, data)),
+                 ("Vehicle-wise", lambda ws: _vehicle(ws, data))]
+    else:
+        plan += [("Labour", lambda ws: _labour(ws, data)),
+                 ("Spot incentive", lambda ws: _incentive(ws, data)),
+                 ("Payment modes", lambda ws: _payments(ws, data, payments))]
+        zoho = data.zoho_costs is not None and data.zoho_costs.given
+        if data.books_labour or zoho:
+            plan.append(("Tool vs Zoho", lambda ws: _tool_vs_zoho(ws, data)))
+        if zoho:                                                      # v0.33.0
+            plan.append(("Product cost - master vs Zoho", lambda ws: _cogs(ws, data)))
     row, blocks, fresh = 1, [], set()
     for name, writer in plan:
-        part = wb.create_sheet(name)
-        writer(part)
-        if name == "Trend":
+        sheet = wb.create_sheet(name)
+        writer(sheet)
+        if name in FRESH_PAGE and row > 1:
             fresh.add(row)
-        rows = _append(report, part, row)
+        rows = _append(report, sheet, row)
         blocks += _blocks(report, row, row + rows - 1)
         row += rows + GAP_ROWS
-        wb.remove(part)
+        wb.remove(sheet)
 
     _finish(report)                                # A4 landscape
     report.print_title_rows = None
@@ -812,7 +885,7 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
     report.sheet_properties.pageSetUpPr.fitToPage = False
     report.page_setup.fitToWidth = report.page_setup.fitToHeight = None
     report.page_setup.scale = scale
-    report.oddFooter.left.text = f"Drive N Style - {data.label}"
+    report.oddFooter.left.text = f"Drive N Style - {data.label} - {PART_TITLES[part]}"
     report.oddFooter.center.text = ""
     report.oddFooter.right.text = "Page &P of &N"
     report.oddFooter.left.size = report.oddFooter.right.size = 9

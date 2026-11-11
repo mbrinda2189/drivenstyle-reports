@@ -89,7 +89,29 @@ class PdfError(Exception):
     """The PDF could not be made (plain-language message)."""
 
 
-def pdf_path_for(workbook_path: str | Path) -> Path:
+PDF_KINDS = ("management", "internal")                  # v0.34.0: two PDFs
+_KIND_WORD = {"management": "Management", "internal": "Internal"}
+
+
+def pdf_path_for(workbook_path: str | Path, kind: str = "management") -> Path:
+    """
+    Where the PDF of a workbook is saved: beside it, same name with the
+    kind of PDF in it (v0.34.0). The workbook is named like
+    "DriveNStyle_Oct-2026_Reports_11-11-2026_1621.xlsx", so the PDFs are
+    "DriveNStyle_Oct-2026_Management_11-11-2026_1621.pdf" and
+    "..._Internal_....pdf". A name without "_Reports_" gets the word added
+    at the end. (Before v0.34.0 there was one PDF with the workbook's own
+    name - see old_pdf_path_for.)
+    """
+    path = Path(workbook_path)
+    word = _KIND_WORD[kind]
+    stem = (path.stem.replace("_Reports_", f"_{word}_", 1) if "_Reports_" in path.stem
+            else f"{path.stem}_{word}")
+    return path.with_name(stem + ".pdf")
+
+
+def old_pdf_path_for(workbook_path: str | Path) -> Path:
+    """The single PDF made before v0.34.0 (the workbook's name, .pdf)."""
     return Path(workbook_path).with_suffix(".pdf")
 
 
@@ -100,7 +122,9 @@ def export_pdf(workbook_path: str | Path, target: str | Path | None = None) -> P
     workbook but saved beside the real one); default: beside the workbook.
     """
     source = Path(workbook_path).resolve()
-    target = Path(target).resolve() if target else pdf_path_for(source)
+    # no target: the workbook's own name (generate passes the management /
+    # internal names from pdf_path_for explicitly, v0.34.0)
+    target = Path(target).resolve() if target else old_pdf_path_for(source)
     if not source.exists():
         raise PdfError(f"“{source.name}” is no longer where it was saved.")
     if sys.platform != "win32":

@@ -47,6 +47,19 @@ product tables. pdf_book.py calls trend_sheet(..., charts=False,
 last=PDF_MONTHS, by_month_tables=False). The Excel sheet is unchanged: up
 to 12 months, all five parts.
 
+v0.34.0 (Brinda, 11-11-2026): the trend is now the FIRST page of the
+MANAGEMENT PDF (pdf_book.py) and, in the PDF only:
+  * no "Total" column (`total=False`) - the client wants the movement, not
+    a sum of months;
+  * part 2 becomes "% change from the previous month" for EVERY key-figure
+    row (`change_all=True`), each month against the month before it (the
+    first month shown is blank: nothing to compare with). Rupee and count
+    rows show the % increase / decrease; rows that are already percentages
+    (margin %, penetration %, discount %) show the change in PERCENTAGE
+    POINTS (e.g. margin 42.0 % -> 44.1 % = "+2.1 pts"), because a "% of a
+    %" is misleading.
+The Excel sheet keeps its Total column and its short change table.
+
 HOW TO BUILD UP A TREND
 -----------------------
 Read each month's Zoho invoice export once (Generate reports > step 2) and
@@ -71,7 +84,8 @@ from app.reports.data import MonthData
 from app.reports.workbook import (
     MONEY, NAVY, PCT, _finish, _font, rule, section, title)
 
-PDF_MONTHS = 6     # months shown in the PDF (label + 6 months + Total = 8 columns)
+PDF_MONTHS = 6     # months shown in the PDF (label + 6 months = 7 columns, v0.34.0)
+POINTS = '+0.0" pts";-0.0" pts";0.0" pts"'   # change of a % row, in percentage points
 PALETTE = ("1F5FBF", "2E9E6B", "E08A1E", "C0392B", "7D4CDB", "17A2B8",
            "D4AC0D", "8E5B3A", "5B6B82", "E0559B")
 COUNT = "0"
@@ -171,6 +185,33 @@ def _put(ws: Worksheet, row: int, label: str, values: list, fmt: str,
             cell.border = Border(top=rule)
 
 
+def _change(now, before, fmt: str):
+    """One cell of the "% change from the previous month" table (v0.34.0).
+    Percentage rows: the difference in percentage points (a number of
+    points, shown with POINTS). Other rows: the change as a % of the earlier
+    month (PCT). Blank when either month has no figure, or - for the % change
+    - when the earlier month is 0 (no base to compare with)."""
+    if now in (None, "") or before in (None, ""):
+        return ""
+    if fmt == PCT:
+        return round((now - before) * 100, 1)
+    return (now - before) / abs(before) if before else ""
+
+
+def _change_table(ws: Worksheet, row: int, labels: list[str], figures: list[dict]) -> int:
+    """v0.34.0: every key-figure row, each month against the month before."""
+    row = section(ws, row, "% change from the previous month")
+    _header(ws, row, "Particulars", labels)
+    for label, key, fmt, bold in ROWS:
+        get = (lambda f, k=key: f[k]) if isinstance(key, str) else key
+        values = [get(f) for f in figures]
+        cells = [None] + [_change(values[i], values[i - 1], fmt)
+                          for i in range(1, len(values))]
+        row += 1
+        _put(ws, row, label, cells, POINTS if fmt == PCT else PCT, bold)
+    return row + 1
+
+
 def _colour(chart) -> None:
     for i, s in enumerate(chart.series):
         colour = PALETTE[i % len(PALETTE)]
@@ -185,12 +226,16 @@ def _colour(chart) -> None:
 
 def trend_sheet(ws: Worksheet, d: MonthData, months: list[MonthData],
                 rto_by_month: dict[str, dict] | None = None, charts: bool = True,
-                last: int | None = None, by_month_tables: bool = True) -> None:
+                last: int | None = None, by_month_tables: bool = True,
+                total: bool = True, change_all: bool = False) -> None:
     """
     Write the trend. The Excel sheet uses the defaults. For the PDF
     (v0.31.0): `charts=False` - no graphs; `last=6` - only the latest six
     months, so the table fits eight columns ("Total" is then the total of
     those six); `by_month_tables=False` - key figures and change only.
+    v0.34.0, the management PDF: `total=False` - no Total column;
+    `change_all=True` - part 2 is "% change from the previous month" for
+    every key-figure row (see the module notes).
     """
     rto_by_month = rto_by_month or {}
     if last:
@@ -210,16 +255,21 @@ def trend_sheet(ws: Worksheet, d: MonthData, months: list[MonthData],
 
     # --- 1. key figures -------------------------------------------------------
     row = section(ws, row, "Key figures")
-    _header(ws, row, "Particulars", labels + ["Total"])
+    _header(ws, row, "Particulars", labels + (["Total"] if total else []))
     head = row
     position = {}
     for label, key, fmt, bold in ROWS:
         row += 1
         get = (lambda f, k=key: f[k]) if isinstance(key, str) else key
-        _put(ws, row, label, [get(f) for f in figures] + [get(_total(figures))], fmt, bold)
+        _put(ws, row, label, [get(f) for f in figures]
+             + ([get(_total(figures))] if total else []), fmt, bold)
         position[label] = row
 
     # --- 2. change from the previous month ---------------------------------------
+    if change_all:                      # v0.34.0: the management PDF
+        _change_table(ws, row + 3, labels, figures)
+        _finish(ws, "B%d" % (head + 1))
+        return
     row = section(ws, row + 3, "Change from the previous month")
     _header(ws, row, "Particulars", labels)
     for label, key in (("Sales", "sales"), ("Gross profit", "gp"), ("Net profit", "net")):

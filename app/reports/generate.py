@@ -40,7 +40,7 @@ from app.data.zoho_costs import ZohoCostFileError, ZohoCosts, read_cogs, read_fi
 from app.reports.fitment import counts as fitment_counts
 from app.reports.data import build_month, scanned_months, trend_months
 from app.reports.pdf_book import write_pdf_workbook
-from app.reports.pdf_export import PdfError, export_pdf, pdf_path_for
+from app.reports.pdf_export import PDF_KINDS, PdfError, export_pdf, pdf_path_for
 from app.reports.rto_reports import Linked
 from app.reports.workbook import write_workbook
 
@@ -58,6 +58,8 @@ class GenerateResult:
     gross_profit: float
     payments_used: bool
     pdf_path: Path | None = None      # v0.9.1: the PDF, when asked for and made
+    #                                   (v0.34.0: the MANAGEMENT PDF)
+    internal_pdf_path: Path | None = None  # v0.34.0: the internal team PDF
     pdf_error: str = ""               # why the PDF could not be made (workbook is fine)
 
 
@@ -161,36 +163,41 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
         # A failure here (no Excel on the PC ...) must not lose the
         # workbook: it is reported separately.
         try:
-            result.pdf_path = _make_pdf(data, trend, payments, rto, previous,
-                                        rto_by_month, path, masters.user)
+            result.pdf_path, result.internal_pdf_path = _make_pdf(
+                data, trend, payments, rto, previous, rto_by_month, path, masters.user)
         except PdfError as exc:
             result.pdf_error = str(exc)
     return result
 
 
 def _make_pdf(data, trend, payments, rto, previous, rto_by_month, workbook_path: Path,
-              user: str) -> Path:
+              user: str) -> tuple[Path, Path]:
     """
-    v0.10.0: the PDF is made from a temporary "PDF version" workbook
-    (summary tables and graphs only - app/reports/pdf_book.py), saved beside
-    the real workbook with the same name, and the temporary file is removed.
+    v0.10.0: a PDF is made from a temporary "PDF version" workbook (summary
+    tables only - app/reports/pdf_book.py), saved beside the real workbook,
+    and the temporary file is removed. v0.34.0: TWO PDFs - management and
+    internal team - each from its own temporary workbook. Returns
+    (management PDF, internal PDF).
     """
+    made = []
     with tempfile.TemporaryDirectory(prefix="dns_pdf_") as folder:
-        book = Path(folder) / (workbook_path.stem + ".xlsx")
-        try:
-            write_pdf_workbook(data, trend, payments, book, user, rto=rto,
-                               previous=previous, rto_by_month=rto_by_month)
-        except OSError as exc:
-            raise PdfError(f"The PDF version could not be prepared: {exc}") from exc
-        return export_pdf(book, pdf_path_for(workbook_path))
+        for kind in PDF_KINDS:
+            book = Path(folder) / f"{workbook_path.stem}_{kind}.xlsx"
+            try:
+                write_pdf_workbook(data, trend, payments, book, user, rto=rto,
+                                   previous=previous, rto_by_month=rto_by_month, part=kind)
+            except OSError as exc:
+                raise PdfError(f"The PDF version could not be prepared: {exc}") from exc
+            made.append(export_pdf(book, pdf_path_for(workbook_path, kind)))
+    return made[0], made[1]
 
 
 def make_pdf(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
              year: int, month: int, workbook_path: str | Path,
              payments_path: str = "", rto_path: str = "", cogs_path: str = "",
-             fifo_path: str = "") -> Path:
+             fifo_path: str = "") -> tuple[Path, Path]:
     """
-    The PDF for a month from History: built from the data as it is NOW
+    The PDFs (v0.34.0: management, internal) for a month from History: built from the data as it is NOW
     (masters and Scan review fixes made since are included), saved beside
     the workbook it belongs to. Raises PdfError / GenerateError.
     """

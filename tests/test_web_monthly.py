@@ -21,6 +21,7 @@ addresses from upload to download, to prove that:
 """
 
 import io
+from pathlib import Path
 
 import pytest
 
@@ -272,6 +273,25 @@ def test_workbook_has_the_desktop_figures_and_history_works(world, monkeypatch):
     assert admin.get(f"/api/monthly/runs/{run['id']}/download", params={"pdf": True}).status_code == 404
     assert admin.post(f"/api/monthly/runs/{run['id']}/pdf", headers=H).status_code == 400
 
+    # v0.34.0: "Make PDFs" makes BOTH - management and internal team - and
+    # each downloads by ?kind= (here the conversion itself is faked)
+    from app.reports import generate as gen
+
+    def fake_export(book, target):
+        Path(target).write_bytes(b"%PDF " + Path(book).stem.encode())
+        return Path(target)
+    monkeypatch.setattr(gen, "export_pdf", fake_export)
+    both = admin.post(f"/api/monthly/runs/{run['id']}/pdf", headers=H).json()
+    assert both["pdf_available"] and both["internal_pdf_available"]
+    for kind in ("management", "internal"):
+        got = admin.get(f"/api/monthly/runs/{run['id']}/download",
+                        params={"pdf": True, "kind": kind})
+        assert got.status_code == 200 and got.content.endswith(kind.encode())
+        assert ("_Management_" if kind == "management" else "_Internal_") \
+            in got.headers["content-disposition"]
+    assert admin.get(f"/api/monthly/runs/{run['id']}/download",
+                     params={"pdf": True, "kind": "other"}).status_code == 400
+
     history = admin.get("/api/monthly/history").json()
     assert [r["id"] for r in history["runs"]] == [run["id"]] and not history["pdf_possible"]
     assert history["months"][0]["label"] == "September 2026" and history["months"][0]["invoices"] == 3
@@ -287,5 +307,6 @@ def test_workbook_has_the_desktop_figures_and_history_works(world, monkeypatch):
     assert len(list(output.glob("*.xlsx"))) >= 1
     assert admin.delete(f"{M}/runs", headers=H).json()["removed"] == 2
     assert list(output.glob("*.xlsx")) == [] and admin.get("/api/monthly/history").json()["runs"] == []
+    assert list(output.glob("*.pdf")) == []                  # both PDFs went with it
     assert admin.delete(f"{M}/invoices", headers=H).json() == {"removed": 3}
     assert admin.get(f"{M}/overview").json()["scan"] is None

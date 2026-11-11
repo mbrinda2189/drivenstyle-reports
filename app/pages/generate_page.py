@@ -642,8 +642,10 @@ class GeneratePage(ScrollPage):
         self._add_log(f"✓  {result.path.name}: {result.invoices} invoices, sales "
                       f"₹{format_inr(result.sales)}, gross profit ₹{format_inr(result.gross_profit)}",
                       Colors.GREEN)
-        if result.pdf_path:
-            self._add_log(f"✓  {result.pdf_path.name} saved in the same folder.", Colors.GREEN)
+        if result.pdf_path:            # v0.34.0: management + internal team PDFs
+            for made in (result.pdf_path, result.internal_pdf_path):
+                if made:
+                    self._add_log(f"✓  {made.name} saved in the same folder.", Colors.GREEN)
         elif result.pdf_error:
             self._add_log(f"✗  PDF not made: {result.pdf_error}", Colors.RED)
         if result.left_out:

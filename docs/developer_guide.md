@@ -337,11 +337,11 @@ rough line counts, to show you where the weight is.
 | `packages.py` | recognises a package sale on an invoice |
 | `workbook.py` (1065) | writes the monthly Excel workbook |
 | `rto_reports.py` | the new-car reports and the executive summary; `list_cols` leaves out the list's own DNS figures when the list has none; (v0.33.1) `invoice_groups` / `count_box` - how the month's invoices are counted under the penetration table |
-| `trend.py` | month-on-month trend; Excel sheet 4, and (v0.31.0) the PDF's last section - six months, key figures and change only (`PDF_MONTHS`) |
-| `pdf_book.py` (767) | lays out the PDF version of the reports |
+| `trend.py` | month-on-month trend; Excel sheet 4, and the management PDF's FIRST section (v0.34.0) - six months, no Total, % change for every row (`PDF_MONTHS`, `total=False`, `change_all=True`) |
+| `pdf_book.py` | lays out the two PDFs (v0.34.0): `part="management"` (owner) and `part="internal"` (labour, incentive, payment modes, tool vs Zoho) |
 | `fitment.py` | v0.33.0: floor mat and sunfilm against the cars delivered (the word rules live here) |
 | `cogs_check.py` | v0.33.0: sheet 18 COGS check - master cost vs Zoho, invoice and item; the P&L block |
-| `pdf_export.py` (193) | turns a workbook into a PDF (LibreOffice on Linux, Excel on Windows) |
+| `pdf_export.py` | turns a workbook into a PDF (LibreOffice on Linux, Excel on Windows); `pdf_path_for(workbook, kind)` names the two PDFs |
 | `generate.py` (173) | builds a month's workbook in one call |
 | `issues_export.py` | Scan review issues as an Excel file |
 | `snapshot.py` (166) | a month's figures as plain numbers - used by the baseline test |
@@ -678,7 +678,7 @@ All start with `/api`. "Who" = who may call it.
 | `GET .../matches`, `/matches/export`, `POST .../matches/change`, `/matches/remove`, `GET /api/monthly/match-choices/{kind}` | saved matches |
 | `GET` / `PUT /api/monthly/{month}/inputs`, `PUT /api/monthly/auto-rates` | monthly inputs |
 | `POST /api/monthly/{month}/generate` | make the workbook and the PDF |
-| `GET /api/monthly/runs/{id}/download`, `POST .../pdf`, `.../regenerate` | a report made earlier |
+| `GET /api/monthly/runs/{id}/download` (`?pdf=true&kind=management|internal`), `POST .../pdf` (makes both PDFs), `.../regenerate` | a report made earlier |
 | `DELETE /api/monthly/{month}/runs`, `/invoices` | remove a month's reports / its invoices |
 
 ### 9.4 Daily payouts (`daily_api.py`, `daily_reports.py`)

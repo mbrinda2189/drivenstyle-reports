@@ -256,11 +256,25 @@ def invoice_groups(link: Linked) -> list[dict]:
     return groups
 
 
-def count_box(ws: Worksheet, row: int, link: Linked, note: bool = True) -> int:
+# v0.34.0: the same four groups in words short enough to print in full in
+# the PDF's first column (the long labels were cut off: "...took DNS (the tabl").
+SHORT_GROUP_LABELS = ("A. New cars delivered this month (took DNS)",
+                      "B. Delivered earlier (VIN not in this list)",
+                      "C. Older cars (registration no., no VIN)",
+                      "D. Counter sales / no vehicle")
+
+
+def count_box(ws: Worksheet, row: int, link: Linked, note: bool = True,
+              short: bool = False) -> int:
     """Write the "How the month's invoices are counted" box; next free row.
     `note`: the explanation line above it - Excel only; the PDF has no
     descriptions under headings (the client's note of 05-10-2026), and the
-    four row labels say the same."""
+    four row labels say the same. `short` (v0.34.0, the PDF): the shorter
+    row labels (SHORT_GROUP_LABELS) so no line is cut off in print."""
+    groups = invoice_groups(link)
+    if short:
+        for g, text in zip(groups, SHORT_GROUP_LABELS):
+            g["what"] = text
     row = section(ws, row, "How the month's invoices are counted")
     if note:
         ws.cell(row, 1, COUNT_NOTE).font = _font(color=SLATE, size=9)
@@ -270,7 +284,7 @@ def count_box(ws: Worksheet, row: int, link: Linked, note: bool = True) -> int:
         Col("Invoices", "invoices", "qty", 10, total="sum"),
         Col("Cars", "cars", "qty", 8),
         Col("Sales (excl. GST)", "sales", "money", 15, total="sum"),
-    ], invoice_groups(link), total_label="All invoices of the month")
+    ], groups, total_label="All invoices of the month")
     return t["next"]
 
 

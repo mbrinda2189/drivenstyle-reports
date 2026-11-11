@@ -106,7 +106,12 @@ def test_excel_is_asked_for_one_pdf(tmp_path, monkeypatch):
         export_pdf(book)
     with pytest.raises(PdfError, match="no longer"):
         export_pdf(tmp_path / "missing.xlsx")
-    assert pdf_export.pdf_path_for("a/b.xlsx").name == "b.pdf"
+    # v0.34.0: two PDFs, named after the workbook
+    assert pdf_export.pdf_path_for("a/b.xlsx").name == "b_Management.pdf"
+    assert pdf_export.pdf_path_for("a/DriveNStyle_Oct-2026_Reports_11-11-2026_1621.xlsx",
+                                   "internal").name == \
+        "DriveNStyle_Oct-2026_Internal_11-11-2026_1621.pdf"
+    assert pdf_export.old_pdf_path_for("a/b.xlsx").name == "b.pdf"
 
 
 # --- v0.10.0: the PDF version (summary tables + graphs) and the trend --------------
@@ -137,16 +142,22 @@ def test_pdf_version_layout(world):  # noqa: F811
         top = ws.cell(brk.id + 1, 1)
         assert top.value and top.font.b and top.font.sz in (11, 14), top.value
     text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
-    wanted = ["Profit & loss", "New-car business", "Top 10 products by gross profit",
+    # v0.34.0: the MANAGEMENT PDF - trend first, then the P&L on a fresh page
+    wanted = ["Trend analysis (month on month)", "% change from the previous month",
+              "Profit & loss", "New-car business",
+              "How the month's invoices are counted", "Top 10 products by gross profit",
               "Top 10 services by gross profit", "Penetration by location",
               "By location - OE accessories", "By model - OE accessories",
-              "Branches by gross profit", "Packages vs sales", "Labour calculation",
-              "Vehicle-wise average per car", "Spot incentive calculation",
-              "Payment mode analysis",
-              "Trend analysis (month on month)"]   # v0.31.0: last, with 2+ months
+              "Branches by gross profit", "Vehicle-wise average per car"]
     order = [text.index(t) for t in wanted]
-    assert order == sorted(order) and text[0] == "Profit & loss"      # P&L on page 1
-    for gone in ("Headline figures", "Drive N Style – Executive summary",
+    assert order == sorted(order) and text[0] == "Trend analysis (month on month)"
+    pnl = next(c.row for row in ws.iter_rows(max_col=1) for c in row
+               if c.value == "Profit & loss")
+    assert pnl - 1 in [b.id for b in ws.row_breaks.brk]       # P&L starts a page
+    assert "Drive N Style - September 2026 - Management" == ws.oddFooter.left.text
+    for gone in ("Packages vs sales", "Labour calculation", "Spot incentive calculation",
+                 "Payment mode analysis", "Labour - tool vs Zoho", "Change from the previous month",
+                 "Headline figures", "Drive N Style – Executive summary",
                  "Points needing attention", "Service vs product profitability",
                  "Indirect vs direct cost %", "New-car vs other business",
                  "By model - DNS accessories",
@@ -185,7 +196,8 @@ def test_pdf_version_layout(world):  # noqa: F811
     assert shift_formula('=IF($B$7=0,"",B9/$B$7)', 100) == '=IF($B$107=0,"",B109/$B$107)'
     assert shift_formula("=SUM(C8:C11)", 10) == "=SUM(C18:C21)"
     # indirect cost heads largest first (PDF only)
-    heads = text[text.index("Indirect costs") + 1:text.index("Total indirect costs")]
+    pnl_at = text.index("Profit & loss")              # (the trend also has "Indirect costs")
+    heads = text[text.index("Indirect costs", pnl_at) + 1:text.index("Total indirect costs")]
     assert heads[:2] == ["Rent", "Salaries"]
     payable = [g["payable"] for g in incentive_by_executive(d)]
     assert payable == sorted(payable, reverse=True)
@@ -230,6 +242,21 @@ def test_pdf_version_layout(world):  # noqa: F811
     assert "Trend analysis (month on month)" not in text
     assert text[0] == "Profit & loss" and "Branches by gross profit" in text
 
+    # v0.34.0: the INTERNAL team PDF - labour, spot incentive, payment modes
+    # (and tool vs Zoho when Zoho's files are there - tests/test_cogs_check.py)
+    ws = openpyxl.load_workbook(write_pdf_workbook(d, [d, d], None, tmp_path / "i.xlsx",
+                                                   rto=rto, part="internal"))["Report"]
+    text = [row[0] for row in ws.iter_rows(values_only=True) if isinstance(row[0], str)]
+    wanted = ["Labour calculation", "Spot incentive calculation", "Payment mode analysis"]
+    order = [text.index(t) for t in wanted]
+    assert order == sorted(order) and text[0] == "Labour calculation"
+    for gone in ("Profit & loss", "Trend analysis (month on month)", "New-car business",
+                 "Packages vs sales", "Branches by gross profit"):
+        assert gone not in text
+    assert ws.oddFooter.left.text == "Drive N Style - September 2026 - Internal team"
+    with pytest.raises(ValueError):
+        write_pdf_workbook(d, [d], None, tmp_path / "x.xlsx", part="other")
+
     # the Excel workbook is unchanged: summary, notes and gross-profit ranking stay
     r = generate(masters, irepo, inputs, 2026, 9, tmp_path, ["Profit & loss"])
     excel = [c[0] for c in openpyxl.load_workbook(r.path)["Summary"].iter_rows(
@@ -255,13 +282,15 @@ def test_trend_sheet_and_saved_delivery_totals(world):  # noqa: F811
     assert len(ws._charts) == 2                      # lines + penetration bars
 
 
-def test_pdf_trend_last_six_months_on_its_own_page(world):  # noqa: F811
-    """v0.31.0 (Brinda, 10-11-2026): the trend is the PDF's last section, on a
-    page of its own, with the latest six months + their total (8 columns),
-    key figures and change only - no charts, no branch / product tables."""
+def test_pdf_trend_first_without_total_with_change_pct(world):  # noqa: F811
+    """v0.34.0 (Brinda, 11-11-2026): the trend is the MANAGEMENT PDF's first
+    section (latest six months, key figures only), with NO Total column and
+    a "% change from the previous month" table for every row; % rows show
+    the change in percentage points. (v0.31.0 had it last, with a Total.)"""
     import dataclasses
     from app.reports.data import build_month
     from app.reports.pdf_book import write_pdf_workbook
+    from app.reports.trend import POINTS, _change
     masters, irepo, tmp_path = world
     inputs = InputsRepo(masters)
     d = build_month(masters, irepo, inputs, 2026, 9)
@@ -270,17 +299,22 @@ def test_pdf_trend_last_six_months_on_its_own_page(world):  # noqa: F811
     ws = openpyxl.load_workbook(write_pdf_workbook(d, months, None, tmp_path / "t.xlsx"))["Report"]
     rows = list(ws.iter_rows(values_only=True))
     first = [r[0] for r in rows]
-    at = first.index("Trend analysis (month on month)")
-    assert at == max(i for i, v in enumerate(first) if v == "Trend analysis (month on month)"
-                     or v == "Payment mode analysis")          # it is the last section
-    head = rows[first.index("Particulars", at)]
-    assert list(head[:8]) == ["Particulars", "May 2026", "Jun 2026", "Jul 2026", "Aug 2026",
-                              "Sep 2026", "Oct 2026", "Total"]
-    assert ws.max_column <= 8
-    sales = rows[first.index("Sales (excluding GST)", at)]
-    assert sales[7] == round(6 * sales[1], 2)                  # Total = the six shown
-    assert "Change from the previous month" in first[at:]
+    assert first[0] == "Trend analysis (month on month)"
+    head = rows[first.index("Particulars")]
+    assert list(head[:7]) == ["Particulars", "May 2026", "Jun 2026", "Jul 2026", "Aug 2026",
+                              "Sep 2026", "Oct 2026"]
+    assert head[7] is None                                     # no Total column
+    at = first.index("% change from the previous month")
+    change = rows[first.index("Sales (excluding GST)", at)]
+    assert change[1] in (None, "") and change[2] == 0         # same invoices: no change
+    margin = first.index("Gross margin %", at)
+    assert ws.cell(margin + 1, 3).number_format == POINTS
+    assert "Change from the previous month" not in first
     assert "Sales by branch" not in first and "Top 10 products by sales" not in first
     assert not ws._charts
-    # it starts a fresh page: a page break right before its heading
-    assert at in [b.id for b in ws.row_breaks.brk]             # break after row `at`
+    # the change cells
+    assert _change(110.0, 100.0, "#,##0.00") == 0.1
+    assert _change(90.0, -100.0, "#,##0.00") == 1.9           # loss to profit: vs |before|
+    assert _change(5.0, 0, "#,##0.00") == ""                  # no base
+    assert _change(0.441, 0.42, "0.0%") == 2.1                # points
+    assert _change("", 0.42, "0.0%") == ""

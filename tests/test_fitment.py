@@ -223,4 +223,8 @@ def test_count_box_on_sheet_13_and_the_pdf(world):
     text = [row[0] for row in pdf.iter_rows(values_only=True)]
     at = text.index("How the month's invoices are counted")
     assert text[at + 1] == "Invoices of the month"           # no description in the PDF
-    assert text.index("Penetration by location") < at
+    # v0.34.0: straight after New-car business, before Penetration by location,
+    # with labels short enough to print in full
+    assert text.index("New-car business") < at < text.index("Penetration by location")
+    assert text[at + 2] == "A. New cars delivered this month (took DNS)"
+    assert all(len(t) <= 45 for t in text[at + 2:at + 6])

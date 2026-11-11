@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.33.1** (tags v0.1.0 … v0.33.1 on GitHub
+Current version: **v0.34.0** (tags v0.1.0 … v0.34.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -248,6 +248,25 @@ Branding page is filled (home page + `/privacy`).
   Rear GEN master 619 vs Zoho ~11,568 posted per car; Blaupunkt roll master
   25,424 per unit but sold per car; 110 units sold with no stock in Zoho
   (master 1,85,177) - bills entered late.
+- v0.34.0 (Brinda, 11-11-2026, "okay for all the above"): TWO PDFs.
+  pdf_book.write_pdf_workbook(part="management"|"internal"); names from
+  pdf_export.pdf_path_for(workbook, kind) ("_Reports_" -> "_Management_" /
+  "_Internal_"); old single PDF = old_pdf_path_for. MANAGEMENT: Trend FIRST
+  (2+ months, last 6, total=False, change_all=True: "% change from the
+  previous month" every row, % rows in points), P&L on a fresh page
+  (FRESH_PAGE) with zoho=False, New-car business, count box (own section,
+  short labels), top 10s, penetration, OE, branches, vehicle-wise.
+  Packages vs sales OUT (Excel only). INTERNAL: labour, spot incentive,
+  payment modes, Tool vs Zoho (workbook.tool_vs_zoho) + _cogs. Excel
+  unchanged. Web: ?kind=, internal_pdf_available, two buttons.
+  Parked, agreed: sheet 18 sections D/E wording - the FIFO export is
+  complete (01/06 to today); the 93 "no stock" lines are real negative-stock
+  rows (no bill, remaining qty -1), but Zoho still POSTS COGS for them at
+  the purchase rate (DNS-372: 34,000), so "(costed at 0)" is wrong. Plan:
+  rename E "Sold with no stock in Zoho (negative stock)" + column Zoho COGS
+  posted; fix D's note; optional table of items still negative / sales
+  costed from a later bill (587 no-stock rows since June, 250 from later
+  bills) in the purchase analysis - ask Brinda.
 - ON HOLD (Brinda, 10-11-2026 - "let the staff work on it today"):
   (1) Daily Review: say "N uploaded PDFs not scanned yet - press Scan" instead
   of "Nothing to decide" when the inbox holds PDFs of waiting invoices

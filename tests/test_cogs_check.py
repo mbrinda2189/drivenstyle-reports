@@ -230,10 +230,16 @@ def test_pdf_has_the_comparison(world, tmp_path):
     d = build_month(masters, irepo, InputsRepo(masters), 2026, 9)
     d.zoho_costs = ZohoCosts(read_cogs(write_cogs(tmp_path / "c.xlsx")),
                              read_fifo(write_fifo(tmp_path / "f.xlsx")))
-    ws = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "p.xlsx"))["Report"]
+    # v0.34.0: the comparison is in the INTERNAL team PDF, not the management one
+    ws = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "p.xlsx",
+                                                   part="internal"))["Report"]
     text = [row[0] for row in ws.iter_rows(values_only=True)]
     assert "Product cost - master vs Zoho" in text
     assert "The 10 invoices that differ most (all in Excel, sheet 18)" in text
+    assert "Product cost - tool vs Zoho (details: sheet 18 COGS check)" in text
+    ws = openpyxl.load_workbook(write_pdf_workbook(d, [d], None, tmp_path / "m.xlsx"))["Report"]
+    text = [row[0] for row in ws.iter_rows(values_only=True)]
+    assert not any(isinstance(t, str) and "vs Zoho" in t for t in text)
 
 
 # ---------------------------------------------------------------------------

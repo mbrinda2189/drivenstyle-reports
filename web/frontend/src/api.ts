@@ -261,7 +261,8 @@ export interface Run {
   gross_profit: number;
   reports: string[];
   available: boolean;              // the file is on this server
-  pdf_available: boolean;
+  pdf_available: boolean;          // the MANAGEMENT PDF (v0.34.0)
+  internal_pdf_available: boolean; // the internal team PDF (v0.34.0)
 }
 
 export interface Overview {
@@ -368,7 +369,9 @@ export const monthlyApi = {
   history: () => ask<{ runs: Run[]; pdf_possible: boolean;
                        months: { month: string; label: string; invoices: number;
                                  scanned_at: string; folder: string }[] }>("GET", "/monthly/history"),
-  downloadUrl: (id: number, pdf = false) => `/api/monthly/runs/${id}/download${pdf ? "?pdf=true" : ""}`,
+  /** The workbook, or one of its two PDFs (v0.34.0: "management" / "internal"). */
+  downloadUrl: (id: number, pdf: false | "management" | "internal" = false) =>
+    `/api/monthly/runs/${id}/download${pdf ? `?pdf=true&kind=${pdf}` : ""}`,
   regenerate: (id: number) => ask<GenerateResult>("POST", `/monthly/runs/${id}/regenerate`),
   makePdf: (id: number) => ask<Run>("POST", `/monthly/runs/${id}/pdf`),
   removeRuns: (month: string) => ask<{ removed: number }>("DELETE", `/monthly/${month}/runs`),
