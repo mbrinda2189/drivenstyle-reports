@@ -77,6 +77,20 @@ POSTING RULES (`plan`)
                                  paid: a negative adjustment line
       Everything is written to the Log, and the invoice shows "Re-issued".
     * An invoice marked "Cancelled" in the Invoices tab is never posted.
+    * RECALCULATE (v0.35.0): the invoice numbers passed as `recalculate`
+      are worked out again with the masters as they are NOW, even though
+      their PDF has not changed - for a product linked to its incentive
+      group after the invoice was posted, or a rule that changed (v0.35.0:
+      the whole-invoice fixed-price rule). Unlike a re-issue, a recalculation
+      NEVER touches a paid line and adds no adjustment for it:
+          line not yet paid   -> corrected in place (or Cancelled if no
+                                 longer due)
+          line not there yet  -> added (e.g. a spot incentive line for an
+                                 item linked late)
+          line already Paid   -> left exactly as it is; listed in the
+                                 warnings so the staff can see it
+      The invoice keeps its state; every change is in the Log as
+      "Recalculated: ...".
     * The tally always adds up:
           files = posted now + already posted + re-issued + in review
                   + cancelled + not used + before the start date
@@ -344,16 +358,22 @@ def _same_line(row: list, line: PayoutLine) -> bool:
 
 
 def plan(payout_rows: list[list], invoice_rows: list[list], outcome: Outcome,
-         who: str, now: datetime, start: date | None = None) -> Plan:
+         who: str, now: datetime, start: date | None = None,
+         recalculate: set[str] | None = None) -> Plan:
     """
     What this scan has to write (see POSTING RULES above).
     payout_rows / invoice_rows   the tabs as read (row 1 = headings), AFTER
                                  any restoring from `verify` has been applied
     start                        invoices dated before this are left alone
+    recalculate                  v0.35.0: posted invoices to work out again
+                                 with today's masters (see RECALCULATE)
     """
     out = Plan()
     tally = dict.fromkeys(("files", "posted", "already posted", "re-issued",
                            "in review", "cancelled", "not used", "before start date"), 0)
+    recalculate = set(recalculate or ())
+    if recalculate:
+        tally["recalculated"] = 0
     known = {_s(_cell(r, I["Invoice no"])): (n, r)
              for n, r in enumerate(invoice_rows[1:], start=2) if _s(_cell(r, 0))}
     lines_of: dict[str, list[tuple[int, list]]] = {}
@@ -389,12 +409,20 @@ def plan(payout_rows: list[list], invoice_rows: list[list], outcome: Outcome,
             tally["cancelled"] += 1
             continue
         posted_before = old_state in (POSTED, REISSUED)
-        if posted_before and old_print == new_print:
+        again = posted_before and old_print == new_print and res.invoice_no in recalculate
+        if posted_before and old_print == new_print and not again:
             tally["already posted"] += 1
             continue
         if res.state == REVIEW:
             tally["in review"] += 1
             reason = " ".join(res.reasons)
+            if again:
+                tally["in review"] -= 1
+                tally["recalculated"] += 1
+                out.warnings.append(
+                    f"{res.invoice_no} could not be recalculated: {reason} "
+                    "Its posted lines are unchanged.")
+                continue
             if posted_before:
                 # Re-issued, but the new version cannot be calculated: the
                 # posted lines stay; the invoice waits in review.
@@ -415,6 +443,10 @@ def plan(payout_rows: list[list], invoice_rows: list[list], outcome: Outcome,
             out.add_log(now, who, "Posted", res.invoice_no, "",
                         f"{len(res.lines)} line(s), "
                         f"{format_inr(sum(l.amount for l in res.lines))}")
+            continue
+        if again:                                     # v0.35.0: Recalculate
+            tally["recalculated"] += 1
+            _recalculate(out, res, lines_of.get(res.invoice_no, []), who, now)
             continue
         tally["re-issued"] += 1
         _reissue(out, res, lines_of.get(res.invoice_no, []), who, now)
@@ -503,6 +535,60 @@ def _reissue(out: Plan, res: InvoiceResult, old_rows: list[tuple[int, list]],
                 adjustment(like, old_payee, diff,
                            f"Invoice re-issued: now {format_inr(new_amount)}"
                            + (f" ({line.working})" if line else ""))
+
+
+def _recalculate(out: Plan, res: InvoiceResult, old_rows: list[tuple[int, list]],
+                 who: str, now: datetime) -> None:
+    """
+    v0.35.0 - bring the UNPAID lines of a posted invoice in line with what
+    today's masters and rules give (see RECALCULATE in the module notes).
+    Paid lines, and lines that already carry an adjustment, are never
+    touched; they are named in the warnings instead.
+    """
+    base: dict[str, tuple[int, list]] = {}
+    adjusted: set[str] = set()
+    for n, row in old_rows:
+        lid = _s(_cell(row, P["Line ID"]))
+        if "-ADJ" in lid:
+            adjusted.add(lid.split("-ADJ")[0])
+        else:
+            base[lid] = (n, row)
+    new = {l.line_id: l for l in res.lines}
+    for lid in sorted(set(base) | set(new)):
+        line = new.get(lid)
+        if lid not in base:                                   # newly due
+            out.payout_appends.append(payout_row(line, now))
+            out.add_log(now, who, "Recalculated: new line", lid, "",
+                        f"{line.payee or line.type}: {format_inr(line.amount)}")
+            continue
+        n, row = base[lid]
+        status = _s(_cell(row, P["Status"]))
+        if status == CANCELLED:
+            continue
+        old_amount = _amount(_cell(row, P["Amount"]))
+        was = f"{_s(_cell(row, P['Payee'])) or _s(_cell(row, P['Type']))}: " \
+              f"{format_inr(old_amount)}"
+        if status == PAID or lid in adjusted:
+            if line is None or not _same_line(row, line):
+                now_due = format_inr(line.amount) if line else "nothing"
+                out.warnings.append(
+                    f"{lid} is already paid ({format_inr(old_amount)}); today's masters "
+                    f"give {now_due}. The paid line was left as it is.")
+            continue
+        if line is None:                                      # no longer due
+            cells = list(row[:len(PAYOUT_HEADERS)])
+            cells += [""] * (len(PAYOUT_HEADERS) - len(cells))
+            cells[P["Status"]] = CANCELLED
+            cells[P["Remarks"]] = "Recalculated: no longer due"
+            out.payout_updates.append((n, cells))
+            out.add_log(now, who, "Recalculated: line cancelled", lid, was, "")
+        elif not _same_line(row, line):
+            fresh = payout_row(line, now)
+            cells = fresh[:P["Status"]] + list(row[P["Status"]:P["Check"]])
+            cells += [""] * (P["Check"] - len(cells)) + [fresh[P["Check"]]]
+            out.payout_updates.append((n, cells))
+            out.add_log(now, who, "Recalculated: line corrected", lid, was,
+                        f"{line.payee or line.type}: {format_inr(line.amount)}")
 
 
 # ---------------------------------------------------------------------------

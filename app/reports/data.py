@@ -37,15 +37,50 @@ Rs. 0.85 each after discount and GST) is left out of sales, so report sales
 are slightly below the invoice totals; the count and value are kept on the
 invoice (`markers`, `marker_value`) and shown on the cover sheet.
 
-INCENTIVES (report 7 - rule confirmed by the client on 30-09-2026)
------------------------------------------------------------------
-For a product linked to an incentive group, the group's incentive amount
-and bill value that applied on the invoice date are attached to the line,
-with `billed` = the line's value after discount INCLUDING GST (what the
-customer paid for it). The workbook applies the client's rule
+INCENTIVES (report 7) - WHOLE INVOICE AGAINST FIXED PRICES (v0.35.0)
+-------------------------------------------------------------------
+Rule confirmed by the client on 16-11-2026 (Brinda: "measure against the
+fixed price", the whole invoice, not item by item):
+
+    fixed price of a line   per unit, GST-inclusive:
+                              the group's BILL VALUE (Incentive master) for
+                              a product with an incentive group, else
+                              the SELLING PRICE (Product master), else
+                              the price typed on the invoice
+                            (`Line.fixed_price`, `Line.fixed_source`)
+    fixed total             the invoice's fixed prices x qty; the lines of a
+                            package count at the package's own bill value
+                            (the coupon's final value) instead
+    paid                    what the customer paid for the lines: each line's
+                            value after discount INCLUDING GST (`billed`)
+    ratio                   min(1, paid / fixed total)
+    incentive payable       ratio x (every item incentive x qty + the
+                            package incentive)
+
+WHY: salespeople were typing an item ABOVE its fixed price and then giving
+a "discount" (estimate 515: prices raised by Rs. 4,900, discount Rs. 4,400,
+customer still paid Rs. 500 more than the fixed prices). Comparing what was
+actually collected with the fixed prices of the whole invoice means the
+typed prices - and how a discount is spread over the lines - can no longer
+change the incentive. A customer who paid the fixed prices or more earns
+the full incentive; one who paid less cuts every incentive on the invoice
+by the same proportion.
+
+Until v0.34.0 each line was checked on its own:
     payable = incentive x qty x min(1, billed / (bill value x qty))
-i.e. the incentive falls in proportion to any discount below the bill
-value, and is never more than the full incentive.
+with the invoice discount spread over the lines in proportion to the TYPED
+prices - which a salesperson could steer by typing the incentive item high
+and another item low (same total). Paid register lines keep the amount they
+were paid at; unpaid ones can be brought to the new rule with Recalculate
+on the Payouts screen (payout_app/register.py).
+
+PRICES TYPED ABOVE THE FIXED PRICE (v0.35.0)
+--------------------------------------------
+`MonthData.raised_prices()` lists every item typed on an invoice above its
+fixed price by more than Rs. 1 (unit price as typed, GST-inclusive, minus the
+fixed price, x qty) - for the "Prices above fixed price" sheet and the
+internal team PDF. Items with no fixed price (neither an incentive group
+with a bill value nor a selling price) are not listed.
 
 PACKAGES (report 5)
 -------------------
@@ -130,6 +165,32 @@ def round_up_10(amount: float) -> float:
     return float(math.ceil(round(amount, 2) / 10 - 1e-9) * 10)
 
 
+# Where a line's fixed price comes from (v0.35.0)
+BILL_VALUE, SELLING_PRICE, TYPED = "bill value", "selling price", "typed price"
+RAISED_MIN = 1.0      # differences of Rs. 1 or less are rounding, not raised prices
+PLACEHOLDER_PRICE = 1.0   # a selling price of Rs. 1 or less is a placeholder in the
+                          # Product master ("Consumables - Exp", "Misc Items",
+                          # "frieght" ...), not a real price: such items count at
+                          # their typed price and are never "raised"
+
+
+def fixed_price_for(bill_value: float, selling_price: float, typed_unit: float
+                    ) -> tuple[float, str]:
+    """
+    The fixed price of one unit and where it comes from (v0.35.0):
+    the incentive group's bill value when there is one, else the Product
+    master's selling price (when above Rs. 1 - see PLACEHOLDER_PRICE), else
+    the price typed on the invoice. All three
+    are GST-inclusive (Brinda, 16-11-2026: selling prices in the Product
+    master include GST).
+    """
+    if bill_value and bill_value > 0:
+        return round(bill_value, 2), BILL_VALUE
+    if selling_price and selling_price > PLACEHOLDER_PRICE:
+        return round(selling_price, 2), SELLING_PRICE
+    return round(max(typed_unit, 0.0), 2), TYPED
+
+
 @dataclass
 class Line:
     """One invoice line, valued."""
@@ -154,6 +215,29 @@ class Line:
     is_package: bool = False        # part of a package sale (v0.8.0)
     list_price: float = 0.0         # per unit, Product master (Zoho's rate)
     internal_incentive: float = 0.0  # per unit, to the internal team (v0.12.0)
+    # v0.35.0 - the fixed-price rule (see INCENTIVES in the module notes)
+    typed: float = 0.0              # the line amount as typed on the invoice
+                                    # (qty x rate, GST-inclusive, before discount)
+    fixed_price: float = 0.0        # per unit, GST-inclusive
+    fixed_source: str = ""          # "bill value" / "selling price" / "typed price"
+
+    @property
+    def typed_unit(self) -> float:
+        """The unit price as typed on the invoice (GST-inclusive)."""
+        return round(self.typed / self.qty, 2) if self.qty else round(self.typed, 2)
+
+    @property
+    def fixed_value(self) -> float:
+        """Fixed price x quantity."""
+        return round(self.fixed_price * self.qty, 2)
+
+    @property
+    def raised_by(self) -> float:
+        """How much more than the fixed price was typed for this line
+        (0 when typed at or below it, or when there is no fixed price)."""
+        if self.fixed_source in ("", TYPED):
+            return 0.0
+        return round(max(0.0, self.typed - self.fixed_value), 2)
 
     @property
     def billed(self) -> float:
@@ -247,23 +331,49 @@ class Invoice:
         """
         return round(sum(l.discount for l in self.lines), 2)
 
+    # ---- spot incentive: whole invoice against fixed prices (v0.35.0) ------
+    @property
+    def paid_total(self) -> float:
+        """What the customer paid for the invoice's lines: every line after
+        its share of the discount, INCLUDING GST (the Rs. 1 labour marker
+        lines are not counted, as they are not in `lines`)."""
+        return round(sum(l.billed for l in self.lines), 2)
+
+    @property
+    def fixed_total(self) -> float:
+        """The invoice's fixed prices: every line's fixed price x qty, with
+        the lines of a package counted at the package's bill value (the
+        coupon's final value) instead of their own."""
+        k = self.package
+        total = sum(l.fixed_value for l in self.lines if not (k and l.is_package))
+        if k:
+            total += k.coupon_value if k.coupon_value else sum(l.fixed_value for l in k.lines)
+        return round(total, 2)
+
+    @property
+    def incentive_ratio(self) -> float:
+        """min(1, paid / fixed total) - the share of the full incentive that
+        is earned. 1 when the invoice has no fixed prices at all."""
+        fixed = self.fixed_total
+        return 1.0 if fixed <= 0 else min(1.0, self.paid_total / fixed)
+
+    @property
+    def full_incentive(self) -> float:
+        """Every item incentive x qty + the package incentive, before the
+        ratio (0 for an executive marked "Gets incentive = No")."""
+        total = sum(l.incentive_amount * l.qty for l in self.lines if l.incentive_group)
+        if self.package:
+            total += self.package.incentive
+        return round(total, 2)
+
     @property
     def incentive_payable(self) -> float:
         """
-        Spot incentive for this invoice by the confirmed rule (the same
-        figure the Spot incentive sheet works out with Excel formulas):
-        incentive x qty x min(1, billed / (bill value x qty)) per line with
-        an incentive group, plus the package incentive if a package was sold.
+        Spot incentive for this invoice (v0.35.0, see INCENTIVES in the
+        module notes): full incentive x min(1, paid / fixed total). The
+        Spot incentive sheet works out the same figure with Excel formulas.
         """
-        total = 0.0
-        for l in self.lines:
-            base = l.bill_value * l.qty
-            if l.incentive_group and base:
-                total += l.incentive_amount * l.qty * min(1.0, l.billed / base)
-        k = self.package
-        if k and k.coupon_value:
-            total += k.incentive * min(1.0, k.billed / k.coupon_value)
-        return round(total, 2)
+        return round(self.full_incentive * self.incentive_ratio, 2)
 
     @property
     def internal_incentive(self) -> float:
@@ -330,6 +440,59 @@ class MonthData:
     @property
     def lines(self) -> list[Line]:
         return [l for inv in self.invoices for l in inv.lines]
+
+    def raised_prices(self) -> list[dict]:
+        """
+        Every item typed above its fixed price by more than Rs. 1 (v0.35.0,
+        see PRICES TYPED ABOVE THE FIXED PRICE in the module notes), one dict
+        per line, sorted by executive, then the amount raised (largest first):
+            executive, invoice_no, date, customer, product, qty,
+            typed_unit, fixed_unit, fixed_source, raised (Rs.), raised_pct,
+            has_incentive (the line carries an item incentive),
+            inv_discount (the invoice's discount as printed),
+            inv_paid, inv_fixed, inv_over (paid - fixed: + = the customer
+            still paid at least the fixed prices)
+        """
+        out = []
+        for inv in self.invoices:
+            label = f"{inv.executive} – {inv.branch}" if inv.branch else inv.executive
+            if inv.printed_executive:
+                label = f"{label} ({inv.printed_executive})"
+            for l in inv.lines:
+                raised = l.raised_by
+                if raised <= RAISED_MIN:
+                    continue
+                out.append(dict(
+                    executive=label, invoice_no=inv.invoice_no, date=inv.invoice_date,
+                    customer=inv.customer, product=l.product, qty=l.qty,
+                    typed_unit=l.typed_unit, fixed_unit=l.fixed_price,
+                    fixed_source=l.fixed_source, raised=raised,
+                    raised_pct=round(raised / l.fixed_value, 4) if l.fixed_value else 0.0,
+                    has_incentive=bool(l.incentive_group) or l.is_package,
+                    inv_discount=inv.discount, inv_paid=inv.paid_total,
+                    inv_fixed=inv.fixed_total,
+                    inv_over=round(inv.paid_total - inv.fixed_total, 2)))
+        out.sort(key=lambda r: (r["executive"], -r["raised"], r["date"], r["invoice_no"]))
+        return out
+
+    def raised_by_executive(self) -> list[dict]:
+        """`raised_prices` summed per executive: invoices, items, total raised,
+        and the discount printed on those invoices (each invoice once).
+        Largest total raised first."""
+        groups: dict[str, dict] = {}
+        seen: set[tuple[str, str]] = set()
+        for r in self.raised_prices():
+            g = groups.setdefault(r["executive"], dict(
+                executive=r["executive"], invoices=0, items=0, raised=0.0, discount=0.0))
+            g["items"] += 1
+            g["raised"] += r["raised"]
+            if (r["executive"], r["invoice_no"]) not in seen:
+                seen.add((r["executive"], r["invoice_no"]))
+                g["invoices"] += 1
+                g["discount"] += r["inv_discount"] or 0.0
+        rows = [dict(g, raised=round(g["raised"], 2), discount=round(g["discount"], 2))
+                for g in groups.values()]
+        return sorted(rows, key=lambda g: (-g["raised"], g["executive"]))
 
     @property
     def sales(self) -> float:
@@ -519,13 +682,19 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
                         cost=round(r.get("cost_price", 0.0) * qty, 2),
                         labour=round(labour_rate * qty, 2), labour_rate=labour_rate,
                         list_price=r.get("selling_price", 0.0),
-                        internal_incentive=p.get("internal_incentive") or 0.0, **common)
+                        internal_incentive=p.get("internal_incentive") or 0.0,
+                        typed=round(ln.get("amount") or 0.0, 2), **common)
             group = p["incentive_group"]
             if group and group in incentive_ids:
                 ir = rate("incentives", incentive_ids[group], day)
                 line.incentive_group = group
                 line.incentive_amount = ir.get("incentive_amount", 0.0)
                 line.bill_value = ir.get("bill_value", 0.0)
+            # v0.35.0: the line's fixed price, worked out HERE - before a
+            # package or "Gets incentive = No" clears the incentive fields -
+            # so it stays the same whoever sold the item.
+            line.fixed_price, line.fixed_source = fixed_price_for(
+                line.bill_value, line.list_price, line.typed_unit)
             inv.lines.append(line)
 
         # --- package (v0.8.0): every item of a package is on the invoice -----

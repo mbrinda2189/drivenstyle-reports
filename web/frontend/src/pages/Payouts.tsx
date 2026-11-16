@@ -22,6 +22,14 @@
  *      Cancel invoice… (lines of ONE invoice ticked) the invoice is not to
  *                      be paid: its unpaid lines are cancelled, paid ones
  *                      are left exactly as they are.
+ *      Recalculate…    (v0.35.0) works the invoices of the ticked lines out
+ *                      again with TODAY's masters and rules - after a product
+ *                      was linked to its incentive group, or a rule changed.
+ *                      With nothing ticked it offers every invoice that still
+ *                      has unpaid lines. Unpaid lines are corrected, newly due
+ *                      lines (e.g. a spot incentive) are added, PAID lines are
+ *                      never changed - they are named instead. Every change
+ *                      goes to History. (payout_app/register.py, RECALCULATE)
  *
  * THE RULES ARE THE SERVER'S (payout_app/service.py, word for word):
  *   * Paid needs a reference or a proof; the paid date cannot be in the future.
@@ -33,9 +41,9 @@
  *     the working.
  */
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, DailyTotals, PayoutLine, dailyApi, inr, showDate, today } from "../api";
+import { ApiError, DailyTotals, PayoutLine, RecalcReport, dailyApi, inr, showDate, today } from "../api";
 
-type Ask = "pay" | "hold" | "reopen" | "cancel" | null;
+type Ask = "pay" | "hold" | "reopen" | "cancel" | "recalc" | null;
 const BADGE: Record<string, string> = { Pending: "badge amber", Paid: "badge green",
                                         Hold: "badge grey", Cancelled: "badge grey" };
 
@@ -199,6 +207,8 @@ export default function Payouts({ onExpired }: { onExpired: () => void }) {
               `${n((await dailyApi.hold(ids, false, "")).changed)} released.`)}>Release</button>
             <button className="btn" disabled={!all(["Paid"])} onClick={() => { setAsk("reopen"); setReason(""); }}>Reopen…</button>
             <button className="btn" disabled={!chosen.length || !oneInvoice} onClick={() => { setAsk("cancel"); setReason(""); }}>Cancel invoice…</button>
+            <button className="btn" onClick={() => setAsk("recalc")}
+                    title="Work invoices out again with today's masters (unpaid lines only)">Recalculate…</button>
           </>
         )}
       </div>
@@ -252,6 +262,11 @@ export default function Payouts({ onExpired }: { onExpired: () => void }) {
       {ask === "pay" && (
         <PayDialog lines={chosen} modes={modes} onClose={() => setAsk(null)} onExpired={onExpired}
                    onPaid={(text) => void act(async () => text)} />
+      )}
+      {ask === "recalc" && (
+        <RecalcDialog invoices={[...new Set(chosen.map((l) => l.invoice_no))]}
+                      onClose={() => { setAsk(null); void load(); }} onExpired={onExpired}
+                      onDone={() => { setTicked(new Set()); void load(); }} />
       )}
     </>
   );
@@ -332,6 +347,112 @@ function PayDialog({ lines, modes, onClose, onPaid, onExpired }: {
             <button type="button" className="btn" onClick={onClose}>Cancel</button>
             <button className="btn primary" disabled={busy || (!reference.trim() && !proof)}>Mark paid</button>
           </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Recalculate (v0.35.0): the ticked lines' invoices, or every invoice that
+// still has unpaid lines, worked out again with today's masters
+// ---------------------------------------------------------------------------
+function RecalcDialog({ invoices, onClose, onDone, onExpired }: {
+    invoices: string[]; onClose: () => void; onDone: () => void; onExpired: () => void }) {
+  const [unpaid, setUnpaid] = useState<string[] | null>(null);
+  const [allUnpaid, setAllUnpaid] = useState(invoices.length === 0);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [report, setReport] = useState<RecalcReport | null>(null);
+
+  const fail = (error: unknown) => {
+    if (error instanceof ApiError && error.status === 401) onExpired();
+    else setProblem(error instanceof Error ? error.message : "Something went wrong.");
+  };
+
+  useEffect(() => {
+    dailyApi.recalcPreview().then((r) => setUnpaid(r.unpaid_invoices)).catch(fail);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const count = allUnpaid ? (unpaid?.length ?? 0) : invoices.length;
+  const run = async () => {
+    setBusy(true);
+    setProblem("");
+    try {
+      setReport(await dailyApi.recalculate(allUnpaid ? [] : invoices, allUnpaid));
+      onDone();
+    } catch (error) {
+      fail(error);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="recalc-title">
+        <form onSubmit={(e: FormEvent) => { e.preventDefault(); if (!report) void run(); }}>
+        <h2 id="recalc-title">Recalculate invoices</h2>
+        <div className="dialog-body">
+          {!report && (
+            <>
+              <p>The invoices are worked out again with <strong>today's masters</strong> - for
+                example after a product was linked to its incentive group.</p>
+              <ul className="muted">
+                <li>Lines not yet paid are corrected; lines now due (such as a spot incentive) are added.</li>
+                <li>Lines already <strong>paid are never changed</strong>; they are listed if today's masters give a different amount.</li>
+                <li>Every change is recorded in History with your name.</li>
+              </ul>
+              <div className="form-grid top-gap">
+                {invoices.length > 0 && (
+                  <label className="check wide"><input type="radio" name="which" checked={!allUnpaid}
+                    onChange={() => setAllUnpaid(false)} />
+                    The ticked invoice{invoices.length === 1 ? "" : "s"}: {invoices.join(", ")}</label>
+                )}
+                <label className="check wide"><input type="radio" name="which" checked={allUnpaid}
+                  onChange={() => setAllUnpaid(true)} />
+                  Every invoice that still has unpaid lines
+                  {unpaid === null ? " (counting…)" : ` (${unpaid.length} invoice${unpaid.length === 1 ? "" : "s"})`}</label>
+              </div>
+            </>
+          )}
+          {report && (
+            <>
+              <div className="result">
+                <div><strong>{report.recalculated}</strong> invoice{report.recalculated === 1 ? "" : "s"} recalculated
+                  · {report.corrected} line{report.corrected === 1 ? "" : "s"} corrected
+                  · {report.posted.length} new line{report.posted.length === 1 ? "" : "s"}</div>
+              </div>
+              {report.changes.length === 0 ? <p className="muted top-gap">No amount changed.</p> : (
+                <table className="rows top-gap">
+                  <thead><tr><th>Invoice</th><th className="num">All its lines before (₹)</th>
+                    <th className="num">Now (₹)</th><th className="num">Change (₹)</th></tr></thead>
+                  <tbody>{report.changes.map((c) => (
+                    <tr key={c.invoice_no}><td>{c.invoice_no}</td><td className="num">{inr(c.before)}</td>
+                      <td className="num">{inr(c.after)}</td><td className="num">{inr(c.after - c.before)}</td></tr>
+                  ))}</tbody>
+                </table>
+              )}
+              {report.warnings.length > 0 && (
+                <div className="note lines top-gap">{report.warnings.map((w) => <div key={w}>{w}</div>)}</div>
+              )}
+            </>
+          )}
+          {problem && <div className="error lines" role="alert">{problem}</div>}
+        </div>
+        <div className="dialog-buttons">
+          {!report ? (
+            <>
+              <button type="button" className="btn" onClick={onClose}>Cancel</button>
+              <button className="btn primary" disabled={busy || count === 0}>
+                {busy ? "Recalculating…" : `Recalculate ${count} invoice${count === 1 ? "" : "s"}`}</button>
+            </>
+          ) : <button type="button" className="btn primary" onClick={onClose}>Close</button>}
+        </div>
         </form>
       </div>
     </div>

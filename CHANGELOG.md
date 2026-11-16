@@ -6,6 +6,65 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.35.0] – 2026-11-16 – Incentive against fixed prices, raised-price report, Recalculate
+
+The client found salespeople typing items above their fixed price and then
+giving a "discount" (estimate 515: prices raised by ₹4,900, discount ₹4,400,
+the customer still paid ₹500 more than the fixed prices). Brinda
+(16-11-2026): measure against the fixed price, the WHOLE invoice (not item
+by item, which lets price be moved from one item to another); selling
+prices in the Product master are GST-inclusive; list every item above its
+fixed price in the internal report; build the Recalculate option.
+
+### Changed
+- **Spot incentive rule** (`reports/data.py`, INCENTIVES; used by the daily
+  payouts and the monthly reports alike): payable = full incentive ×
+  min(1, customer paid ÷ fixed prices of the invoice). Fixed price per unit:
+  the incentive group's bill value, else the Product master selling price
+  (above ₹1 – `PLACEHOLDER_PRICE`), else the typed price; a package's items
+  count at the package's bill value. New `Line.typed`, `fixed_price`,
+  `fixed_source`, `raised_by`; `Invoice.paid_total`, `fixed_total`,
+  `incentive_ratio`, `full_incentive`; `fixed_price_for()`.
+  Was: each line on its own, incentive × min(1, billed ÷ bill value), with the
+  discount spread by the typed prices.
+- **Working** of a spot incentive line now reads e.g. "Paid 38,000.00 vs fixed
+  prices 37,500.00 -> full incentive. Pvc Full Mat: 50 x 1; … = 2,100 x 1"
+  (`engine._incentive_working`).
+- Excel "7 Spot incentive": columns H/I are now "Fixed prices (invoice)" and
+  "Customer paid (invoice)", K "Cut %", L the payable (sheet 8 still reads L);
+  "Reduced by discounts" is "Reduced (paid below fixed prices)". The PDF's
+  Spot incentive uses the same rule (`pdf_book.incentive_by_executive`).
+
+### Added
+- **Prices above fixed price** (`app/reports/raised_prices.py`,
+  `MonthData.raised_prices()`, `raised_by_executive()`): Excel sheet
+  "7b Prices above fixed price" right after "7 Spot incentive", and a section
+  of the internal team PDF after the Spot incentive – by salesperson
+  (invoices, items, total raised, discount shown) and every item (typed vs
+  fixed price, raised by ₹ and %, has incentive, invoice discount, paid vs
+  fixed).
+- **Recalculate…** on the daily Payouts screen: the ticked lines' invoices,
+  or every invoice that still has unpaid lines, are worked out again from
+  their stored PDFs with today's masters. Unpaid lines are corrected, newly
+  due lines (e.g. a spot incentive for an item linked late) are added, paid
+  lines are never changed – they are named in the warnings. Logged as
+  "Recalculated: …". `register.plan(..., recalculate=)`, `register._recalculate`,
+  `PayoutStore.recalculate / recalculable / with_unpaid_lines`,
+  `GET/POST /api/daily/recalculate`, `RecalcDialog` in `Payouts.tsx`.
+
+### Tests
+- `tests/test_fixed_price_rule.py` (typing prices differently cannot change the
+  incentive; ₹75,000 PPF less 5,000 / 10,000; invoice 515 earns the full
+  ₹2,100; typed price when there is no selling price; ₹1 placeholder; the
+  raised-price list) and `tests/test_web_recalculate.py` (item linked late,
+  unpaid line corrected, paid line untouched, all-unpaid, only posted
+  invoices). Expected figures of three older tests updated to the new rule.
+  337 passed / 4 skipped.
+
+### To do on the server after deploying
+- Recalculate… → "Every invoice that still has unpaid lines", so the pending
+  October and November lines follow the new rule.
+
 ## [0.34.0] – 2026-11-11 – Two PDFs: management and internal team
 
 Brinda (11-11-2026), for the client: separate the PDF into one for the

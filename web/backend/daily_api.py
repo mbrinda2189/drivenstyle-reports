@@ -11,7 +11,9 @@ reference or a proof.
 
     Scan invoices   upload PDFs -> "Scan" posts what can be posted
     Review          invoices that could not be posted, with the fix
-    Payouts         every line: Mark paid, Hold / Release, Reopen
+    Payouts         every line: Mark paid, Hold / Release, Reopen;
+                    Recalculate (v0.35.0) - posted invoices worked out again
+                    with today's masters, unpaid lines only
     History         the log of every change
 
 WHO MAY USE IT: staff and admins alike (Brinda, 09-10-2026 - staff may also
@@ -97,6 +99,11 @@ class LinesBody(BaseModel):
     line_ids: list[str]
     reason: str = ""
     hold: bool = True
+
+
+class RecalcBody(BaseModel):
+    invoice_nos: list[str] = []
+    all_unpaid: bool = False
 
 
 class DateBody(BaseModel):
@@ -357,6 +364,44 @@ def add_routes(api: FastAPI, connection, current_user, admin, data_dir: Path) ->
         if not path.is_file():
             raise HTTPException(404, "This proof is not on the server.")
         return FileResponse(path, filename=path.name)
+
+    # ---- Recalculate (v0.35.0) ----------------------------------------------------------
+    @api.get("/api/daily/recalculate")
+    def recalc_preview(who: dict = Depends(current_user)) -> dict:
+        """How many invoices "every invoice with unpaid lines" would cover."""
+        with connection() as conn:
+            return {"unpaid_invoices": PayoutStore(conn, who["email"]).with_unpaid_lines()}
+
+    @api.post("/api/daily/recalculate")
+    def recalculate(body: RecalcBody, who: dict = Depends(current_user)) -> dict:
+        """
+        Work posted invoices out again with today's masters and rules
+        (register.py, RECALCULATE): unpaid lines are corrected, newly due
+        lines added, PAID lines left exactly as they are. Staff and admins;
+        every change is logged with the person's e-mail.
+        """
+        with connection() as conn:
+            store = PayoutStore(conn, who["email"])
+            posted = store.recalculable()
+            numbers = store.with_unpaid_lines() if body.all_unpaid else \
+                list(dict.fromkeys(n.strip() for n in body.invoice_nos if n.strip()))
+            if not numbers:
+                raise HTTPException(400, "Choose the invoices to recalculate.")
+            unknown = [n for n in numbers if n not in posted]
+            if unknown:
+                raise HTTPException(400, "Only posted invoices can be recalculated: "
+                                    + ", ".join(unknown) + ".")
+            paths = [pdfs / posted[n] for n in numbers]
+            missing = [p.name for p in paths if not p.is_file()]
+            if missing:
+                raise HTTPException(400, "The PDF is no longer on the server for: "
+                                    + ", ".join(missing) + ". Scan it again first.")
+            try:
+                report = store.recalculate(read_files(paths), set(numbers))
+            except PayoutError as exc:
+                raise refuse(exc) from exc
+            report["files_read"] = len(paths)
+            return report
 
     # ---- History ---------------------------------------------------------------------------
     @api.get("/api/daily/log")

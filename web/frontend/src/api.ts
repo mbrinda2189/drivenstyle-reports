@@ -462,6 +462,13 @@ export interface ScanReport {
   files_read: number;
 }
 
+/** What Recalculate did (v0.35.0): the scan report plus, per invoice whose
+ *  lines changed, the total of its lines before and after. */
+export interface RecalcReport extends ScanReport {
+  recalculated: number;
+  changes: { invoice_no: string; before: number; after: number }[];
+}
+
 export interface PayoutInvoice {
   invoice_no: string;
   invoice_date: string;
@@ -527,6 +534,10 @@ export const dailyApi = {
   hold: (line_ids: string[], hold: boolean, reason: string) =>
     ask<{ changed: number }>("POST", "/daily/hold", { line_ids, hold, reason }),
   proofUrl: (name: string) => `/api/daily/proofs/${encodeURIComponent(name)}`,
+  // v0.35.0: work posted invoices out again with today's masters (unpaid lines only)
+  recalcPreview: () => ask<{ unpaid_invoices: string[] }>("GET", "/daily/recalculate"),
+  recalculate: (invoice_nos: string[], all_unpaid = false) =>
+    ask<RecalcReport>("POST", "/daily/recalculate", { invoice_nos, all_unpaid }),
   log: (text: string) =>
     ask<{ entries: AuditEntry[]; more: boolean }>("GET", `/daily/log?text=${encodeURIComponent(text)}`),
   setStartDate: (date: string) => ask<{ start_date: string }>("PUT", "/daily/start-date", { date }),

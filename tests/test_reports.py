@@ -153,7 +153,10 @@ def test_generate_writes_every_sheet(world, tmp_path):
                         r.path.name)
     wb = load_workbook(r.path)
     # v0.9.0: + the executive summary, right after the cover
-    assert len(wb.sheetnames) == 15 and wb.sheetnames[:2] == ["Cover", "Summary"]
+    # v0.35.0: + "7b Prices above fixed price", right after the Spot incentive
+    assert len(wb.sheetnames) == 16 and wb.sheetnames[:2] == ["Cover", "Summary"]
+    spot = wb.sheetnames.index("7 Spot incentive")
+    assert wb.sheetnames[spot + 1] == "7b Prices above fixed price"
     ws = wb["11 Payment modes"]
     texts = [c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str)]
     assert "Cash" in texts and "UPI" in texts

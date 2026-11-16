@@ -45,13 +45,19 @@ Labour and Spot incentive reports:
                      sunfilm has two labour lines. (Until v0.20.0: one
                      line "Labour" per invoice, ID ending -LAB; such lines
                      already in a register stay as they are.)
-    Spot incentive   per item with an incentive group:
-                         incentive x qty x min(1, billed / (bill value x qty))
-                     plus the package incentive when every item of a
-                     package is on the invoice (it replaces those items'
-                     own incentives). ONE line per invoice, payable to the
-                     invoice's sales executive. None for an executive
-                     marked "Gets incentive = No".
+    Spot incentive   v0.35.0 - the WHOLE invoice against its fixed prices
+                     (Brinda, 16-11-2026; reports/data.py, INCENTIVES):
+                         (every item incentive x qty + package incentive)
+                         x min(1, paid / fixed prices of the invoice)
+                     fixed price = bill value of the item's incentive
+                     group, else the Product master selling price, else the
+                     typed price. The package incentive replaces its items'
+                     own incentives when every item of a package is on the
+                     invoice. ONE line per invoice, payable to the invoice's
+                     sales executive. None for an executive marked "Gets
+                     incentive = No". (Until v0.34.0 each line was checked
+                     on its own: incentive x qty x min(1, billed / (bill
+                     value x qty)).)
     Internal team    the product's "Internal incentive" x quantity (car
                      PPF), in full, one line "Internal team".
     NO ROUNDING here (Brinda, 05-10-2026): the daily lines carry the exact
@@ -93,8 +99,9 @@ match. `Outcome.choices` gives the names that can be chosen for each kind
 WORKING
 -------
 Every payout line carries a short text showing how the amount was reached,
-e.g. "Underbody: 200 x 1 x min(1, 3,300.00 / 3,500)" - so anyone looking at
-the register can check a figure without the app.
+e.g. "Paid 3,300.00 vs fixed prices 3,500.00 -> 94.29% of the incentive.
+Underbody: 200 x 1 = 200 x 3,300.00 / 3,500.00" - so anyone looking at the
+register can check a figure without the app.
 """
 
 from __future__ import annotations
@@ -338,17 +345,31 @@ def _labour_working(lines) -> str:
 
 
 def _incentive_working(inv) -> str:
-    parts = []
-    for l in inv.lines:
-        base = l.bill_value * l.qty
-        if l.incentive_group and base:
-            parts.append(f"{l.incentive_group}: {_num(l.incentive_amount)} x {_num(l.qty)} "
-                         f"x min(1, {format_inr(l.billed)} / {_num(base)})")
+    """
+    v0.35.0 - the whole-invoice rule (reports/data.py, INCENTIVES): first
+    what the customer paid against the invoice's fixed prices, then every
+    incentive at its full amount, then the cut (if any). For example
+        "Paid 38,000.00 vs fixed prices 37,500.00 -> full incentive.
+         Nano Ceramic Sunfilm - Front: 500 x 1; Underbody: 200 x 1
+         = 700 x 1"
+    or, when the customer paid less than the fixed prices,
+        "... = 700 x 38,000.00 / 42,000.00"
+    """
+    parts = [f"{l.incentive_group}: {_num(l.incentive_amount)} x {_num(l.qty)}"
+             for l in inv.lines if l.incentive_group and l.incentive_amount]
     k = inv.package
-    if k and k.coupon_value and k.incentive:
-        parts.append(f"{k.package} (package): {_num(k.incentive)} "
-                     f"x min(1, {format_inr(k.billed)} / {_num(k.coupon_value)})")
-    return "; ".join(parts)
+    if k and k.incentive:
+        parts.append(f"{k.package} (package): {_num(k.incentive)}")
+    paid, fixed = inv.paid_total, inv.fixed_total
+    full = _num(inv.full_incentive)
+    if inv.incentive_ratio >= 1:
+        head = f"Paid {format_inr(paid)} vs fixed prices {format_inr(fixed)} -> full incentive."
+        tail = f" = {full} x 1"
+    else:
+        head = (f"Paid {format_inr(paid)} vs fixed prices {format_inr(fixed)} -> "
+                f"{inv.incentive_ratio * 100:.2f}% of the incentive.")
+        tail = f" = {full} x {format_inr(paid)} / {format_inr(fixed)}"
+    return f"{head} {'; '.join(parts)}{tail}"
 
 
 def _internal_working(inv) -> str:

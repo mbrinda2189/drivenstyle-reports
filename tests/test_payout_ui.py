@@ -209,7 +209,8 @@ def test_payouts_lists_pending_lines(qapp, world):
     assert page.selected.text().startswith("2 line(s) shown")
     page.table.setCurrentCell(1, 2)
     assert "invoice of 05-09-2026" in page.detail.text()
-    assert "Working: Underbody: 200 x 1" in page.detail.text()
+    assert "Working: Paid 8,298.82 vs fixed prices 8,300.00" in page.detail.text()
+    assert "Underbody: 200 x 1" in page.detail.text()
     kinds = [page.kind.itemText(i) for i in range(page.kind.count())]
     assert kinds == ["All types", "Labour (all)", "Labour - Floor mat", "Labour - Sunfilm",
                      "Labour - Other", "Spot incentive", "Internal team"]

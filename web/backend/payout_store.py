@@ -171,12 +171,16 @@ class PayoutStore:
         """Work the files out on a throw-away copy; nothing is written."""
         return engine.calculate(working_copy(self.conn, self.user), files, [])
 
-    def scan(self, files: list, now: datetime | None = None) -> dict:
+    def scan(self, files: list, now: datetime | None = None,
+             recalculate: set[str] | None = None) -> dict:
         """
         Post what the files give. `files` = engine.read_files' result:
         (file name, invoice or None, reason). Returns the report the Scan
         screen shows. One transaction: either everything of this scan is
         written, or nothing.
+        `recalculate` (v0.35.0): posted invoices among the files to work out
+        again with today's masters - unpaid lines corrected, paid lines left
+        as they are (register.py, RECALCULATE). See `recalculate` below.
         """
         now = now or datetime.now()
         outcome = self.calculate(files)                  # the slow part, outside the lock
@@ -185,7 +189,7 @@ class PayoutStore:
             line_ids, payout_rows = self.payout_rows()
             invoice_ids, invoice_rows = self.invoice_rows()
             todo = register.plan(payout_rows, invoice_rows, outcome, self.user, now,
-                                 self.start_date())
+                                 self.start_date(), recalculate)
             if todo.problems:
                 raise PayoutError("Nothing was posted. " + " ".join(todo.problems))
             for row, cells in todo.payout_updates:        # row = sheet row; headings = 1
@@ -219,6 +223,48 @@ class PayoutStore:
                          for r in outcome.of(engine.NOT_USED)],
             "issues": issues_for_screen(outcome, waiting),
             "warnings": todo.warnings, "notes": outcome.notes}
+
+    # ---- Recalculate (v0.35.0) -------------------------------------------------------
+    def recalculable(self) -> dict[str, str]:
+        """Invoice number -> PDF file name, for every Posted / Re-issued
+        invoice: the ones Recalculate can work out again."""
+        return {i["invoice_no"]: i["file_name"] for i in self.invoices()
+                if i["state"] in (register.POSTED, register.REISSUED) and i["file_name"]}
+
+    def with_unpaid_lines(self) -> list[str]:
+        """Posted invoices that still have a line not yet paid (Pending or
+        Hold) - what "Recalculate every unpaid invoice" works on."""
+        posted = self.recalculable()
+        return sorted({l["invoice_no"] for l in self.lines()
+                       if l["status"] in (register.PENDING, register.HOLD)
+                       and l["invoice_no"] in posted})
+
+    def recalculate(self, files: list, numbers: set[str],
+                    now: datetime | None = None) -> dict:
+        """
+        Work the invoices `numbers` out again from their PDFs (`files`, as
+        engine.read_files gives them) with the masters as they are now. Only
+        unpaid lines change; everything is logged as "Recalculated: ...".
+        The report says, per invoice, what the lines were and are now.
+        """
+        before = {}
+        for l in self.lines():
+            if l["invoice_no"] in numbers and l["status"] != register.CANCELLED:
+                before.setdefault(l["invoice_no"], 0.0)
+                before[l["invoice_no"]] += l["amount"]
+        report = self.scan(files, now, recalculate=set(numbers))
+        after = {}
+        for l in self.lines():
+            if l["invoice_no"] in numbers and l["status"] != register.CANCELLED:
+                after.setdefault(l["invoice_no"], 0.0)
+                after[l["invoice_no"]] += l["amount"]
+        report["changes"] = [
+            {"invoice_no": n, "before": round(before.get(n, 0.0), 2),
+             "after": round(after.get(n, 0.0), 2)}
+            for n in sorted(numbers)
+            if abs(before.get(n, 0.0) - after.get(n, 0.0)) >= 0.005]
+        report["recalculated"] = report["tally"].get("recalculated", 0)
+        return report
 
     def waiting_numbers(self) -> set[str]:
         """Invoice numbers the register holds as In review."""

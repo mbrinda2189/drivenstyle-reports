@@ -245,7 +245,7 @@ def test_incentive_is_rounded_up_to_ten(tmp_path, masters):
     inputs = InputsRepo(masters)
     d = build_month(masters, irepo, inputs, 2026, 9)
     exact = sum(i.incentive_payable for i in d.invoices)
-    assert exact == pytest.approx(1650.46, abs=0.01)
+    assert exact == pytest.approx(1651.86, abs=0.01)
     assert d.incentive_by_executive == {"Mano Vikram – HO": 1660.0}
     assert d.incentive_payable == 1660.0
     assert incentive_by_executive(d)[0]["payable"] == 1660.0

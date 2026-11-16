@@ -16,6 +16,8 @@ WHAT THIS MODULE DOES
     5 Packages                 package sales by package + detail
     6 Vehicle-wise             by car model and by segment, average per car
     7 Spot incentive           by executive + every line (client's rule)
+    7b Prices above fixed      items typed above their fixed price (v0.35.0,
+                               raised_prices.py) - written with sheet 7
     8 Executive-wise sales     by executive (name and branch)
     9 High-profit products     products at or above the threshold margin
     10 Indirect vs direct      direct and indirect costs as % of sales
@@ -276,11 +278,17 @@ def write_workbook(data: MonthData, trend: list[MonthData],
         "Payment mode analysis": lambda ws: payment_sheet(ws, data, payments),
         "Profit & loss": lambda ws: pnl_sheet(ws, data),
     }
+    from app.reports import raised_prices as rp      # v0.35.0 (it imports this module)
     for name, sheet_name in SHEETS.items():
         if name in reports:
             ws = wb.create_sheet(sheet_name)
             writers[name](ws)
             written.append(sheet_name)
+            if name == "Spot incentive calculation":
+                # v0.35.0: items typed above their fixed price, right after
+                # the Spot incentive (app/reports/raised_prices.py)
+                rp.raised_sheet(wb.create_sheet(rp.SHEET), data)
+                written.append(rp.SHEET)
     link = rr.Linked(data, rto) if rto is not None else None
     if link is not None:
         written += rr.write_rto_sheets(wb, data, link)
@@ -707,38 +715,46 @@ NO_INCENTIVE_NOTE = ("No incentive for executives marked 'Gets incentive = No' i
 
 
 def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
+    # v0.35.0 - the WHOLE invoice against its fixed prices (reports/data.py,
+    # INCENTIVES): every row carries its invoice's fixed prices (H) and what
+    # the customer paid for the invoice (I); payable = full incentive x
+    # min(1, I / H). Every row of one invoice gets the same cut, so the
+    # sheet's total equals the daily payout lines.
     # v0.8.0: the items of a package carry no incentive of their own; the
-    # invoice gets one row with the package incentive instead. Its bill
-    # value is the coupon's final value and the amount billed is what the
-    # customer paid for the package items - the same confirmed rule applies.
+    # invoice gets one row with the package incentive instead.
+    by_no = {i.invoice_no: i for i in d.invoices}
+    inv_cols = lambda no: dict(fixed=by_no[no].fixed_total, paid=by_no[no].paid_total)
     lines = [dict(executive=exec_label(l.executive, l.branch), invoice_no=l.invoice_no,
                   date=l.invoice_date, product=l.product, group=l.incentive_group,
-                  qty=l.qty, inc=l.incentive_amount, bill=l.bill_value, billed=l.billed)
+                  qty=l.qty, inc=l.incentive_amount, **inv_cols(l.invoice_no))
              for l in d.lines if l.incentive_group]
     lines += [dict(executive=exec_label(i.executive, i.branch), invoice_no=i.invoice_no,
                    date=i.invoice_date,
                    product=f"Package ({len(i.package.lines)} items)",
                    group=i.package.package, qty=1, inc=i.package.incentive,
-                   bill=i.package.coupon_value, billed=i.package.billed)
+                   **inv_cols(i.invoice_no))
               for i in d.invoices if i.package and i.incentive_allowed]
     # v0.12.0 - internal team incentive: one row per qualifying line under
     # the name "Internal team" (one line in "By executive", not split by
-    # person). It is paid in full, so its bill value is set to what was
-    # billed and the rule's ratio is exactly 1.
+    # person). It is paid in full, so its "fixed" and "paid" are both what
+    # was billed for the line and the ratio is exactly 1.
     lines += [dict(executive=INTERNAL_TEAM, invoice_no=l.invoice_no, date=l.invoice_date,
                    product=l.product, group="Internal team incentive", qty=l.qty,
-                   inc=l.internal_incentive, bill=round(l.billed / l.qty, 2) if l.qty else 0,
-                   billed=l.billed)
+                   inc=l.internal_incentive, fixed=l.billed, paid=l.billed)
               for l in d.lines if l.internal_incentive and l.qty]
     lines.sort(key=lambda r: (r["executive"] == INTERNAL_TEAM, r["executive"], r["date"],
                               r["invoice_no"]))
     row = title(ws, "Spot incentive calculation", d.label, [
-        "Rule used: payable = incentive × qty × (amount billed ÷ (bill value × qty)), "
-        "never more than the full incentive.",
-        "Amount billed = the line after its share of the discount, including GST. "
-        "Incentive and bill value: Incentive master, on the invoice date.",
+        "Rule used (from v0.35.0): the WHOLE invoice is measured against its fixed prices. "
+        "Payable = full incentive × (customer paid ÷ fixed prices of the invoice), never more "
+        "than the full incentive.",
+        "Fixed price of each item, including GST: the bill value of its incentive group "
+        "(Incentive master), else the selling price (Product master), else the price typed. "
+        "Customer paid = every line after the discount, including GST.",
+        "Prices typed above the fixed price do not change the incentive - see the sheet "
+        "'Prices above fixed price'.",
         "Package sales: one row per invoice with the package incentive; the package's items "
-        "earn no separate incentive.",
+        "earn no separate incentive and count at the package's bill value.",
         "'By executive': each executive's incentive payable is rounded up to the next Rs. 10. "
         "The lines below show the exact amounts."]
         + ([NO_INCENTIVE_NOTE + ", ".join(d.no_incentive) + "."] if d.no_incentive else [])
@@ -760,7 +776,7 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
         # (1,492 -> 1,500); the lines below keep the exact figures.
         Col("Incentive payable", "payable", "money", 14,
             formula="=CEILING(ROUND(" + sumif("$L")[1:] + ",2),10)", total="sum"),
-        Col("Reduced by discounts", "reduced", "money", 14,
+        Col("Reduced (paid below fixed prices)", "reduced", "money", 16,
             formula="={full}{r}-{payable}{r}", total="sum"),
     ], [dict(executive=e) for e in execs])
 
@@ -773,14 +789,14 @@ def incentive_sheet(ws: Worksheet, d: MonthData) -> None:
         Col("Incentive group", "group", width=24),          # E
         Col("Qty", "qty", "qty", 7),                        # F
         Col("Incentive / unit", "inc", "money", 12),        # G
-        Col("Bill value / unit", "bill", "money", 12),      # H
-        Col("Amount billed", "billed", "money", 13),        # I
+        Col("Fixed prices (invoice)", "fixed", "money", 14),   # H  v0.35.0
+        Col("Customer paid (invoice)", "paid", "money", 14),   # I  v0.35.0
         Col("Full incentive", "full", "money", 13,          # J
             formula="={inc}{r}*{qty}{r}", total="sum"),
-        Col("Discount %", "disc", "pct", 10,                # K
-            formula='=IF({bill}{r}*{qty}{r}=0,"",MAX(0,1-{billed}{r}/({bill}{r}*{qty}{r})))'),
-        Col("Incentive payable", "payable", "money", 14,    # L
-            formula='=IF({bill}{r}*{qty}{r}=0,0,{full}{r}*MIN(1,{billed}{r}/({bill}{r}*{qty}{r})))',
+        Col("Cut %", "disc", "pct", 9,                      # K
+            formula='=IF({fixed}{r}=0,"",MAX(0,1-{paid}{r}/{fixed}{r}))'),
+        Col("Incentive payable", "payable", "money", 14,    # L (other sheets read L)
+            formula='=IF({fixed}{r}=0,{full}{r},{full}{r}*MIN(1,{paid}{r}/{fixed}{r}))',
             total="sum"),
     ], lines, filters=True, empty_text="No lines with an incentive group this month.")
     _finish(ws)

@@ -110,11 +110,15 @@ def test_labour_incentive_and_workings(repo):
     assert a[MAT].amount == 150 and a[MAT].payee == ""
     assert a[MAT].working == "I20 - PVC Full Floor Mat + Labour Extra: 150 x 1"
     assert a[MAT].line_id == "DNS26-GST-0753-LABM" and SUN not in a
-    # Underbody billed at its full 3,500 (Rs. 1 discount on the whole invoice)
+    # v0.35.0 - the whole invoice against its fixed prices: Rs. 1 discount on
+    # the whole invoice -> paid 8,298.82 of fixed prices 8,300 (Underbody's
+    # bill value 3,500 + the other items at their typed prices, as the test
+    # masters carry no selling prices)
     assert a[engine.INCENTIVE].payee == "Edhayan"
-    assert a[engine.INCENTIVE].amount == pytest.approx(199.98, abs=0.02)
-    assert a[engine.INCENTIVE].working.startswith("Underbody: 200 x 1 x min(1, 3,499.")
-    assert a[engine.INCENTIVE].working.endswith("/ 3,500)")
+    assert a[engine.INCENTIVE].amount == pytest.approx(200 * 8298.82 / 8300, abs=0.01)
+    assert a[engine.INCENTIVE].working == (
+        "Paid 8,298.82 vs fixed prices 8,300.00 -> 99.99% of the incentive. "
+        "Underbody: 200 x 1 = 200 x 8,298.82 / 8,300.00")
 
     b = lines_of(out, "DNS-226-2627")
     # a mat and two sunfilms on one invoice: two labour lines
@@ -124,9 +128,12 @@ def test_labour_incentive_and_workings(repo):
     assert b[MAT].amount == 150 and b[MAT].line_id == "DNS-226-2627-LABM"
     assert b[MAT].working == "PUNCH - PVC Full Floor Mat + Labour Extra: 150 x 1"
     assert OTHER not in b
-    # Sunfilm front 7,000 on a 21,903 invoice with 1,903 discount
-    billed = 7000 * (1 - 1903 / 21903)
-    assert b[engine.INCENTIVE].amount == pytest.approx(500 * billed / 7000, abs=0.01)
+    # Sunfilm front (bill value 7,000) on a 21,903 invoice with 1,903 discount:
+    # fixed prices = 7,000 + the other items as typed (8,000 + 2,100 + 750 +
+    # 3,500 + 550) = 21,900; paid = every line after discount, without the
+    # three Rs. 1 labour markers = 21,900 x (1 - 1,903 / 21,903)
+    paid = 21900 * (1 - 1903 / 21903)
+    assert b[engine.INCENTIVE].amount == pytest.approx(500 * paid / 21900, abs=0.01)
     assert b[engine.INCENTIVE].payee == "Nandha Kumar"
     assert b[engine.INCENTIVE].car == "Tata Punch EV"
 
@@ -168,9 +175,13 @@ def test_package_incentive_replaces_item_incentives(repo):
         ("Sunfilm", "Sunfilm - Nano Ceramic - Front (SK)"),
         ("Floor mat", "PUNCH - PVC Full Floor Mat + Labour Extra")])
     line = lines_of(engine.calculate(masters, september()), "DNS-226-2627")[engine.INCENTIVE]
-    billed = (7000 + 3500) * (1 - 1903 / 21903)
-    assert line.amount == pytest.approx(1000 * billed / 15000, abs=0.01)
-    assert line.working.startswith("Basic Package (package): 1,000 x min(1, ")
+    # v0.35.0: the package's items count at the package's bill value (15,000)
+    # instead of their own; the rest at their typed prices (8,000 + 2,100 +
+    # 750 + 550) -> fixed prices 26,400
+    paid = 21900 * (1 - 1903 / 21903)
+    assert line.amount == pytest.approx(1000 * paid / 26400, abs=0.01)
+    assert "Basic Package (package): 1,000 = 1,000 x " in line.working
+    assert line.working.startswith("Paid 19,997.27 vs fixed prices 26,400.00 -> ")
 
 
 def test_internal_team_line(repo):

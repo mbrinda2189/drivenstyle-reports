@@ -38,6 +38,8 @@ workbook (write_pdf_workbook(..., part=MANAGEMENT / INTERNAL)):
   INTERNAL TEAM ("..._Internal_....pdf") - for the staff who pay people:
      1. Labour calculation (floor mat / sunfilm / other)
      2. Spot incentive by executive + the "Internal team" line
+     2a. Prices above fixed price (v0.35.0, raised_prices.py): by
+        salesperson, then every item typed above its fixed price
      3. Payment modes
      4. Tool vs Zoho - labour and product cost (when the Zoho files were
         uploaded), then the master-vs-Zoho summary + the 10 invoices that
@@ -307,15 +309,14 @@ def incentive_by_executive(d: MonthData) -> list[dict]:
         if not i.incentive_allowed:           # "Gets incentive = No" (v0.11.0)
             continue
         name = exec_label(i.executive, i.branch)
+        ratio = i.incentive_ratio        # v0.35.0: whole invoice vs fixed prices
         for l in i.lines:
-            base = l.bill_value * l.qty
             if l.incentive_group:
                 full = l.incentive_amount * l.qty
-                add(name, full, full * min(1.0, l.billed / base) if base else 0.0)
+                add(name, full, full * ratio)
         k = i.package
         if k:
-            add(name, k.incentive, k.incentive * min(1.0, k.billed / k.coupon_value)
-                if k.coupon_value else 0.0)
+            add(name, k.incentive, k.incentive * ratio)
     for g in groups.values():      # payable: rounded up to the next Rs. 10 (v0.12.1)
         g["full"], g["payable"] = round(g["full"], 2), round_up_10(g["payable"])
     ranked = sorted(groups.values(), key=lambda g: (-g["payable"], g["executive"]))
@@ -329,8 +330,9 @@ def incentive_by_executive(d: MonthData) -> list[dict]:
 
 def _incentive(ws, d):
     row = title(ws, "Spot incentive calculation", d.label, [
-        "Rule: payable = incentive × qty × (amount billed ÷ (bill value × qty)), never more "
-        "than the full incentive; each executive's total is rounded up to the next Rs. 10. "
+        "Rule: the whole invoice against its fixed prices - payable = full incentive × "
+        "(customer paid ÷ fixed prices), never more than the full incentive; each "
+        "executive's total is rounded up to the next Rs. 10. "
         "Highest incentive payable first. 'Internal team' (last "
         "line) = the internal incentive per item sold, paid in full."]
         + (["No incentive for executives marked 'Gets incentive = No': "
@@ -342,7 +344,7 @@ def _incentive(ws, d):
         Col("Lines", "n", "qty", 9, total="sum"),
         Col("Full incentive", "full", "money", 16, total="sum"),
         Col("Incentive payable", "payable", "money", 16, total="sum"),
-        Col("Reduced by discounts", "reduced", "money", 16,
+        Col("Reduced (paid below fixed)", "reduced", "money", 16,
             formula="={full}{r}-{payable}{r}", total="sum"),
     ], rows, empty_text="No lines with an incentive group this month.")
     p = Page(ws, t["next"])
@@ -856,8 +858,10 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
         plan += [("Branches", lambda ws: _branches(ws, data)),
                  ("Vehicle-wise", lambda ws: _vehicle(ws, data))]
     else:
+        from app.reports import raised_prices as rp      # v0.35.0
         plan += [("Labour", lambda ws: _labour(ws, data)),
                  ("Spot incentive", lambda ws: _incentive(ws, data)),
+                 (rp.PDF_SECTION, lambda ws: rp.raised_pdf(ws, data)),
                  ("Payment modes", lambda ws: _payments(ws, data, payments))]
         zoho = data.zoho_costs is not None and data.zoho_costs.given
         if data.books_labour or zoho:
