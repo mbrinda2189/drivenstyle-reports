@@ -6,6 +6,33 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.1] – 2026-11-16 – Key findings as tables; no misleading %
+
+Brinda (16-11-2026) could not save on the Key findings screen: the Save
+button stays off until something is changed, and nothing said so. She asked
+for a tabular layout; sentences stay visible; and "same rule everywhere" for
+the % change.
+
+### Changed
+- **Key findings screen** (`pages/KeyFindings.tsx`): two tabs (Management /
+  Internal team, with the number of findings and an "Unsaved" mark); one
+  table per section – Particulars, This month, previous month, Change,
+  Change %, Avg, Change, Change %, Leave out; the sentence that prints sits
+  under each row in grey, ✎ edits it, "Use the tool's sentence" undoes it;
+  rows left out are greyed and struck through. A **save bar** fixed at the
+  bottom: "N unsaved changes – Undo changes / Save", or "no changes to save –
+  the report uses the sentences shown".
+- **% change not shown when it would mislead** – screen, sentences, Excel
+  and PDF alike (`findings.pct_change`): blank when the earlier figure is a
+  loss, nil, or (rupee rows) below the threshold. Net / gross profit that
+  changes sign is said in words: "turned from a profit of ₹20,258 to a loss
+  of ₹55,861" (was "down ₹76,120 (−375.7%)"). `Finding.pct_prev / pct_avg`,
+  sent to the screen as `pct_prev` / `pct_avg`.
+
+### Tests
+- `test_findings.py`: `test_no_misleading_percentages`,
+  `test_percent_columns_follow_the_same_rule`.
+
 ## [0.36.0] – 2026-11-16 – Key findings
 
 The client wanted the reports to say WHY the figures moved – why profit fell,

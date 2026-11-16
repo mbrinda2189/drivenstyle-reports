@@ -367,6 +367,8 @@ export interface Finding {
   avg: number | null;                  // average of up to 3 months before
   change_prev: number | null;
   change_avg: number | null;
+  pct_prev: number | null;             // % change, null when it would mislead (v0.36.1)
+  pct_avg: number | null;
   draft: string;                       // the tool's sentence
   text: string;                        // what the report shows (admin's edit or draft)
   edited: boolean;

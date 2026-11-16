@@ -84,6 +84,16 @@ The automatic indirect costs (breakage 4%, compliance GST 3% of product
 cost) simply follow product cost; their finding says so, so they are not
 read as a separate problem.
 
+WHEN A % CHANGE IS NOT SHOWN (v0.36.1, Brinda 16-11-2026: "same rule
+everywhere" - screen, sentences, Excel and PDF)
+--------------------------------------------------------------------------
+A % change means nothing when the earlier figure is negative (a loss) or
+tiny: profit going from Rs. 20,258 to a loss of Rs. 55,861 printed as
+"-375.7%". So the % is left blank when the earlier figure is 0 or less, or -
+for rupee rows - smaller than the findings threshold (`pct_change`). Profit
+rows that change sign are said in words instead: "turned from a profit of
+Rs. 20,258 to a loss of Rs. 55,861".
+
 WHAT IS NOT COMPARED (yet)
 --------------------------
 Payment modes and the Zoho COGS check need files uploaded for the current
@@ -129,6 +139,9 @@ SECTIONS = {
                  "New-car business", "Products and services"),
     INTERNAL: ("Labour", "Incentives", "Prices above fixed price", "Tool vs Zoho"),
 }
+# Rows said as "turned from a profit of ... to a loss of ..." when the sign
+# changes (v0.36.1).
+PROFIT_KEYS = ("net", "gp")
 # Figures that exist only for months generated with an optional file: their
 # average is over the months that have them (see the module notes).
 OPTIONAL = ("cars", "took", "oe_mat", "dns_mat", "film_side", "film_front",
@@ -169,6 +182,7 @@ class Finding:
                             # 2, 3 ... detail lists (branches, then executives)
     seq: int = 0            # the order the rule wrote it (headlines keep it)
     material: bool = False
+    small: float = 0.0      # the threshold: below it an earlier figure gets no % change
     text: str = ""
     edited: bool = False
     hidden: bool = False
@@ -186,6 +200,15 @@ class Finding:
         return _diff(self.now, self.avg)
 
     @property
+    def pct_prev(self) -> float | None:
+        """% change on the previous month, or None (see pct_change)."""
+        return pct_change(self.kind, self.now, self.prev, self.small)
+
+    @property
+    def pct_avg(self) -> float | None:
+        return pct_change(self.kind, self.now, self.avg, self.small)
+
+    @property
     def size(self) -> float:
         """The larger rupee effect of the two comparisons (for ordering)."""
         return max(abs(self.effect_prev or 0), abs(self.effect_avg or 0))
@@ -195,6 +218,7 @@ class Finding:
         return dict(key=self.key, part=self.part, section=self.section, label=self.label,
                     kind=self.kind, now=self.now, prev=self.prev, avg=self.avg,
                     change_prev=self.change_prev, change_avg=self.change_avg,
+                    pct_prev=self.pct_prev, pct_avg=self.pct_avg,
                     effect_prev=self.effect_prev, effect_avg=self.effect_avg,
                     draft=self.draft, text=self.text or self.draft, edited=self.edited,
                     hidden=self.hidden, material=self.material, headline=self.headline)
@@ -310,8 +334,24 @@ def _show(kind: str, v: float | None) -> str:
     return rupees(v) if v >= 0 else "−" + rupees(v)
 
 
-def _move(kind: str, now: float, ref: float) -> str:
-    """'up ₹20,500 (+94.0%)' / 'down 1.2 pts' / 'no change'."""
+def pct_change(kind: str, now, ref, small: float = 0.0):
+    """
+    The % change from `ref` to `now`, or None when it would mislead
+    (v0.36.1, see WHEN A % CHANGE IS NOT SHOWN): no figure; a share or a
+    bridge row (they have no % change); the earlier figure 0 or less; or,
+    for rupee rows, the earlier figure below `small` (the threshold).
+    """
+    if kind in ("pct", "effect", "remark") or now is None or ref is None:
+        return None
+    if ref <= 0 or (kind == "money" and ref < small):
+        return None
+    return (now - ref) / ref
+
+
+def _move(kind: str, now: float, ref: float, small: float = 0.0,
+          profit: bool = False) -> str:
+    """'up ₹20,500 (+94.0%)' / 'down 1.2 pts' / 'no change' /
+    'turned from a profit of ₹20,258 to a loss of ₹55,861' (`profit` rows)."""
     d = now - ref
     if kind == "pct":
         if abs(d) < 0.0005:
@@ -319,18 +359,23 @@ def _move(kind: str, now: float, ref: float) -> str:
         return f"{'up' if d > 0 else 'down'} {abs(d) * 100:.1f} pts"
     if abs(d) < (0.05 if kind == "count" else 0.5):
         return "no change"
+    if profit and ref > 0 > now:
+        return f"turned from a profit of {rupees(ref)} to a loss of {rupees(now)}"
+    if profit and ref < 0 <= now:
+        return f"turned from a loss of {rupees(ref)} to a profit of {rupees(now)}"
     amount = _num(abs(d)) if kind == "count" else rupees(d)
-    pct = f" ({d / abs(ref) * 100:+.1f}%)".replace("-", "−") if ref else ""
+    share = pct_change(kind, now, ref, small)
+    pct = f" ({share * 100:+.1f}%)".replace("-", "−") if share is not None else ""
     return f"{'up' if d > 0 else 'down'} {amount}{pct}"
 
 
 class _Words:
     """The two comparison names used in sentences."""
 
-    def __init__(self, prev_label: str, avg_label: str | None):
-        self.prev, self.avg = prev_label, avg_label
+    def __init__(self, prev_label: str, avg_label: str | None, small: float = 0.0):
+        self.prev, self.avg, self.small = prev_label, avg_label, small
 
-    def compare(self, kind: str, now, prev, avg) -> str:
+    def compare(self, kind: str, now, prev, avg, profit: bool = False) -> str:
         """'up ₹62,400 (+4.2%) on Oct 2026; down ₹1,200 (−0.1%) on the
         Aug–Oct 2026 average' (new / gone items said in words)."""
         bits = []
@@ -340,9 +385,9 @@ class _Words:
             elif kind != "pct" and prev and not now:
                 bits.append(f"nil this month ({_show(kind, prev)} in {self.prev})")
             else:
-                bits.append(f"{_move(kind, now, prev)} on {self.prev}")
+                bits.append(f"{_move(kind, now, prev, self.small, profit)} on {self.prev}")
         if avg is not None and self.avg:
-            bits.append(f"{_move(kind, now, avg)} on the {self.avg} average")
+            bits.append(f"{_move(kind, now, avg, self.small, profit)} on the {self.avg} average")
         return "; ".join(bits)
 
     def effect(self, e_prev, e_avg) -> str:
@@ -413,7 +458,7 @@ class _Builder:
         elif now is None:
             return f                                  # nothing this month (no list ...)
         else:
-            body = self.w.compare(kind, now, prev, avg)
+            body = self.w.compare(kind, now, prev, avg, profit=key in PROFIT_KEYS)
             f.draft = f"{label} {_show(kind, now)} – {body}." if body else f"{label} {_show(kind, now)}."
         if why:
             extra = why()
@@ -713,12 +758,13 @@ def compute(current: MonthData, earlier: list[MonthData], rto_by_month: dict | N
         out.avg_label = (f"{MONTH_NAMES[first.month - 1][:3]}–{_short(last.year, last.month)}"
                          if first.year == last.year else
                          f"{_short(first.year, first.month)}–{_short(last.year, last.month)}")
-    b = _Builder(now, prev, avg, _Words(out.prev_label, out.avg_label or None))
+    b = _Builder(now, prev, avg, _Words(out.prev_label, out.avg_label or None, threshold))
     b.management(auto_rates_text)
     b.internal()
     edits = edits or {}
     for r in b.rows:
         r.material = r.size >= threshold - 1e-9
+        r.small = threshold
         r.text = r.draft
         e = edits.get((r.part, r.key))
         if e:
@@ -768,12 +814,8 @@ def _split(text: str) -> list[str]:
 
 def _cells(f: Finding) -> list:
     """Figures of one row: now, prev, change, change %, avg, change, change %."""
-    def pct_change(now, ref):
-        if f.kind in ("pct", "effect") or now is None or not ref:
-            return None
-        return (now - ref) / abs(ref)
-    cells = [f.now, f.prev, f.change_prev, pct_change(f.now, f.prev),
-             f.avg, f.change_avg, pct_change(f.now, f.avg)]
+    cells = [f.now, f.prev, f.change_prev, f.pct_prev,      # % blank when it would
+             f.avg, f.change_avg, f.pct_avg]                # mislead (v0.36.1)
     if f.kind == "pct":             # the change of a share is shown in points (POINTS)
         cells = [round(v * 100, 2) if v is not None and i in (2, 5) else v
                  for i, v in enumerate(cells)]

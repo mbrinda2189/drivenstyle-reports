@@ -270,19 +270,47 @@ tr.total-row td { font-weight: 700; border-top: 2px solid var(--line-strong); }
 .filters .month-picker { flex: 0 0 auto; }
 .title-row .row-actions, .title-row > a.btn { margin-top: 4px; }
 
-/* ---- Key findings (v0.36.0, pages/KeyFindings.tsx) ---------------------------- */
+/* ---- Key findings (v0.36.0; tables v0.36.1, pages/KeyFindings.tsx) ---------- */
+.findings-page { padding-bottom: 84px; }               /* room for the save bar */
 .findings-settings { display: flex; flex-wrap: wrap; gap: 16px 32px; justify-content: space-between; align-items: flex-end; }
-.findings-settings p { margin: 0 0 12px; max-width: 720px; }
+.findings-settings p { margin: 0 0 8px; max-width: 760px; }
 .findings-settings .inline { display: flex; gap: 8px; align-items: center; }
 .findings-settings .inline input { width: 140px; }
-.card.findings { margin-top: 16px; }
+.report-tabs { display: flex; gap: 6px; margin: 18px 0 0; border-bottom: 2px solid var(--line); }
+.report-tab { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px;
+  border: 1px solid var(--line); border-bottom: none; border-radius: 8px 8px 0 0; background: var(--bg);
+  color: var(--slate); font: inherit; font-weight: 600; cursor: pointer; margin-bottom: -2px; }
+.report-tab.on { background: var(--surface); color: var(--navy); border-color: var(--line-strong);
+  border-bottom: 2px solid var(--surface); }
+.report-tab .count { font-size: 12px; background: var(--blue-tint); color: var(--navy); border-radius: 10px; padding: 1px 8px; }
+.card.findings { border-top-left-radius: 0; }
 h3.findings-section { margin: 22px 0 8px; color: var(--navy); font-size: 16px; }
-.finding { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
-.finding.headline { border-color: var(--line-strong); background: var(--bg); }
-.finding.left-out { opacity: .55; }
-.finding-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 6px; }
-.finding-figures { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--slate); font-variant-numeric: tabular-nums; }
-.finding textarea, .remark textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px;
-  border: 1px solid var(--line-strong); border-radius: 8px; resize: vertical; }
-.finding .row-actions { margin-top: 4px; }
+table.findings-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+.findings-table th { background: var(--navy); color: #fff; font-weight: 600; font-size: 12px;
+  padding: 8px 7px; text-align: left; white-space: nowrap; letter-spacing: 0; }
+.findings-table th.num, .findings-table td.num { text-align: right; white-space: nowrap; }
+.findings-table th.center, .findings-table td.center { text-align: center; width: 70px; }
+.findings-table tr.figures td { padding: 8px 7px 2px; }
+.findings-table tr.figures.headline td { font-weight: 700; }
+.findings-table tr.sentence td { padding: 0 7px 10px; border-bottom: 1px solid var(--line);
+  color: var(--slate); font-size: 13px; font-style: italic; }
+.findings-table tr.left-out td { opacity: .45; text-decoration: line-through; }
+.findings-table tr.left-out td.center { text-decoration: none; opacity: 1; }
+.sentence-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.sentence-line .text { flex: 0 1 auto; }
+.sentence-edit { display: flex; gap: 8px; align-items: flex-start; font-style: normal; }
+.sentence-edit textarea, .remark textarea { flex: 1; width: 100%; box-sizing: border-box; font: inherit;
+  font-style: normal; color: var(--ink); padding: 8px 10px; border: 1px solid var(--line-strong);
+  border-radius: 8px; resize: vertical; }
+.icon-btn { border: 1px solid var(--line-strong); background: var(--surface); border-radius: 6px;
+  min-width: 32px; min-height: 28px; cursor: pointer; font-style: normal; color: var(--navy); }
+.icon-btn:disabled { opacity: .4; cursor: default; }
+.link-btn { border: none; background: none; color: var(--blue); text-decoration: underline;
+  cursor: pointer; font: inherit; font-style: normal; padding: 0; }
 .remark { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
+.save-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; gap: 10px;
+  align-items: center; justify-content: flex-end; padding: 12px 28px; background: var(--surface);
+  border-top: 1px solid var(--line-strong); box-shadow: 0 -4px 12px rgba(11, 37, 69, .08); }
+.save-bar span { margin-right: auto; color: var(--slate); }
+.save-bar.pending { background: var(--amber-tint); }
+.save-bar.pending span { color: var(--amber); font-weight: 700; }

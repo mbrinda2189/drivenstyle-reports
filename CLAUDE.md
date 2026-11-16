@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.36.0** (tags v0.1.0 … v0.36.0 on GitHub
+Current version: **v0.36.1** (tags v0.1.0 … v0.36.1 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -287,6 +287,12 @@ Branding page is filled (home page + `/privacy`).
   re-running scripts/snapshot_month.py.
   Cowork note: device_commit_files can lag - check md5sum after a commit
   before running tests.
+- v0.36.1 (Brinda, 16-11-2026): Key findings screen as TABLES (tabs per
+  report, one table per section, sentence visible under each row, ✎ to edit,
+  Leave out column, fixed save bar saying "no changes to save" - she could
+  not tell why Save was off). % change blank when the earlier figure is <= 0
+  or (rupees) below the threshold - "same rule everywhere" (findings.pct_change);
+  net / gross profit changing sign: "turned from a profit of ... to a loss of ...".
 - ON HOLD (Brinda, 10-11-2026 - "let the staff work on it today"):
   (1) Daily Review: say "N uploaded PDFs not scanned yet - press Scan" instead
   of "Nothing to decide" when the inbox holds PDFs of waiting invoices

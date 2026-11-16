@@ -197,3 +197,28 @@ def test_long_sentences_are_split_for_the_pdf():
     lines = fd._split(text)
     assert len(lines) > 1 and all(len(x) <= fd.LINE_CHARS for x in lines)
     assert " ".join(lines) == text.strip()
+
+
+def test_no_misleading_percentages():
+    """v0.36.1: no % change from a loss or a tiny figure; a profit that turns
+    into a loss is said in words - the same rule in sentences and tables."""
+    assert fd.pct_change("money", 150, 100, small=1000) is None        # base below threshold
+    assert fd.pct_change("money", -55861, 20258, small=1000) == pytest.approx(-3.7574, abs=1e-3)
+    assert fd.pct_change("money", 100, -500, small=0) is None           # base is a loss
+    assert fd.pct_change("count", 12, 10, small=1000) == pytest.approx(0.2)
+    assert fd.pct_change("pct", 0.3, 0.2) is None
+    turned = fd._move("money", -55861.48, 20258.42, 1000, profit=True)
+    assert turned == "turned from a profit of ₹20,258 to a loss of ₹55,861"
+    assert "%" not in fd._move("money", 1500, 400, 1000)
+    w = fd._Words("Sep 2026", None, 1000)
+    assert w.compare("money", -55861.48, 20258.42, None, profit=True) == \
+        "turned from a profit of ₹20,258 to a loss of ₹55,861 on Sep 2026"
+
+
+def test_percent_columns_follow_the_same_rule(months):
+    sep, earlier = months
+    r = fd.compute(sep, earlier, threshold=10_00_000)        # every base is "small"
+    rows = by_key(r)
+    assert rows["sales"].pct_prev is None and fd._cells(rows["sales"])[3] is None
+    assert rows["invoices"].pct_prev is not None             # counts keep their %
+    assert rows["sales"].as_dict()["pct_prev"] is None
