@@ -12,7 +12,9 @@ page and by History > Regenerate:
        list (rto_list.py) and - v0.33.0 - Zoho's COGS Account Transactions
        and FIFO Cost Lot Tracking reports (zoho_costs.py), which add sheet
        "18 COGS check"
-    2. works out the month's figures and the trend months (data.py)
+    2. works out the month's figures and the trend months (data.py), and -
+       v0.36.0 - the key findings against the previous month and the
+       average of the three before (findings.py, with the admin's edits)
     3. writes DriveNStyle_<Mon>-<YYYY>_Reports.xlsx in `out_dir`
        (workbook.py), replacing an earlier file of the same name
     4. records the run for the History screen (inputs_repo.record_run)
@@ -38,6 +40,7 @@ from app.data.payments_io import PaymentsFileError, read_payments
 from app.data.rto_list import RtoFileError, read_rto
 from app.data.zoho_costs import ZohoCostFileError, ZohoCosts, read_cogs, read_fifo
 from app.reports.fitment import counts as fitment_counts
+from app.reports.findings import findings_for
 from app.reports.data import build_month, scanned_months, trend_months
 from app.reports.pdf_book import write_pdf_workbook
 from app.reports.pdf_export import PDF_KINDS, PdfError, export_pdf, pdf_path_for
@@ -139,15 +142,17 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
                               sum(c.dns_value for c in rto), sum(c.oe_value for c in rto),
                               fitted=fitment_counts(link))      # v0.33.0
     want_trend = "Trend analysis (month on month)" in reports
-    trend = (trend_months(masters, invoices, inputs, year, month)
-             if want_trend or pdf else [])
+    # v0.36.0: the earlier months are always needed now - the key findings
+    # compare with them whatever reports are ticked.
+    trend = trend_months(masters, invoices, inputs, year, month)
     previous = _previous(masters, invoices, inputs, year, month)
     rto_by_month = inputs.rto_months()
+    found = findings_for(masters, invoices, inputs, year, month, current=data, trend=trend)
     path = out_dir / file_name(year, month, datetime.now())
     try:
         write_workbook(data, trend if want_trend else [], payments, reports, path,
                        masters.user, rto=rto, previous=previous,
-                       rto_by_month=rto_by_month)
+                       rto_by_month=rto_by_month, findings=found)
     except PermissionError as exc:
         raise GenerateError(f"“{path.name}” could not be saved. If it is open in "
                             "Excel, close it and generate again.") from exc
@@ -164,20 +169,22 @@ def generate(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
         # workbook: it is reported separately.
         try:
             result.pdf_path, result.internal_pdf_path = _make_pdf(
-                data, trend, payments, rto, previous, rto_by_month, path, masters.user)
+                data, trend, payments, rto, previous, rto_by_month, path, masters.user,
+                found)
         except PdfError as exc:
             result.pdf_error = str(exc)
     return result
 
 
 def _make_pdf(data, trend, payments, rto, previous, rto_by_month, workbook_path: Path,
-              user: str) -> tuple[Path, Path]:
+              user: str, found=None) -> tuple[Path, Path]:
     """
     v0.10.0: a PDF is made from a temporary "PDF version" workbook (summary
     tables only - app/reports/pdf_book.py), saved beside the real workbook,
     and the temporary file is removed. v0.34.0: TWO PDFs - management and
     internal team - each from its own temporary workbook. Returns
-    (management PDF, internal PDF).
+    (management PDF, internal PDF). v0.36.0: `found` = the key findings
+    (findings.py), the first page of each PDF.
     """
     made = []
     with tempfile.TemporaryDirectory(prefix="dns_pdf_") as folder:
@@ -185,7 +192,8 @@ def _make_pdf(data, trend, payments, rto, previous, rto_by_month, workbook_path:
             book = Path(folder) / f"{workbook_path.stem}_{kind}.xlsx"
             try:
                 write_pdf_workbook(data, trend, payments, book, user, rto=rto,
-                                   previous=previous, rto_by_month=rto_by_month, part=kind)
+                                   previous=previous, rto_by_month=rto_by_month, part=kind,
+                                   findings=found)
             except OSError as exc:
                 raise PdfError(f"The PDF version could not be prepared: {exc}") from exc
             made.append(export_pdf(book, pdf_path_for(workbook_path, kind)))
@@ -205,6 +213,8 @@ def make_pdf(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo,
     costs = _read_costs(cogs_path, fifo_path)
     data = build_month(masters, invoices, inputs, year, month)
     data.zoho_costs = costs if costs.given else None
-    return _make_pdf(data, trend_months(masters, invoices, inputs, year, month), payments,
+    trend = trend_months(masters, invoices, inputs, year, month)
+    found = findings_for(masters, invoices, inputs, year, month, current=data, trend=trend)
+    return _make_pdf(data, trend, payments,
                      rto, _previous(masters, invoices, inputs, year, month),
-                     inputs.rto_months(), Path(workbook_path), masters.user)
+                     inputs.rto_months(), Path(workbook_path), masters.user, found)

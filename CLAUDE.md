@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.34.0** (tags v0.1.0 … v0.34.0 on GitHub
+Current version: **v0.36.0** (tags v0.1.0 … v0.36.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -267,6 +267,26 @@ Branding page is filled (home page + `/privacy`).
   posted; fix D's note; optional table of items still negative / sales
   costed from a later bill (587 no-stock rows since June, 250 from later
   bills) in the purchase analysis - ask Brinda.
+- v0.36.0 (Brinda, 16-11-2026, plan in project doc claude/key-findings-plan.md):
+  KEY FINDINGS - app/reports/findings.py. Compare with the previous month
+  read AND the average of up to 3 months before (never the month itself; no
+  average with one earlier month). Listed when the rupee effect >= threshold
+  against either; threshold ONE setting, default Rs. 1,000
+  (inputs_repo.findings_threshold, monthly_settings month "all"). FULL list.
+  Profit bridge and COGS split (volume / mix / cost rate) add up EXACTLY -
+  tests hold it. Admin only edits WORDS (schema 17 findings_edits; remarks
+  key "remark:n"); figures never stored. Excel: "Key findings" + "Drivers"
+  after Summary (always). PDFs: findings first (only when comparable), next
+  section fresh page; CHUNK=6 findings per table ("(continued)") so pages
+  fill; sentences split at LINE_CHARS=150 (no wrap across columns). Web:
+  KeyFindings.tsx, GET/PUT /api/monthly/{m}/findings, PUT
+  /api/monthly/findings-threshold. NOT compared: payment modes, Zoho COGS
+  (current-month files only), purchases (not built). generate() now always
+  builds trend months. test_baseline fails since v0.35.0 (incentive rule
+  changed Sep figures on purpose; snapshot not re-made) - ask Brinda before
+  re-running scripts/snapshot_month.py.
+  Cowork note: device_commit_files can lag - check md5sum after a commit
+  before running tests.
 - ON HOLD (Brinda, 10-11-2026 - "let the staff work on it today"):
   (1) Daily Review: say "N uploaded PDFs not scanned yet - press Scan" instead
   of "Nothing to decide" when the inbox holds PDFs of waiting invoices

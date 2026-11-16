@@ -33,6 +33,16 @@ ZOHO EXPENSE UPLOAD (v0.32.0, see app/data/expenses_io.py)
                                        shown beside the tool's own labour
     save_books_labour(year, month, by_kind)   replace the month's (logged)
 
+KEY FINDINGS (v0.36.0, see app/reports/findings.py)
+    findings_threshold()               Rs. a change must reach to be listed
+                                       (one setting for all months, default 1,000)
+    save_findings_threshold(amount)    (logged)
+    findings_edits(year, month)        an admin's changes to the drafted
+                                       findings: changed sentences, findings
+                                       left out, remarks
+    save_findings_edits(year, month, part, edits, remarks)
+                                       replace one report's changes (logged)
+
 Every change is written to the audit log (master "Monthly inputs") with
 old and new values, in the same transaction as the change.
 """
@@ -63,6 +73,11 @@ AUTO_HEADS = (
     ("auto_compliance_pct", "Compliance GST", 3.0, "compliance"),
 )
 ALL_MONTHS = "all"
+# Key findings (v0.36.0): the smallest change listed, in rupees, one setting
+# for all months (the default is reports/findings.DEFAULT_THRESHOLD as well).
+FINDINGS_KEY = "findings_threshold"
+DEFAULT_FINDINGS_THRESHOLD = 1000.0
+FINDINGS_PARTS = {"management": "Management report", "internal": "Internal team report"}
 DEFAULT_HEADS = ("Rent", "Salaries", "Electricity", "Internet & phone",
                  "Marketing")
 
@@ -244,6 +259,103 @@ class InputsRepo:
                 "inputs", None, f"Labour as per Zoho – {month_label(year, month)}",
                 "Edited" if old else "Added", "Labour by kind", show(old), show(new),
                 "Monthly inputs")
+
+    # ------------------------------------------------------------------
+    # Key findings (v0.36.0) - see app/reports/findings.py
+    # ------------------------------------------------------------------
+    def findings_threshold(self) -> float:
+        """The rupee amount a change must reach (against the previous month
+        or the average) to be listed as a key finding. ONE setting for all
+        months, like the automatic cost percentages (Brinda, 16-11-2026:
+        Rs. 1,000 for now, editable)."""
+        row = self.conn.execute(
+            "SELECT value FROM monthly_settings WHERE month = ? AND key = ?",
+            (ALL_MONTHS, FINDINGS_KEY)).fetchone()
+        return float(row["value"]) if row else DEFAULT_FINDINGS_THRESHOLD
+
+    def save_findings_threshold(self, amount: float) -> None:
+        """Change the threshold (rupees, 0 or more); logged."""
+        amount = round(float(amount), 2)
+        if amount < 0:
+            raise ValueError("The key findings amount cannot be below zero.")
+        old = self.findings_threshold()
+        if abs(old - amount) < 1e-9:
+            return
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO monthly_settings(month, key, value) VALUES (?, ?, ?)",
+                (ALL_MONTHS, FINDINGS_KEY, str(amount)))
+            self.masters._audit(
+                "inputs", None, "Report settings – all months", "Edited",
+                "Key findings – smallest change listed (Rs.)", format_inr(old),
+                format_inr(amount), "Key findings")
+
+    def findings_edits(self, year: int, month: int) -> dict:
+        """
+        The admin's changes to a month's key findings:
+            {"edits":   {(part, key): {"text": str, "hidden": bool}},
+             "remarks": {part: [remark, ...]}}
+        A text of "" means "the tool's own sentence".
+        """
+        edits, remarks = {}, {}
+        for r in self.conn.execute(
+                "SELECT part, key, text, hidden FROM findings_edits WHERE month = ? "
+                "ORDER BY part, key", (month_key(year, month),)):
+            if r["key"].startswith("remark:"):
+                remarks.setdefault(r["part"], []).append(
+                    (int(r["key"].split(":", 1)[1]), r["text"]))
+            else:
+                edits[(r["part"], r["key"])] = {"text": r["text"], "hidden": bool(r["hidden"])}
+        return {"edits": edits,
+                "remarks": {p: [t for _, t in sorted(v)] for p, v in remarks.items()}}
+
+    def save_findings_edits(self, year: int, month: int, part: str,
+                            edits: list[dict], remarks: list[str]) -> int:
+        """
+        Replace the admin's changes for ONE report (part = "management" /
+        "internal") of the month. `edits` = [{"key", "text", "hidden"}] -
+        a finding with no text and not hidden is the tool's draft and is not
+        stored. Every change is written to the audit log. Returns the number
+        of changes logged.
+        """
+        if part not in FINDINGS_PARTS:
+            raise ValueError(f"Unknown report: {part}")
+        key = month_key(year, month)
+        before = self.findings_edits(year, month)
+        old = {k: v for (p, k), v in before["edits"].items() if p == part}
+        new = {}
+        for e in edits:
+            text = " ".join(str(e.get("text") or "").split())
+            hidden = bool(e.get("hidden"))
+            if e.get("key") and not str(e["key"]).startswith("remark:") and (text or hidden):
+                new[str(e["key"])] = {"text": text, "hidden": hidden}
+        old_remarks = before["remarks"].get(part, [])
+        new_remarks = [" ".join(str(r).split()) for r in remarks if str(r).strip()]
+        record = f"Key findings – {month_label(year, month)} – {FINDINGS_PARTS[part]}"
+        logged = 0
+        with self.conn:
+            self.conn.execute("DELETE FROM findings_edits WHERE month = ? AND part = ?",
+                              (key, part))
+            rows = [(key, part, k, v["text"], int(v["hidden"])) for k, v in new.items()]
+            rows += [(key, part, f"remark:{i}", t, 0) for i, t in enumerate(new_remarks)]
+            self.conn.executemany(
+                "INSERT INTO findings_edits(month, part, key, text, hidden) VALUES (?,?,?,?,?)",
+                rows)
+            show = lambda v: ("(left out) " if v["hidden"] else "") + (v["text"] or "(tool's sentence)")
+            for k in sorted(set(old) | set(new)):
+                a, b = old.get(k), new.get(k)
+                if a == b:
+                    continue
+                action = "Added" if a is None else "Deleted" if b is None else "Edited"
+                self.masters._audit("inputs", None, record, action, k,
+                                    show(a) if a else "", show(b) if b else "", "Key findings")
+                logged += 1
+            if old_remarks != new_remarks:
+                self.masters._audit("inputs", None, record, "Edited", "Remarks",
+                                    " | ".join(old_remarks), " | ".join(new_remarks),
+                                    "Key findings")
+                logged += 1
+        return logged
 
     # ------------------------------------------------------------------
     # Generated reports

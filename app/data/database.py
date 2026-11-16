@@ -123,6 +123,8 @@ an older database then upgrades it in place without losing data.
     step 15 (v0.32.0) Zoho expense accounts -> heads; labour as per Zoho
     step 16 (v0.33.0) rto_months: cars that took a full floor mat (OE /
                      DNS) and sunfilm (side & rear / front), for the trend
+    step 17 (v0.36.0) findings_edits: an admin's changes to the drafted key
+                     findings of a month (reports/findings.py)
 
 A step is either a block of SQL or a Python function taking the connection
 (used when values must be worked out in Python, e.g. contact-number keys).
@@ -137,7 +139,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -608,6 +610,22 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
     # instead of a false "none".
     # A function, so a column that is already there is not added twice.
     lambda conn: _step_16(conn),
+    # --- 16 -> 17 : key findings edited by an admin (v0.36.0) --------------------
+    # The tool drafts the month's key findings (app/reports/findings.py); an
+    # admin may change a sentence, leave a finding out (hidden = 1) or add
+    # remarks (key "remark:0", "remark:1" ...). One row per changed finding,
+    # per month and per report (part = "management" / "internal"). The
+    # figures are never stored here - only the words shown with them.
+    """
+    CREATE TABLE IF NOT EXISTS findings_edits (
+        month   TEXT    NOT NULL,                     -- YYYY-MM
+        part    TEXT    NOT NULL CHECK (part IN ('management', 'internal')),
+        key     TEXT    NOT NULL,                     -- Finding.key, or remark:<n>
+        text    TEXT    NOT NULL DEFAULT '',          -- '' = the tool's own sentence
+        hidden  INTEGER NOT NULL DEFAULT 0,           -- 1 = left out of the report
+        PRIMARY KEY (month, part, key)
+    );
+    """,
 ]
 
 

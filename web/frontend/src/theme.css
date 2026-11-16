@@ -269,3 +269,20 @@ tr.total-row td { font-weight: 700; border-top: 2px solid var(--line-strong); }
 .grow-text { flex: 1 1 260px; align-self: center; }
 .filters .month-picker { flex: 0 0 auto; }
 .title-row .row-actions, .title-row > a.btn { margin-top: 4px; }
+
+/* ---- Key findings (v0.36.0, pages/KeyFindings.tsx) ---------------------------- */
+.findings-settings { display: flex; flex-wrap: wrap; gap: 16px 32px; justify-content: space-between; align-items: flex-end; }
+.findings-settings p { margin: 0 0 12px; max-width: 720px; }
+.findings-settings .inline { display: flex; gap: 8px; align-items: center; }
+.findings-settings .inline input { width: 140px; }
+.card.findings { margin-top: 16px; }
+h3.findings-section { margin: 22px 0 8px; color: var(--navy); font-size: 16px; }
+.finding { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+.finding.headline { border-color: var(--line-strong); background: var(--bg); }
+.finding.left-out { opacity: .55; }
+.finding-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; margin-bottom: 6px; }
+.finding-figures { display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--slate); font-variant-numeric: tabular-nums; }
+.finding textarea, .remark textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px;
+  border: 1px solid var(--line-strong); border-radius: 8px; resize: vertical; }
+.finding .row-actions { margin-top: 4px; }
+.remark { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }

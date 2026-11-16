@@ -337,7 +337,8 @@ rough line counts, to show you where the weight is.
 | `packages.py` | recognises a package sale on an invoice |
 | `workbook.py` (1065) | writes the monthly Excel workbook |
 | `rto_reports.py` | the new-car reports and the executive summary; `list_cols` leaves out the list's own DNS figures when the list has none; (v0.33.1) `invoice_groups` / `count_box` - how the month's invoices are counted under the penetration table |
-| `trend.py` | month-on-month trend; Excel sheet 4, and the management PDF's FIRST section (v0.34.0) - six months, no Total, % change for every row (`PDF_MONTHS`, `total=False`, `change_all=True`) |
+| `trend.py` | month-on-month trend; Excel sheet 4, and the management PDF's trend section (v0.34.0) - six months, no Total, % change for every row (`PDF_MONTHS`, `total=False`, `change_all=True`) |
+| `findings.py` | v0.36.0: **key findings** - why the month's figures moved, against the previous month and the average of the three months before. `base_figures` (one month's amounts as a flat dictionary), `compute` (the comparisons, the profit bridge and the COGS split, the sentences), `findings_for` (with the admin's edits from the database), `write_findings` / `write_drivers` (Excel sheets "Key findings" and "Drivers"; the first page of both PDFs). The module notes explain every formula. |
 | `pdf_book.py` | lays out the two PDFs (v0.34.0): `part="management"` (owner) and `part="internal"` (labour, incentive, payment modes, tool vs Zoho) |
 | `fitment.py` | v0.33.0: floor mat and sunfilm against the cars delivered (the word rules live here) |
 | `cogs_check.py` | v0.33.0: sheet 18 COGS check - master cost vs Zoho, invoice and item; the P&L block |
@@ -395,6 +396,7 @@ rough line counts, to show you where the weight is.
 | `src/pages/Generate.tsx` | monthly: upload files, read invoices, generate |
 | `src/pages/ScanReview.tsx` | monthly: fix unclear lines |
 | `src/pages/MonthlyInputs.tsx` | monthly: costs typed by hand |
+| `src/pages/KeyFindings.tsx` | v0.36.0 monthly: the key findings - change the sentences, leave findings out, add remarks, set the smallest change listed |
 | `src/pages/ZohoExpenses.tsx` | v0.32.0: the Zoho expenses panel on Monthly inputs |
 | `src/pages/History.tsx` | monthly: reports made so far |
 | `src/pages/DailyScan.tsx` | daily: upload PDFs and scan |
@@ -568,6 +570,7 @@ fetch a backup (`deploy.ps1 -Backup`) and open the copy.
 | `monthly_costs`, `monthly_settings` | the monthly inputs typed by hand |
 | `report_runs` | every report generated (the History screen) |
 | `rto_months` | totals from each month's delivery list |
+| `findings_edits` | v0.36.0: an admin's changes to a month's key findings (changed sentence, left out, remarks) - never the figures |
 | `users` | who may sign in, and as what |
 | `payout_lines`, `payout_invoices` | the daily payout register |
 | `audit_log` | every change. **Read-only**: the database itself refuses to change or delete a row. |
@@ -623,6 +626,7 @@ or `payout_app/engine.py`. The main ones, so you know what to expect:
 | "Gets incentive" | executives with this off earn no spot incentive |
 | Packages | a package sale only when **every** item of the package is on the invoice |
 | Automatic indirect costs | 4% and 3% of product cost, editable on Monthly inputs |
+| Key findings | compared with the previous month read AND the average of the three months before (never the month itself); listed when the change is worth Rs. 1,000 or more (setting) against either; full list; admin may change the words only |
 | Labour kinds | Floor mat / Sunfilm / Other, decided by words in the item name (`labour_group`) |
 | Daily payouts start | invoices before the start date (01-10-2026) are not posted |
 | Money format | Indian grouping on screen (12,34,567.00); dates dd-mm-yyyy |
@@ -677,6 +681,7 @@ All start with `/api`. "Who" = who may call it.
 | `POST /api/monthly/{month}/fix` | fix an issue on Scan review |
 | `GET .../matches`, `/matches/export`, `POST .../matches/change`, `/matches/remove`, `GET /api/monthly/match-choices/{kind}` | saved matches |
 | `GET` / `PUT /api/monthly/{month}/inputs`, `PUT /api/monthly/auto-rates` | monthly inputs |
+| `GET` / `PUT /api/monthly/{month}/findings`, `PUT /api/monthly/findings-threshold` | v0.36.0: key findings (worked out afresh; PUT saves one report's edits); the smallest change listed (all months) |
 | `POST /api/monthly/{month}/generate` | make the workbook and the PDF |
 | `GET /api/monthly/runs/{id}/download` (`?pdf=true&kind=management|internal`), `POST .../pdf` (makes both PDFs), `.../regenerate` | a report made earlier |
 | `DELETE /api/monthly/{month}/runs`, `/invoices` | remove a month's reports / its invoices |

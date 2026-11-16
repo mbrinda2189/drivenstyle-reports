@@ -6,6 +6,72 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.36.0] – 2026-11-16 – Key findings
+
+The client wanted the reports to say WHY the figures moved – why profit fell,
+why COGS rose. Plan confirmed by Brinda (16-11-2026, project doc
+`claude/key-findings-plan.md`): compare with the previous month AND the
+average of 3 months, everything, in both PDFs; threshold ₹1,000 for now,
+editable; full list; only the admin edits the findings.
+
+### Added
+- **`app/reports/findings.py`** – the findings engine (rules, no AI):
+  one month's amounts as a flat dictionary (`base_figures`); compared with
+  the previous month read and with the average of the up-to-three months
+  before (never the month itself; no average with only one earlier month –
+  it would repeat the previous month); each change has a rupee "effect"
+  (counts valued per unit, percentages × their base) and is listed when the
+  effect is the threshold or more against either comparison.
+  - Management: **profit bridge** (sales at the earlier margin, product
+    cost share, labour share, automatic indirect costs, other expenses – adds
+    up exactly to the change in net profit), sales (invoices × earlier bill +
+    change in bill = change in sales; discount ₹ and %; product / service;
+    branches; executives), **product cost split** into volume / mix / cost
+    rate (adds up exactly), cost % of sales (says when the discount % rose
+    too), cost per unit by item, labour, automatic costs ("follow product
+    cost"), expenses by head, new-car business (cars, fitted, penetration and
+    floor mat / sunfilm %), packages, gross profit by product.
+  - Internal team: labour (total, per invoice, by kind), spot and internal
+    incentive, incentive per invoice and by executive, prices above fixed
+    price (total, items, by executive), labour tool vs Zoho.
+  - A plain sentence for each finding, e.g. "Rent ₹45,000 – up ₹5,000
+    (+12.5%) on Oct 2026; up ₹3,000 (+7.1%) on the Aug–Oct 2026 average."
+- **Excel**: "Key findings" (both reports, with the admin's edits) and
+  "Drivers" (every comparison, listed or not, with its effect) right after
+  the Summary – always written.
+- **PDFs**: both open with their key findings when an earlier month exists;
+  the next section starts a new page. Long sections continue under
+  "(continued)" every 6 findings so pages fill.
+- **Key findings screen** (Monthly reports tab, admin only,
+  `pages/KeyFindings.tsx`): the findings of both reports with their figures;
+  change a sentence, "Leave out of the report", "Use the tool's sentence",
+  remarks; one Save per report; "Smallest change listed (₹, all months)".
+  `GET` / `PUT /api/monthly/{month}/findings`,
+  `PUT /api/monthly/findings-threshold`.
+- **Database step 17**: `findings_edits` (month, report, finding, sentence,
+  left out). `InputsRepo.findings_threshold / save_findings_threshold /
+  findings_edits / save_findings_edits` – every change in the audit log
+  (source "Key findings").
+
+### Changed
+- Generate and History > Make PDF always work out the earlier months (the
+  findings need them, whatever reports are ticked).
+
+### Not compared (yet)
+- Payment modes and the Zoho COGS check (their files are uploaded for the
+  current month only); purchases (the purchase analysis is not built yet).
+
+### Tests
+- `tests/test_findings.py` (bridge and COGS split add up exactly against
+  both comparisons; average of three months before; threshold; setting
+  logged; edits / left out / remarks; workbook and PDF pages; sentence
+  splitting) and `test_web_monthly.py::test_key_findings_screen`.
+- Note: `tests/test_baseline.py::test_real_month_still_gives_the_saved_figures`
+  already failed at v0.35.0 – the new incentive rule changed September's
+  incentives as intended, but the saved baseline was not re-made. Re-run
+  `python scripts/snapshot_month.py` on September once you agree the new
+  figures.
+
 ## [0.35.0] – 2026-11-16 – Incentive against fixed prices, raised-price report, Recalculate
 
 The client found salespeople typing items above their fixed price and then

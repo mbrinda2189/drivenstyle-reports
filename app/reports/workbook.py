@@ -8,6 +8,10 @@ WHAT THIS MODULE DOES
 
     Cover                      month, when and by whom generated, key
                                figures, contents, notes
+    Summary                    executive summary (rto_reports.py)
+    Key findings, Drivers      v0.36.0: why the figures moved, against the
+                               previous month and the 3-month average
+                               (findings.py) - always written
     1 Invoice profitability    one row per invoice
     2 Service vs product       Product / Service summary +
                                item-wise detail
@@ -248,9 +252,11 @@ def write_workbook(data: MonthData, trend: list[MonthData],
                    payments: list[Payment] | None, reports: list[str],
                    path: str | Path, user: str = "", rto: list | None = None,
                    previous: MonthData | None = None,
-                   rto_by_month: dict | None = None) -> Path:
+                   rto_by_month: dict | None = None, findings=None) -> Path:
     """
     Write the workbook for `data` (see module notes). Returns the path.
+    v0.36.0: `findings` = the key findings (app/reports/findings.Findings),
+    written as "Key findings" and "Drivers" right after the Summary.
     v0.9.0: `rto` = the dealership's delivery list (app/data/rto_list.py);
     when given, sheets 13-17 are added. A "Summary" sheet (executive
     summary) is always written, comparing with `previous` (the month
@@ -301,7 +307,13 @@ def write_workbook(data: MonthData, trend: list[MonthData],
     not_included_sheet(left, data)
     summary = wb.create_sheet(rr.SUMMARY_SHEET, 1)          # right after the Cover
     rr.summary_sheet(summary, data, previous, link, user)
-    cover_sheet(cover, data, [rr.SUMMARY_SHEET] + written, user)
+    first = [rr.SUMMARY_SHEET]
+    if findings is not None:                                # v0.36.0
+        from app.reports import findings as fd
+        fd.write_findings(wb.create_sheet(fd.SHEET, 2), findings, None, data.label)
+        fd.write_drivers(wb.create_sheet(fd.DRIVERS_SHEET, 3), findings)
+        first += [fd.SHEET, fd.DRIVERS_SHEET]
+    cover_sheet(cover, data, first + written, user)
     wb.calculation.fullCalcOnLoad = True       # Excel works out every formula
     path = Path(path)
     wb.save(path)

@@ -354,6 +354,42 @@ export interface ExpensePreview {
 }
 
 export interface GenerateResult { run: Run; payments_used: boolean; rto_used: boolean; pdf_error: string }
+
+/** One key finding (v0.36.0, app/reports/findings.py - Finding.as_dict). */
+export interface Finding {
+  key: string;
+  part: "management" | "internal";
+  section: string;
+  label: string;
+  kind: "money" | "count" | "pct" | "effect";
+  now: number | null;                  // this month (a share for pct: 0.42 = 42%)
+  prev: number | null;                 // the previous month read
+  avg: number | null;                  // average of up to 3 months before
+  change_prev: number | null;
+  change_avg: number | null;
+  draft: string;                       // the tool's sentence
+  text: string;                        // what the report shows (admin's edit or draft)
+  edited: boolean;
+  hidden: boolean;                     // left out of the report by an admin
+  headline: boolean;
+}
+export interface FindingsPart {
+  part: "management" | "internal";
+  title: string;
+  rows: Finding[];                     // listed findings (incl. those left out)
+  remarks: string[];
+  smaller: number;                     // comparisons below the threshold (Excel "Drivers")
+}
+export interface Findings {
+  label: string;
+  comparable: boolean;                 // false: no earlier month read yet
+  prev_label: string;
+  avg_label: string;
+  avg_months: number;
+  threshold: number;
+  parts: FindingsPart[];
+}
+export interface FindingEdit { key: string; text: string; hidden: boolean }
 type FixReply = { done: string; scan: ScanSummary | null; issues: Issue[] };
 type MatchRef = Pick<SavedMatch, "store" | "kind" | "key">;
 
@@ -393,6 +429,12 @@ export const monthlyApi = {
   issuesExportUrl: (month: string) => `/api/monthly/${month}/issues/export`,
   matchesExportUrl: (month: string) => `/api/monthly/${month}/matches/export`,
   inputs: (month: string) => ask<Inputs>("GET", `/monthly/${month}/inputs`),
+  // v0.36.0 - key findings
+  findings: (month: string) => ask<Findings>("GET", `/monthly/${month}/findings`),
+  saveFindings: (month: string, part: string, edits: FindingEdit[], remarks: string[]) =>
+    ask<Findings>("PUT", `/monthly/${month}/findings`, { part, edits, remarks }),
+  saveFindingsThreshold: (amount: number) =>
+    ask<{ threshold: number }>("PUT", "/monthly/findings-threshold", { amount }),
   saveInputs: (month: string, costs: [string, number][], threshold: number) =>
     ask<Inputs>("PUT", `/monthly/${month}/inputs`, { costs, threshold }),
   saveRates: (rates: Record<string, number>) =>

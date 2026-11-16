@@ -33,6 +33,7 @@ import DailyScan from "./pages/DailyScan";
 import DailySummary from "./pages/DailySummary";
 import Generate from "./pages/Generate";
 import History from "./pages/History";
+import KeyFindings from "./pages/KeyFindings";
 import Masters from "./pages/Masters";
 import MonthlyInputs from "./pages/MonthlyInputs";
 import Payouts from "./pages/Payouts";
@@ -93,6 +94,7 @@ export default function App() {
             <Route path="/monthly/generate" element={<Generate onExpired={expired} />} />
             <Route path="/monthly/review" element={<ScanReview onExpired={expired} />} />
             <Route path="/monthly/inputs" element={<MonthlyInputs onExpired={expired} />} />
+            <Route path="/monthly/findings" element={<KeyFindings onExpired={expired} />} />
             <Route path="/monthly/history" element={<History onExpired={expired} />} />
             <Route path="/admin/audit" element={<AuditLog onExpired={expired} />} />
             <Route path="/admin/users" element={<Users me={user} onExpired={expired} />} />

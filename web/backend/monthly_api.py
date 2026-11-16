@@ -12,6 +12,11 @@ The browser's version of the desktop tool's four monthly screens:
                        the saved matches; every invoice read
     Monthly inputs     indirect costs, high-profit threshold, automatic
                        cost percentages
+    Key findings       v0.36.0: why the month's figures moved (against the
+                       previous month and the 3-month average); the admin
+                       edits the tool's sentences, leaves findings out, adds
+                       remarks, and sets the smallest change listed
+                       (app/reports/findings.py)
     History            workbooks made, months read; download, regenerate,
                        remove
 
@@ -71,6 +76,7 @@ from app.data.masters_repo import MastersRepo
 from app.data.payments_io import PaymentsFileError, read_payments
 from app.data.rto_list import RtoFileError, read_rto
 from app.data.zoho_costs import ZohoCostFileError, read_cogs, read_fifo
+from app.reports.findings import PART_TITLES as FINDING_PARTS, findings_for
 from app.reports.generate import GenerateError, generate, make_pdf
 from app.reports.issues_export import (
     default_file_name, export_issues, export_matches, matches_file_name)
@@ -121,6 +127,22 @@ class InputsBody(BaseModel):
 
 class RatesBody(BaseModel):
     rates: dict[str, float]
+
+
+class FindingEdit(BaseModel):
+    key: str
+    text: str = ""          # "" = the tool's own sentence
+    hidden: bool = False    # True = leave the finding out of the report
+
+
+class FindingsBody(BaseModel):
+    part: str               # "management" / "internal"
+    edits: list[FindingEdit] = []
+    remarks: list[str] = []
+
+
+class ThresholdBody(BaseModel):
+    amount: float
 
 
 def _plural(n: int, one: str, many: str | None = None) -> str:
@@ -621,6 +643,59 @@ def add_routes(api: FastAPI, connection, admin, data_dir: Path) -> None:
                 raise HTTPException(400, str(exc)) from exc
             inputs.save_threshold(year, mon, body.threshold)
             return inputs_for_screen(inputs, year, mon)
+
+    # ---- Key findings (v0.36.0) ------------------------------------------------------------
+    # The findings are worked out afresh each time (reports/findings.py) from
+    # the invoices read, the masters and the Monthly inputs - exactly what
+    # Generate would put in the reports now. Only the admin's WORDS are
+    # stored (inputs_repo.findings_edits); the figures never are.
+    def findings_for_screen(conn, who: dict, year: int, mon: int) -> dict:
+        masters, invoices, inputs = repos(conn, who)
+        if invoices.scan_run(year, mon) is None:
+            raise HTTPException(400, f"The invoices of {month_label(year, mon)} have not been "
+                                     "read yet (Generate reports, step 2).")
+        found = findings_for(masters, invoices, inputs, year, mon)
+        parts = []
+        for part, title in FINDING_PARTS.items():
+            rows = found.listed(part, include_hidden=True)
+            parts.append({"part": part, "title": title,
+                          "rows": [r.as_dict() for r in rows if r.kind != "remark"],
+                          "remarks": found.remarks.get(part, []),
+                          "smaller": sum(1 for r in found.rows
+                                         if r.part == part and not r.material)})
+        return {"label": month_label(year, mon), "comparable": found.comparable,
+                "prev_label": found.prev_label, "avg_label": found.avg_label,
+                "avg_months": found.avg_months, "threshold": found.threshold,
+                "parts": parts}
+
+    @api.get("/api/monthly/{month}/findings")
+    def get_findings(month: str, who: dict = Depends(admin)) -> dict:
+        year, mon = ym(month)
+        with connection() as conn:
+            return findings_for_screen(conn, who, year, mon)
+
+    @api.put("/api/monthly/{month}/findings")
+    def save_findings(month: str, body: FindingsBody, who: dict = Depends(admin)) -> dict:
+        """Replace the admin's changes for one report of the month (logged)."""
+        year, mon = ym(month)
+        if body.part not in FINDING_PARTS:
+            raise HTTPException(400, "Unknown report.")
+        with connection() as conn:
+            inputs = repos(conn, who)[2]
+            inputs.save_findings_edits(year, mon, body.part,
+                                       [e.model_dump() for e in body.edits], body.remarks)
+            return findings_for_screen(conn, who, year, mon)
+
+    @api.put("/api/monthly/findings-threshold")
+    def save_findings_threshold(body: ThresholdBody, who: dict = Depends(admin)) -> dict:
+        """The smallest change listed, in rupees - one setting for all months."""
+        with connection() as conn:
+            inputs = repos(conn, who)[2]
+            try:
+                inputs.save_findings_threshold(body.amount)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            return {"threshold": inputs.findings_threshold()}
 
     @api.put("/api/monthly/auto-rates")
     def save_rates(body: RatesBody, who: dict = Depends(admin)) -> list[dict]:

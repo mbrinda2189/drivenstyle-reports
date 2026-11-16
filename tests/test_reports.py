@@ -154,7 +154,9 @@ def test_generate_writes_every_sheet(world, tmp_path):
     wb = load_workbook(r.path)
     # v0.9.0: + the executive summary, right after the cover
     # v0.35.0: + "7b Prices above fixed price", right after the Spot incentive
-    assert len(wb.sheetnames) == 16 and wb.sheetnames[:2] == ["Cover", "Summary"]
+    # v0.36.0: + "Key findings" and "Drivers", right after the Summary
+    assert len(wb.sheetnames) == 18 and wb.sheetnames[:4] == [
+        "Cover", "Summary", "Key findings", "Drivers"]
     spot = wb.sheetnames.index("7 Spot incentive")
     assert wb.sheetnames[spot + 1] == "7b Prices above fixed price"
     ws = wb["11 Payment modes"]
@@ -169,8 +171,8 @@ def test_generate_writes_every_sheet(world, tmp_path):
 def test_generate_only_ticked_reports(world, tmp_path):
     repo, inv, inp = world
     r = generate(repo, inv, inp, 2026, 9, tmp_path, ["Profit & loss"])
-    assert load_workbook(r.path).sheetnames == [
-        "Cover", "Summary", "12 Profit & loss", "Not included"]
+    assert load_workbook(r.path).sheetnames == [      # v0.36.0: + key findings
+        "Cover", "Summary", "Key findings", "Drivers", "12 Profit & loss", "Not included"]
 
 
 def test_generate_needs_a_scanned_month(world, tmp_path):

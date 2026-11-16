@@ -48,7 +48,8 @@ const MENU: Record<Tab, { heading: string; items: [string, string][] }> = {
   monthly: {
     heading: "Monthly reports",
     items: [["/monthly/generate", "Generate reports"], ["/monthly/review", "Scan review"],
-            ["/monthly/inputs", "Monthly inputs"], ["/monthly/history", "History"]],
+            ["/monthly/inputs", "Monthly inputs"], ["/monthly/findings", "Key findings"],
+            ["/monthly/history", "History"]],
   },
 };
 /** Used by both tools, so listed under both tabs. Open to staff as well. */

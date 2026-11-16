@@ -20,6 +20,11 @@ TWO PDFs (Brinda, 11-11-2026, v0.34.0) - THIS IS THE CURRENT CONTENT
 The one PDF is now TWO, made from the same data, each its own temporary
 workbook (write_pdf_workbook(..., part=MANAGEMENT / INTERNAL)):
 
+  v0.36.0: BOTH PDFs now open with their KEY FINDINGS (findings.py) - the
+  changes of Rs. 1,000 (setting) or more against the previous month and the
+  3-month average, with the tool's sentence or the admin's edit - when an
+  earlier month exists; the first section below then starts a new page.
+
   MANAGEMENT ("..._Management_....pdf") - for the owner:
      1. Trend analysis       FIRST page, when 2+ months exist: last six
                              months, NO Total column, and "% change from the
@@ -820,10 +825,12 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
                        user: str = "", rto: list | None = None,
                        previous: MonthData | None = None,
                        rto_by_month: dict | None = None,
-                       part: str = MANAGEMENT) -> Path:
+                       part: str = MANAGEMENT, findings=None) -> Path:
     """Write the temporary workbook that Excel / LibreOffice turns into ONE
     of the two PDFs (v0.34.0): `part` = MANAGEMENT or INTERNAL - see "TWO
-    PDFs" in the module notes."""
+    PDFs" in the module notes. v0.36.0: `findings` (findings.Findings) -
+    when there is an earlier month to compare with, the KEY FINDINGS of this
+    part are the first page(s), and the next section starts a new page."""
     # Imported here, not at the top: trend.py imports workbook.py, which
     # imports this module lazily - the same pattern as workbook.py uses.
     from app.reports.trend import PDF_MONTHS, trend_sheet
@@ -868,11 +875,18 @@ def write_pdf_workbook(data: MonthData, months: list[MonthData],
             plan.append(("Tool vs Zoho", lambda ws: _tool_vs_zoho(ws, data)))
         if zoho:                                                      # v0.33.0
             plan.append(("Product cost - master vs Zoho", lambda ws: _cogs(ws, data)))
+    starts_page = set(FRESH_PAGE)
+    if findings is not None and findings.comparable:       # v0.36.0
+        from app.reports import findings as fd
+        if plan:
+            starts_page.add(plan[0][0])     # what followed the findings: a new page
+        plan.insert(0, (fd.PDF_SECTION, lambda ws: fd.write_findings(
+            ws, findings, part, data.label, pdf=True)))
     row, blocks, fresh = 1, [], set()
     for name, writer in plan:
         sheet = wb.create_sheet(name)
         writer(sheet)
-        if name in FRESH_PAGE and row > 1:
+        if name in starts_page and row > 1:
             fresh.add(row)
         rows = _append(report, sheet, row)
         blocks += _blocks(report, row, row + rows - 1)

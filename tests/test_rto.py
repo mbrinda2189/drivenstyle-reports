@@ -113,7 +113,7 @@ def test_workbook_with_and_without_the_list(world):
     r = generate(masters, irepo, inputs, 2026, 9, out, ["Profit & loss"],
                  rto_path=str(write_list(tmp_path / "RTO.xlsx")))
     wb = openpyxl.load_workbook(r.path)
-    assert wb.sheetnames == ["Cover", "Summary", "12 Profit & loss",
+    assert wb.sheetnames == ["Cover", "Summary", "Key findings", "Drivers", "12 Profit & loss",
                              "13 New-car penetration", "14 Missed opportunity",
                              "15 RTO list vs invoices", "16 New-car vs other",
                              "17 Consultant scorecard", "Not included"]

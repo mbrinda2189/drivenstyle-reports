@@ -310,3 +310,41 @@ def test_workbook_has_the_desktop_figures_and_history_works(world, monkeypatch):
     assert list(output.glob("*.pdf")) == []                  # both PDFs went with it
     assert admin.delete(f"{M}/invoices", headers=H).json() == {"removed": 3}
     assert admin.get(f"{M}/overview").json()["scan"] is None
+
+
+def test_key_findings_screen(world):
+    """v0.36.0: the Key findings addresses - admin only; nothing to compare
+    until an earlier month is read; edits saved per report and logged."""
+    _, admin, staff, export = world
+    assert staff.get(f"{M}/findings").status_code == 403
+    assert staff.put(f"{M}/findings", json={"part": "management"}, headers=H).status_code == 403
+    assert staff.put("/api/monthly/findings-threshold", json={"amount": 1},
+                     headers=H).status_code == 403
+    unread = admin.get(f"{M}/findings")
+    assert unread.status_code == 400 and "not been read" in unread.json()["detail"]
+    read_month(admin, export)
+    alone = admin.get(f"{M}/findings").json()
+    assert not alone["comparable"] and alone["threshold"] == 1000
+    # The same export holds one August invoice: read it as August.
+    put_file(admin, "invoices", export, "Invoice.csv", "/api/monthly/2026-08")
+    assert admin.post("/api/monthly/2026-08/read", headers=H).status_code == 200
+    found = admin.get(f"{M}/findings").json()
+    assert found["comparable"] and found["prev_label"] == "Aug 2026" and found["avg_label"] == ""
+    assert [p["part"] for p in found["parts"]] == ["management", "internal"]
+    rows = found["parts"][0]["rows"]
+    assert rows and rows[0]["section"] == "Profit bridge"
+    key = rows[0]["key"]
+    saved = admin.put(f"{M}/findings", headers=H, json={
+        "part": "management", "edits": [{"key": key, "text": "Our own words."}],
+        "remarks": ["A remark."]}).json()
+    first = saved["parts"][0]
+    assert first["rows"][0]["text"] == "Our own words." and first["rows"][0]["edited"]
+    assert first["remarks"] == ["A remark."]
+    assert admin.put(f"{M}/findings", json={"part": "x"}, headers=H).status_code == 400
+    assert admin.put("/api/monthly/findings-threshold", json={"amount": -5},
+                     headers=H).status_code == 400
+    assert admin.put("/api/monthly/findings-threshold", json={"amount": 10_00_000},
+                     headers=H).json() == {"threshold": 1000000.0}
+    assert admin.get(f"{M}/findings").json()["parts"][1]["rows"] == []
+    log = admin.get("/api/audit", params={"master": "inputs"}).json()["entries"]
+    assert {e["user"] for e in log} == {ADMIN} and len(log) >= 3
