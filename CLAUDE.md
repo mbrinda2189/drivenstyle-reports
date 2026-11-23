@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.36.1** (tags v0.1.0 … v0.36.1 on GitHub
+Current version: **v0.37.0** (tags v0.1.0 … v0.37.0 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -293,6 +293,20 @@ Branding page is filled (home page + `/privacy`).
   not tell why Save was off). % change blank when the earlier figure is <= 0
   or (rupees) below the threshold - "same rule everywhere" (findings.pct_change);
   net / gross profit changing sign: "turned from a profit of ... to a loss of ...".
+- v0.37.0 (Brinda, 23-11-2026): "Show working" on daily Payouts - the client's
+  staff check each invoice's labour AND incentive by hand. payout_app/working.py
+  builds a JSON working from build_month's objects (no new maths) and engine
+  attaches it (InvoiceResult.working); register.Plan.calculated says which
+  invoices were Posted / Re-issued / Recalculated; payout_store keeps the
+  working in payout_workings (schema 18, rows only added, identical copy not
+  re-added) in the scan transaction. Older invoices: rebuild_working from the
+  kept PDF, saved ONLY if amounts equal the register's. payout_checks: optional
+  "checked" mark (Brinda: "dont make it mandatory"), working_id shows if the
+  check is of an older working. Downloads: workings_export.py (one invoice
+  xlsx/pdf via LibreOffice, fit to 1 page if <= 60 rows; date range xlsx with
+  check formulas). data.Line gained printed / rate_from / incentive_from,
+  PackageSale.rate_from (display only). Screen: WorkingDialog.tsx; Payouts has
+  a Working column (Show, ✓) and "Workings (Excel)…". tests/test_web_workings.py.
 - ON HOLD (Brinda, 10-11-2026 - "let the staff work on it today"):
   (1) Daily Review: say "N uploaded PDFs not scanned yet - press Scan" instead
   of "Nothing to decide" when the inbox holds PDFs of waiting invoices

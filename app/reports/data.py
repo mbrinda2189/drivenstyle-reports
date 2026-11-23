@@ -220,6 +220,11 @@ class Line:
                                     # (qty x rate, GST-inclusive, before discount)
     fixed_price: float = 0.0        # per unit, GST-inclusive
     fixed_source: str = ""          # "bill value" / "selling price" / "typed price"
+    # v0.37.0 - kept only so the daily payouts can SHOW how a figure was
+    # reached ("Show working", payout_app/working.py). No report uses them.
+    printed: str = ""               # the item name exactly as printed on the invoice
+    rate_from: date | None = None   # Product master rate row used (effective from)
+    incentive_from: date | None = None  # Incentive master rate row used
 
     @property
     def typed_unit(self) -> float:
@@ -256,6 +261,7 @@ class PackageSale:
     incentive: float              # Incentive master, on the invoice date
     coupon_value: float           # its Bill value = the coupon's final value
     lines: list[Line] = field(default_factory=list)
+    rate_from: date | None = None  # v0.37.0: Incentive master row used (for "Show working")
 
     def _sum(self, attr: str) -> float:
         return round(sum(getattr(l, attr) for l in self.lines), 2)
@@ -683,13 +689,16 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
                         labour=round(labour_rate * qty, 2), labour_rate=labour_rate,
                         list_price=r.get("selling_price", 0.0),
                         internal_incentive=p.get("internal_incentive") or 0.0,
-                        typed=round(ln.get("amount") or 0.0, 2), **common)
+                        typed=round(ln.get("amount") or 0.0, 2),
+                        printed=ln.get("description") or "",
+                        rate_from=r.get("effective_from"), **common)
             group = p["incentive_group"]
             if group and group in incentive_ids:
                 ir = rate("incentives", incentive_ids[group], day)
                 line.incentive_group = group
                 line.incentive_amount = ir.get("incentive_amount", 0.0)
                 line.bill_value = ir.get("bill_value", 0.0)
+                line.incentive_from = ir.get("effective_from")
             # v0.35.0: the line's fixed price, worked out HERE - before a
             # package or "Gets incentive = No" clears the incentive fields -
             # so it stays the same whoever sold the item.
@@ -707,7 +716,8 @@ def build_month(masters: MastersRepo, invoices: InvoicesRepo, inputs: InputsRepo
             pr = package_rate(sold.package.name)
             inv.package = PackageSale(sold.package.name,
                                       pr.get("incentive_amount", 0.0),
-                                      pr.get("bill_value", 0.0), sold.lines)
+                                      pr.get("bill_value", 0.0), sold.lines,
+                                      rate_from=pr.get("effective_from"))
             for line in sold.lines:
                 # the package incentive replaces the items' own incentives
                 line.is_package = True

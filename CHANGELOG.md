@@ -6,6 +6,58 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.37.0] – 2026-11-23 – Show working on the daily Payouts
+
+Brinda (23-11-2026): the client's staff want to see how the tool calculates
+each invoice, so she can check the workings by hand – for both labour and
+incentive, on screen, as a one-invoice PDF / Excel and as an Excel for a day
+or date range; marking an invoice as checked is a good add-on but must not be
+mandatory.
+
+### Added
+- **Show working** (Payouts screen, new column "Working" → *Show*): a window
+  for one invoice laid out as it would be checked on paper – 1. what was read
+  (invoice, date, customer, car, sales executive, total, discount / GST);
+  2. every item as printed and the master product it was read as (*saved
+  match* marked), qty, typed price, discount share, paid with GST, fixed price
+  and where it came from (bill value / selling price / typed), labour,
+  incentive; 3. labour per kind of work – rate × qty, with the date of the
+  master rate used; 4. spot incentive – each incentive × qty, the package if
+  any, then the steps with the invoice's own numbers (full incentive, paid vs
+  fixed prices, share earned, payable; not rounded); 5. internal team;
+  6. the payout lines and their status now; the history of the working.
+  (`payout_app/working.py`, `pages/WorkingDialog.tsx`)
+- **The working kept is the one the amounts came from**: stored when an
+  invoice is Posted, Re-issued or Recalculated, in the same transaction as
+  its lines (new table `payout_workings`, schema 18). A master changed later
+  does not change it; Recalculate adds a new working and keeps the old one
+  as history.
+- **Invoices posted before v0.37.0**: *Make the working* works it out from
+  the kept PDF and saves it only if it gives exactly the posted amounts;
+  otherwise it says which lines differ and points to Recalculate.
+- **Mark as checked** (optional – never needed to pay a line): who, when and
+  an optional note; logged in History; ✓ on the Payouts list (amber when the
+  invoice was recalculated after the check); can be removed. (table
+  `payout_checks`)
+- **Downloads**: *Download PDF* / *Download Excel* for one invoice (A4
+  landscape, an ordinary invoice fits one page, with a "Checked by" line);
+  **Workings (Excel)…** for every posted invoice dated in a range (up to three
+  months): sheet *Invoices* (one row per invoice, every figure in its own
+  column, **check formulas** for labour total, share earned and incentive
+  beside the tool's amounts and the difference), sheet *Items* (one row per
+  item, rate × qty as formulas), sheet *Read me*. (`web/backend/workings_export.py`)
+
+### Changed
+- `reports/data.py`: `Line` keeps the printed item name and the dates of the
+  Product / Incentive master rates used; `PackageSale` its rate date – for
+  the working only, no report figure changes.
+- Clearing the register also clears the workings and checks.
+
+### Notes
+- `tests/test_baseline.py` still fails as it has since v0.35.0 (September
+  figures saved before the incentive rule changed) – unchanged by this
+  version.
+
 ## [0.36.1] – 2026-11-16 – Key findings as tables; no misleading %
 
 Brinda (16-11-2026) could not save on the Key findings screen: the Save

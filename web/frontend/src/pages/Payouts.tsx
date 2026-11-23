@@ -31,6 +31,14 @@
  *                      never changed - they are named instead. Every change
  *                      goes to History. (payout_app/register.py, RECALCULATE)
  *
+ *      Show working    (v0.37.0) on every line: how the tool reached the
+ *                      invoice's labour and incentive, step by step, for a
+ *                      staff member to check by hand; download as PDF /
+ *                      Excel; "Mark as checked" (optional). The Working
+ *                      column shows ✓ when the invoice is checked (amber ✓ when
+ *                      it was recalculated after the check). See WorkingDialog.
+ *      Workings (Excel)… a day or date range of workings, with check formulas.
+ *
  * THE RULES ARE THE SERVER'S (payout_app/service.py, word for word):
  *   * Paid needs a reference or a proof; the paid date cannot be in the future.
  *   * Only Pending or Hold lines can be paid. If one of the ticked lines
@@ -41,7 +49,8 @@
  *     the working.
  */
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ApiError, DailyTotals, PayoutLine, RecalcReport, dailyApi, inr, showDate, today } from "../api";
+import { ApiError, CheckMark, DailyTotals, PayoutLine, RecalcReport, dailyApi, inr, showDate, today } from "../api";
+import WorkingDialog, { WorkingsExportDialog } from "./WorkingDialog";
 
 type Ask = "pay" | "hold" | "reopen" | "cancel" | "recalc" | null;
 const BADGE: Record<string, string> = { Pending: "badge amber", Paid: "badge green",
@@ -61,6 +70,10 @@ export default function Payouts({ onExpired }: { onExpired: () => void }) {
   const [reason, setReason] = useState("");
   const [notice, setNotice] = useState("");
   const [problem, setProblem] = useState("");
+  // v0.37.0 - Show working
+  const [checks, setChecks] = useState<Record<string, CheckMark>>({});
+  const [showing, setShowing] = useState<string | null>(null);     // invoice no in the window
+  const [exporting, setExporting] = useState(false);
 
   const fail = useCallback((error: unknown) => {
     if (error instanceof ApiError && error.status === 401) onExpired();
@@ -72,6 +85,7 @@ export default function Payouts({ onExpired }: { onExpired: () => void }) {
       const [reply, view] = await Promise.all([dailyApi.lines(), dailyApi.overview()]);
       setLines(reply.lines);
       setTotals(reply.totals);
+      setChecks(reply.checks ?? {});
       setModes(view.modes);
       setTypes(view.types);
     } catch (error) {
@@ -137,6 +151,9 @@ export default function Payouts({ onExpired }: { onExpired: () => void }) {
         <div className="row-actions">
           <a className="btn" href={dailyApi.slipUrl()} target="_blank" rel="noreferrer">Payout slip (to pay)</a>
           <a className="btn" href={dailyApi.exportUrl}>Export to Excel</a>
+          <button className="btn" onClick={() => setExporting(true)}
+                  title="The full working of every invoice dated in a range, to check with your own formulas">
+            Workings (Excel)…</button>
         </div>
       </div>
 
@@ -224,13 +241,13 @@ export default function Payouts({ onExpired }: { onExpired: () => void }) {
                 <th><input type="checkbox" checked={allTicked} aria-label="Tick every line shown"
                            onChange={() => setTicked(allTicked ? new Set() : new Set(shown.map((l) => l.line_id)))} /></th>
                 <th>Invoice</th><th>Date</th><th>Customer</th><th>Car</th><th>Type</th><th>Pay to</th>
-                <th className="num">Amount (₹)</th><th>Status</th><th>Paid on</th><th>Mode</th><th>Reference</th>
+                <th className="num">Amount (₹)</th><th>Working</th><th>Status</th><th>Paid on</th><th>Mode</th><th>Reference</th>
                 <th>Proof</th><th>Remarks</th>
               </tr>
             </thead>
             <tbody>
-              {lines === null && <tr><td colSpan={14} className="muted">Reading…</td></tr>}
-              {lines !== null && shown.length === 0 && <tr><td colSpan={14} className="muted">
+              {lines === null && <tr><td colSpan={15} className="muted">Reading…</td></tr>}
+              {lines !== null && shown.length === 0 && <tr><td colSpan={15} className="muted">
                 {lines.length === 0 ? "The register is empty. Scan invoices to post the first lines."
                   : "No line matches the filters."}</td></tr>}
               {shown.map((l) => (
@@ -245,6 +262,14 @@ export default function Payouts({ onExpired }: { onExpired: () => void }) {
                   <td>{l.type}</td>
                   <td>{l.payee || "—"}</td>
                   <td className="num" title={l.working}>{inr(l.amount)}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="link-btn" onClick={() => setShowing(l.invoice_no)}
+                            aria-label={`Show working of invoice ${l.invoice_no}`}>Show</button>
+                    {checks[l.invoice_no] && (
+                      <span className={`check-mark${checks[l.invoice_no].current ? "" : " old"}`}
+                            title={(checks[l.invoice_no].current ? "Checked" : "Checked an earlier working - recalculated since")
+                              + ` by ${checks[l.invoice_no].by} on ${checks[l.invoice_no].at}`}> ✓</span>)}
+                  </td>
                   <td><span className={BADGE[l.status]}>{l.status}</span></td>
                   <td>{showDate(l.paid_date)}</td>
                   <td>{l.mode}</td>
@@ -263,6 +288,11 @@ export default function Payouts({ onExpired }: { onExpired: () => void }) {
         <PayDialog lines={chosen} modes={modes} onClose={() => setAsk(null)} onExpired={onExpired}
                    onPaid={(text) => void act(async () => text)} />
       )}
+      {showing && (
+        <WorkingDialog invoiceNo={showing} onClose={() => setShowing(null)} onExpired={onExpired}
+                       onChanged={() => void load()} />
+      )}
+      {exporting && <WorkingsExportDialog onClose={() => setExporting(false)} onExpired={onExpired} />}
       {ask === "recalc" && (
         <RecalcDialog invoices={[...new Set(chosen.map((l) => l.invoice_no))]}
                       onClose={() => { setAsk(null); void load(); }} onExpired={onExpired}

@@ -98,6 +98,10 @@ match. `Outcome.choices` gives the names that can be chosen for each kind
 
 WORKING
 -------
+v0.37.0: besides the short text below, every READY invoice carries its
+full step-by-step working (`InvoiceResult.working`, payout_app/working.py),
+which the web tool stores when the invoice is posted ("Show working").
+
 Every payout line carries a short text showing how the amount was reached,
 e.g. "Paid 3,300.00 vs fixed prices 3,500.00 -> 94.29% of the incentive.
 Underbody: 200 x 1 = 200 x 3,300.00 / 3,500.00" - so anyone looking at the
@@ -119,6 +123,7 @@ from app.data.invoices_repo import (
 from app.data.masters_repo import MastersRepo, name_key, phone_key
 from app.reports.data import LABOUR_GROUPS, build_month, labour_group
 from app.utils import format_inr
+from payout_app.working import invoice_working
 
 LABOUR = "Labour"           # every labour type starts with this word; also the
                             # type of the single labour line posted until v0.20.0
@@ -169,6 +174,9 @@ class InvoiceResult:
     fingerprint: str = ""                  # what the PDF says (invoice_print)
     reasons: list[str] = field(default_factory=list)
     lines: list[PayoutLine] = field(default_factory=list)
+    # v0.37.0 - the full step-by-step working of a READY invoice
+    # (payout_app/working.py); {} for an invoice in review / not used.
+    working: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -473,4 +481,7 @@ def calculate(masters: MastersRepo,
                     line_id(inv.invoice_no, INTERNAL), type=INTERNAL, payee=INTERNAL,
                     amount=inv.internal_incentive, working=_internal_working(inv),
                     **common))
+            # v0.37.0: the full working ("Show working" on Payouts), made from
+            # the same objects as the amounts above, so the two always agree.
+            result.working = invoice_working(inv, result.lines)
     return outcome

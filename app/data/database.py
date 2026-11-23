@@ -125,6 +125,9 @@ an older database then upgrades it in place without losing data.
                      DNS) and sunfilm (side & rear / front), for the trend
     step 17 (v0.36.0) findings_edits: an admin's changes to the drafted key
                      findings of a month (reports/findings.py)
+    step 18 (v0.37.0) payout_workings (the full working of each posted
+                     invoice, "Show working") and payout_checks (staff mark
+                     an invoice's working as checked - optional)
 
 A step is either a block of SQL or a Python function taking the connection
 (used when values must be worked out in Python, e.g. contact-number keys).
@@ -139,7 +142,7 @@ from typing import Callable, Union
 
 from app.data.paths import database_path
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 
 def _step_2(conn: sqlite3.Connection) -> None:
@@ -624,6 +627,35 @@ _MIGRATIONS: list[Union[str, Callable[[sqlite3.Connection], None]]] = [
         text    TEXT    NOT NULL DEFAULT '',          -- '' = the tool's own sentence
         hidden  INTEGER NOT NULL DEFAULT 0,           -- 1 = left out of the report
         PRIMARY KEY (month, part, key)
+    );
+    """,
+    # --- 17 -> 18 : "Show working" on the daily Payouts (v0.37.0) ----------------
+    # payout_workings: the full working of an invoice (payout_app/working.py,
+    # as JSON) each time its amounts are worked out and written - Posted,
+    # Re-issued, Recalculated, or Rebuilt for an invoice posted before
+    # v0.37.0. Rows are only ever ADDED: the latest row is the working of
+    # the amounts in the register now; older rows are its history.
+    # payout_checks: an invoice whose working someone has checked by hand
+    # (optional - Brinda, 23-11-2026: "dont make it mandatory"). One row per
+    # invoice; working_id says WHICH working was checked, so a check made
+    # before a recalculation shows as "checked an earlier working".
+    """
+    CREATE TABLE IF NOT EXISTS payout_workings (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_no  TEXT    NOT NULL,
+        made_at     TEXT    NOT NULL,                 -- DD-MM-YYYY HH:MM (register.stamp)
+        made_by     TEXT    NOT NULL DEFAULT '',      -- e-mail of who scanned
+        why         TEXT    NOT NULL DEFAULT '',      -- Posted / Re-issued / ...
+        amount      REAL    NOT NULL DEFAULT 0,       -- its payout lines' total
+        body        TEXT    NOT NULL                  -- the working, as JSON
+    );
+    CREATE INDEX IF NOT EXISTS ix_payout_workings_invoice ON payout_workings(invoice_no);
+    CREATE TABLE IF NOT EXISTS payout_checks (
+        invoice_no  TEXT    NOT NULL PRIMARY KEY,
+        working_id  INTEGER NOT NULL,
+        checked_by  TEXT    NOT NULL,
+        checked_at  TEXT    NOT NULL,
+        note        TEXT    NOT NULL DEFAULT ''
     );
     """,
 ]

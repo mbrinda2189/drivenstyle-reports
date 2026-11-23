@@ -354,6 +354,7 @@ rough line counts, to show you where the weight is.
 | `engine.py` (455) | **yes** | from invoice PDFs to labour and incentive payout lines |
 | `register.py` (601) | **yes** | the layout of the payout register and the plan of what to post |
 | `slip.py` (124) | **yes** | builds the payout slip |
+| `working.py` | **yes** | v0.37.0: the full step-by-step working of one invoice ("Show working") |
 | `service.py` (706) | partly (small helpers such as `proof_name`) | the desktop app's step-by-step actions |
 | `google_api.py`, `masters_sheet.py`, `settings.py`, `masters_cli.py`, `payout_cli.py`, `__main__.py` | no | the Google Sheets side of the old desktop app |
 
@@ -371,6 +372,7 @@ rough line counts, to show you where the weight is.
 | `payout_store.py` (431) | the payout register, kept in the database |
 | `daily_api.py` (394) | addresses for the daily payouts |
 | `daily_reports.py` (279) | payout slip, summary, month check, Excel export |
+| `workings_export.py` | v0.37.0: "Show working" as Excel / PDF (one invoice) and Excel (date range) |
 | `privacy.py` (90) | the public privacy page at `/privacy` |
 | `bring_across.py` (133) | command that copies a desktop database into the web tool |
 | `requirements.txt` | the server's Python libraries |
@@ -402,6 +404,7 @@ rough line counts, to show you where the weight is.
 | `src/pages/DailyScan.tsx` | daily: upload PDFs and scan |
 | `src/pages/DailyReview.tsx` | daily: fix unclear invoices |
 | `src/pages/Payouts.tsx` | daily: mark paid, hold, reopen |
+| `src/pages/WorkingDialog.tsx` | v0.37.0: the "Show working" window and "Workings (Excel)…" |
 | `src/pages/DailySummary.tsx` | daily: slip, summary, month check |
 | `src/pages/DailyHistory.tsx` | daily: the log |
 
@@ -698,6 +701,9 @@ All start with `/api`. "Who" = who may call it.
 | `POST /api/daily/proofs`, `GET /api/daily/proofs/{name}` | signed in | upload / see a payment proof |
 | `POST /api/daily/pay`, `/reopen`, `/hold` | signed in | record a payment, undo it, hold a line |
 | `GET /api/daily/log` | signed in | history |
+| `GET /api/daily/working/{invoice}` | signed in | v0.37.0: the stored working of one invoice, its history and check |
+| `POST /api/daily/working/{invoice}/rebuild`, `/check` | signed in | make the working of an older invoice; mark as checked (optional) |
+| `GET /api/daily/working/{invoice}/file?format=pdf\|xlsx`, `GET /api/daily/workings/export?date_from=&date_to=` | signed in | downloads |
 | `GET /api/daily/slip`, `/summary`, `/month-check`, `/export` | signed in | the reports |
 | `PUT /api/daily/start-date`, `POST /api/daily/clear` | **admin** | start date; empty the register |
 

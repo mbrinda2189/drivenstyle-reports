@@ -13,7 +13,11 @@ reference or a proof.
     Review          invoices that could not be posted, with the fix
     Payouts         every line: Mark paid, Hold / Release, Reopen;
                     Recalculate (v0.35.0) - posted invoices worked out again
-                    with today's masters, unpaid lines only
+                    with today's masters, unpaid lines only;
+                    Show working (v0.37.0) - how each invoice's labour and
+                    incentive were reached, on screen, as a one-invoice
+                    PDF / Excel, and as an Excel for a date range; staff
+                    may mark a working as checked (optional)
     History         the log of every change
 
 WHO MAY USE IT: staff and admins alike (Brinda, 09-10-2026 - staff may also
@@ -50,6 +54,7 @@ tests put a stand-in there, because client invoices are never in Git.
 
 from __future__ import annotations
 
+import io
 import re
 import secrets
 import shutil
@@ -58,13 +63,15 @@ from datetime import date, datetime
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from app.data.invoices_repo import OTHERS_CHOICE, OTHERS_ID
 from app.data.masters_repo import MastersRepo
+from app.reports.pdf_export import PdfError
 from payout_app import engine, register
 from payout_app.service import PROOF_MAX_BYTES, PROOF_TYPES, proof_name
+from web.backend import workings_export
 from web.backend.payout_store import MASTER, PayoutError, PayoutStore, issues_for_screen
 
 PDF_MAX_BYTES = 10 * 1024 * 1024
@@ -108,6 +115,11 @@ class RecalcBody(BaseModel):
 
 class DateBody(BaseModel):
     date: str
+
+
+class CheckBody(BaseModel):
+    checked: bool = True
+    note: str = ""
 
 
 class ConfirmBody(BaseModel):
@@ -281,8 +293,12 @@ def add_routes(api: FastAPI, connection, current_user, admin, data_dir: Path) ->
         with connection() as conn:
             store = PayoutStore(conn, who["email"])
             found = store.lines()
+            # v0.37.0: which invoices have a stored working, and which are checked
+            checks = {n: {"by": c["checked_by"], "at": c["checked_at"], "current": c["current"]}
+                      for n, c in store.checks().items()}
             return {"lines": [_line(l) for l in found], "totals": totals(found),
-                    "invoices": store.invoices()}
+                    "invoices": store.invoices(), "checks": checks,
+                    "with_working": sorted(store.with_working())}
 
     @api.post("/api/daily/proofs")
     async def upload_proof(request: Request, filename: str,
@@ -402,6 +418,113 @@ def add_routes(api: FastAPI, connection, current_user, admin, data_dir: Path) ->
                 raise refuse(exc) from exc
             report["files_read"] = len(paths)
             return report
+
+    # ---- Show working (v0.37.0) ---------------------------------------------------------
+    XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    def view_of(store: PayoutStore, invoice_no: str) -> dict:
+        try:
+            return store.working(invoice_no)
+        except PayoutError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
+    def for_browser(view: dict) -> dict:
+        return {**view, "lines": [_line(l) for l in view["lines"]]}
+
+    def file_name(invoice_no: str, ext: str) -> str:
+        safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in invoice_no)
+        return f"Working_{safe}.{ext}"
+
+    @api.get("/api/daily/working/{invoice_no}")
+    def show_working(invoice_no: str, who: dict = Depends(current_user)) -> dict:
+        """The stored working of one invoice, its history, lines and check."""
+        with connection() as conn:
+            return for_browser(view_of(PayoutStore(conn, who["email"]), invoice_no))
+
+    @api.post("/api/daily/working/{invoice_no}/rebuild")
+    def rebuild_working(invoice_no: str, who: dict = Depends(current_user)) -> dict:
+        """For an invoice posted before v0.37.0: make its working from the kept
+        PDF - saved only if it gives exactly the posted amounts."""
+        with connection() as conn:
+            store = PayoutStore(conn, who["email"])
+            name = store.recalculable().get(invoice_no)
+            if not name or not (pdfs / name).is_file():
+                raise HTTPException(400, f"The PDF of {invoice_no} is no longer on the "
+                                         "server. Scan it again first.")
+            try:
+                return for_browser(store.rebuild_working(read_files([pdfs / name]),
+                                                         invoice_no))
+            except PayoutError as exc:
+                raise refuse(exc) from exc
+
+    @api.post("/api/daily/working/{invoice_no}/check")
+    def check_working(invoice_no: str, body: CheckBody,
+                      who: dict = Depends(current_user)) -> dict:
+        """Mark (or unmark) the invoice's working as checked - optional."""
+        with connection() as conn:
+            store = PayoutStore(conn, who["email"])
+            view_of(store, invoice_no)
+            try:
+                return for_browser(store.set_check(invoice_no, body.checked, body.note))
+            except PayoutError as exc:
+                raise refuse(exc) from exc
+
+    @api.get("/api/daily/working/{invoice_no}/file")
+    def working_file(invoice_no: str, format: str = "pdf", who: dict = Depends(current_user)):
+        """One invoice's working to download: format = pdf or xlsx."""
+        with connection() as conn:
+            view = view_of(PayoutStore(conn, who["email"]), invoice_no)
+        if view["working"] is None:
+            raise HTTPException(400, "This invoice's working is not saved yet. Open Show "
+                                     "working and use “Make the working” first.")
+        if format == "xlsx":
+            out = io.BytesIO()
+            workings_export.invoice_workbook(view).save(out)
+            data, kind, ext = out.getvalue(), XLSX, "xlsx"
+        elif format == "pdf":
+            try:
+                data, kind, ext = workings_export.invoice_pdf(view), "application/pdf", "pdf"
+            except PdfError as exc:
+                raise HTTPException(400, str(exc)) from exc
+        else:
+            raise HTTPException(400, "Choose pdf or xlsx.")
+        return Response(data, media_type=kind, headers={
+            "Content-Disposition": f'attachment; filename="{file_name(invoice_no, ext)}"'})
+
+    @api.get("/api/daily/workings/export")
+    def workings_range(date_from: str, date_to: str = "", who: dict = Depends(current_user)):
+        """
+        Every posted invoice DATED in the range (invoice date, inclusive) with
+        its working, as an Excel to check with one's own formulas. Cancelled
+        invoices and invoices in review are left out.
+        """
+        start = day(date_from, "The from date")
+        end = day(date_to, "The to date") if date_to else start
+        if end < start:
+            raise HTTPException(400, "The to date is before the from date.")
+        if (end - start).days > 92:
+            raise HTTPException(400, "Choose at most three months at a time.")
+        with connection() as conn:
+            store = PayoutStore(conn, who["email"])
+            # the register keeps the invoice date as dd-mm-yyyy text
+            dated = {}
+            for i in store.invoices():
+                try:
+                    on = datetime.strptime(i["invoice_date"], "%d-%m-%Y").date()
+                except ValueError:
+                    continue
+                if i["state"] in (register.POSTED, register.REISSUED) and start <= on <= end:
+                    dated[i["invoice_no"]] = on
+            entries = [store.working(n) for n in dated]
+        entries.sort(key=lambda e: (dated[e["invoice"]["invoice_no"]], e["invoice"]["invoice_no"]))
+        if not entries:
+            raise HTTPException(400, "No posted invoice is dated in this range.")
+        span = f"{start:%d-%m-%Y}" + (f" to {end:%d-%m-%Y}" if end != start else "")
+        out = io.BytesIO()
+        workings_export.range_workbook(entries, f"Workings - invoices dated {span}").save(out)
+        name = f"Workings_{start:%d-%m-%Y}" + (f"_to_{end:%d-%m-%Y}" if end != start else "")
+        return Response(out.getvalue(), media_type=XLSX, headers={
+            "Content-Disposition": f'attachment; filename="{name}.xlsx"'})
 
     # ---- History ---------------------------------------------------------------------------
     @api.get("/api/daily/log")

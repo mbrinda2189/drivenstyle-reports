@@ -314,3 +314,21 @@ table.findings-table { width: 100%; border-collapse: collapse; font-variant-nume
 .save-bar span { margin-right: auto; color: var(--slate); }
 .save-bar.pending { background: var(--amber-tint); }
 .save-bar.pending span { color: var(--amber); font-weight: 700; }
+
+/* ---- Show working (v0.37.0) ------------------------------------------------- */
+.dialog.working { max-width: 1100px; }
+table.plain tbody tr { cursor: default; }
+table.plain tbody tr:hover td { background: transparent; }
+table.compact th, table.compact td { padding: 5px 8px; font-size: 13px; }
+table.compact th { text-align: left; }
+table.rows tr.total td { font-weight: 700; background: var(--bg); }
+.working-steps { margin: 8px 0; padding-left: 22px; line-height: 1.55; }
+.check-box { margin-top: 18px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); }
+.check-box.done { background: var(--green-tint); border-color: #a9d8b8; }
+.check-box.old { background: var(--amber-tint); border-color: #e3c98e; }
+.check-box p { margin: 0 0 10px; }
+.check-mark { color: var(--green); font-weight: 700; }
+.check-mark.old { color: var(--amber); }
+p.small, span.small { font-size: 13px; }
+.dialog.working td { white-space: normal; }
+.dialog.working td.num { white-space: nowrap; }

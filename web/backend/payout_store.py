@@ -43,6 +43,19 @@ changed later does not alter a posted line (register.plan).
 
 START DATE: invoices dated before it are left alone ("no back-posting").
 Kept in the meta table as payout_start_date; 01-10-2026 until changed.
+
+SHOW WORKING (v0.37.0)
+    When a scan writes an invoice's amounts (Posted, Re-issued,
+    Recalculated) the full working the engine made for it
+    (payout_app/working.py) is stored in payout_workings, in the same
+    transaction as the lines - so what is shown later is exactly what the
+    amounts came from, even after a master changes. Rows are only added;
+    the latest is the current working, the older ones its history.
+    Invoices posted before v0.37.0 have no stored working: `rebuild_working`
+    works it out again from the kept PDF and stores it ONLY IF it gives the
+    very amounts in the register (otherwise it says so and suggests
+    Recalculate). Staff may mark a working as checked (`set_check`) - an
+    optional control, logged like everything else.
 """
 
 from __future__ import annotations
@@ -53,7 +66,8 @@ from datetime import date, datetime
 
 from app.data.invoices_repo import OTHERS_CHOICE, OTHERS_ID, InvoicesRepo
 from app.data.masters_repo import MastersRepo
-from payout_app import engine, register
+from app.utils import format_inr
+from payout_app import engine, register, working
 from payout_app.register import I, P
 
 DEFAULT_START = date(2026, 10, 1)          # go-live (Brinda, 09-10-2026)
@@ -202,6 +216,11 @@ class PayoutStore:
                 self._put_invoice(None, cells)
             for _, _, what, record, old, new in todo.log:
                 self._log(what, record, old, new)
+            # v0.37.0: keep the working of every invoice whose amounts were written
+            for res in outcome.of(engine.READY):
+                why = todo.calculated.get(res.invoice_no)
+                if why and res.working:
+                    self._keep_working(res.invoice_no, res.working, why, now)
             self.conn.commit()
         except BaseException:
             self.conn.rollback()
@@ -223,6 +242,162 @@ class PayoutStore:
                          for r in outcome.of(engine.NOT_USED)],
             "issues": issues_for_screen(outcome, waiting),
             "warnings": todo.warnings, "notes": outcome.notes}
+
+    # ---- Show working (v0.37.0) ----------------------------------------------------
+    def _keep_working(self, invoice_no: str, work: dict, why: str, now: datetime) -> bool:
+        """
+        Store one working (caller's transaction). A working identical to the
+        latest one kept (a Recalculate that changed nothing) is not stored
+        twice. Returns True when a row was added.
+        """
+        body = json.dumps(work, sort_keys=True, ensure_ascii=False)
+        last = self.conn.execute(
+            "SELECT body FROM payout_workings WHERE invoice_no = ? ORDER BY id DESC LIMIT 1",
+            (invoice_no,)).fetchone()
+        if last and last["body"] == body:
+            return False
+        self.conn.execute(
+            "INSERT INTO payout_workings(invoice_no, made_at, made_by, why, amount, body) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (invoice_no, register.stamp(now), self.user, why, working.lines_total(work), body))
+        return True
+
+    def _check_row(self, invoice_no: str) -> dict | None:
+        row = self.conn.execute("SELECT * FROM payout_checks WHERE invoice_no = ?",
+                                (invoice_no,)).fetchone()
+        return dict(row) if row else None
+
+    def working(self, invoice_no: str) -> dict:
+        """
+        Everything "Show working" needs for one invoice:
+            working    the latest stored working (None if the invoice was
+                       posted before v0.37.0 - see rebuild_working)
+            history    every stored working, newest first: when, who, why,
+                       total (the body is sent only for the latest)
+            invoice    the register's invoice row (state, scanned by / at)
+            lines      the register's lines NOW (status, amount) - these can
+                       differ from the working's lines only by adjustment
+                       lines (re-issued after payment) or cancellations
+            check      who checked it and when, and whether that check is of
+                       the latest working (`current`)
+        """
+        invoice = next((i for i in self.invoices() if i["invoice_no"] == invoice_no), None)
+        if invoice is None:
+            raise PayoutError(f"Invoice {invoice_no} is not in the register.")
+        rows = self.conn.execute(
+            "SELECT * FROM payout_workings WHERE invoice_no = ? ORDER BY id DESC",
+            (invoice_no,)).fetchall()
+        latest = json.loads(rows[0]["body"]) if rows else None
+        check = self._check_row(invoice_no)
+        if check:
+            check["current"] = bool(rows) and check["working_id"] == rows[0]["id"]
+        lines = [l for l in self.lines() if l["invoice_no"] == invoice_no]
+        return {
+            "invoice": invoice,
+            "working": latest,
+            "working_id": rows[0]["id"] if rows else None,
+            "history": [{"id": r["id"], "made_at": r["made_at"], "made_by": r["made_by"],
+                         "why": r["why"], "amount": r["amount"]} for r in rows],
+            "lines": lines,
+            "check": check,
+            "rebuildable": not rows and invoice["state"] in (register.POSTED, register.REISSUED),
+        }
+
+    def checks(self) -> dict[str, dict]:
+        """invoice no -> its check row with `current` (for the Payouts list)."""
+        latest = {r["invoice_no"]: r["id"] for r in self.conn.execute(
+            "SELECT invoice_no, MAX(id) AS id FROM payout_workings GROUP BY invoice_no")}
+        out = {}
+        for r in self.conn.execute("SELECT * FROM payout_checks"):
+            row = dict(r)
+            row["current"] = latest.get(row["invoice_no"]) == row["working_id"]
+            out[row["invoice_no"]] = row
+        return out
+
+    def with_working(self) -> set[str]:
+        """Invoice numbers that have a stored working."""
+        return {r[0] for r in self.conn.execute("SELECT DISTINCT invoice_no FROM payout_workings")}
+
+    def latest_workings(self, numbers: list[str]) -> dict[str, dict]:
+        """invoice no -> latest stored working (only those that have one)."""
+        out = {}
+        for n in numbers:
+            row = self.conn.execute(
+                "SELECT body FROM payout_workings WHERE invoice_no = ? ORDER BY id DESC "
+                "LIMIT 1", (n,)).fetchone()
+            if row:
+                out[n] = json.loads(row["body"])
+        return out
+
+    def rebuild_working(self, files: list, invoice_no: str,
+                        now: datetime | None = None) -> dict:
+        """
+        For an invoice posted BEFORE v0.37.0 (no working stored): work it out
+        again from its kept PDF with today's masters - on a throw-away copy,
+        nothing in the register changes - and keep that working ONLY IF its
+        lines give exactly the amounts the register holds for the invoice
+        (adjustment and cancelled lines aside). If not, nothing is stored and
+        the reason says which amounts differ: the masters have changed since
+        it was posted, and Recalculate is the way to bring it up to date.
+        """
+        now = now or datetime.now()
+        if invoice_no in self.with_working():
+            raise PayoutError(f"Invoice {invoice_no} already has its working.")
+        outcome = self.calculate(files)
+        res = next((r for r in outcome.results if r.invoice_no == invoice_no), None)
+        if res is None or res.state != engine.READY:
+            why = " ".join(res.reasons) if res else "its PDF could not be read."
+            raise PayoutError(f"The working of {invoice_no} could not be made: {why}")
+        held = {l["line_id"]: l["amount"] for l in self.lines()
+                if l["invoice_no"] == invoice_no and "-ADJ" not in l["line_id"]
+                and l["status"] != register.CANCELLED}
+        made = {l.line_id: round(l.amount, 2) for l in res.lines}
+        if held != made:
+            diffs = []
+            for lid in sorted(set(held) | set(made)):
+                was, now_is = held.get(lid), made.get(lid)
+                if was is None or now_is is None or abs(was - now_is) >= 0.005:
+                    diffs.append(f"{lid}: register {format_inr(was or 0)}, "
+                                 f"today's masters {format_inr(now_is or 0)}")
+            raise PayoutError(
+                f"The working of {invoice_no} was not saved: today's masters give "
+                "different amounts from the ones posted (" + "; ".join(diffs) + "). "
+                "The masters have changed since it was posted. Use Recalculate… to bring "
+                "the unpaid lines up to date - the working is then saved with it.")
+        with self.conn:
+            self._keep_working(invoice_no, res.working,
+                               "Rebuilt (posted before v0.37.0)", now)
+            self._log("Working rebuilt", invoice_no, "",
+                      f"{len(made)} line(s), {format_inr(sum(made.values()))}")
+        return self.working(invoice_no)
+
+    def set_check(self, invoice_no: str, checked: bool, note: str = "",
+                  now: datetime | None = None) -> dict:
+        """
+        Mark the invoice's CURRENT working as checked by the signed-in person,
+        or take the mark off. Optional (never needed to pay a line); logged.
+        """
+        now, note = now or datetime.now(), _clean(note)
+        current = self.working(invoice_no)
+        with self.conn:
+            old = self._check_row(invoice_no)
+            if checked:
+                if current["working_id"] is None:
+                    raise PayoutError("There is no working to check yet for "
+                                      f"{invoice_no}.")
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO payout_checks(invoice_no, working_id, checked_by, "
+                    "checked_at, note) VALUES (?, ?, ?, ?, ?)",
+                    (invoice_no, current["working_id"], self.user, register.stamp(now), note))
+                self._log("Working checked", invoice_no,
+                          f"checked by {old['checked_by']}" if old else "",
+                          note or "checked")
+            elif old:
+                self.conn.execute("DELETE FROM payout_checks WHERE invoice_no = ?",
+                                  (invoice_no,))
+                self._log("Check removed", invoice_no,
+                          f"checked by {old['checked_by']} on {old['checked_at']}", "")
+        return self.working(invoice_no)
 
     # ---- Recalculate (v0.35.0) -------------------------------------------------------
     def recalculable(self) -> dict[str, str]:
@@ -460,6 +635,8 @@ class PayoutStore:
         with self.conn:
             lines = self.conn.execute("DELETE FROM payout_lines").rowcount
             invoices = self.conn.execute("DELETE FROM payout_invoices").rowcount
+            self.conn.execute("DELETE FROM payout_workings")      # v0.37.0
+            self.conn.execute("DELETE FROM payout_checks")
             self._log("Register cleared", "Payout register", f"{lines} line(s), "
                       f"{invoices} invoice(s)", "empty")
         return lines, invoices

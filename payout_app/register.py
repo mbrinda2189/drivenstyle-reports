@@ -303,6 +303,10 @@ class Plan:
     tally: dict[str, int] = field(default_factory=dict)
     problems: list[str] = field(default_factory=list)     # stop: nothing is posted
     warnings: list[str] = field(default_factory=list)
+    # v0.37.0 - invoice no -> "Posted" / "Re-issued" / "Recalculated": the
+    # invoices whose amounts this scan worked out and wrote, so the web tool
+    # keeps the working those amounts came from ("Show working").
+    calculated: dict[str, str] = field(default_factory=dict)
 
     @property
     def has_writes(self) -> bool:
@@ -440,6 +444,7 @@ def plan(payout_rows: list[list], invoice_rows: list[list], outcome: Outcome,
             for line in res.lines:
                 out.payout_appends.append(payout_row(line, now))
             record(res, POSTED, "", len(res.lines))
+            out.calculated[res.invoice_no] = POSTED
             out.add_log(now, who, "Posted", res.invoice_no, "",
                         f"{len(res.lines)} line(s), "
                         f"{format_inr(sum(l.amount for l in res.lines))}")
@@ -447,10 +452,12 @@ def plan(payout_rows: list[list], invoice_rows: list[list], outcome: Outcome,
         if again:                                     # v0.35.0: Recalculate
             tally["recalculated"] += 1
             _recalculate(out, res, lines_of.get(res.invoice_no, []), who, now)
+            out.calculated[res.invoice_no] = "Recalculated"
             continue
         tally["re-issued"] += 1
         _reissue(out, res, lines_of.get(res.invoice_no, []), who, now)
         record(res, REISSUED, "", len(res.lines))
+        out.calculated[res.invoice_no] = REISSUED
     out.tally = tally
     return out
 

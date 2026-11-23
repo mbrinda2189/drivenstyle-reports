@@ -65,6 +65,33 @@ async function ask<T>(method: string, path: string, body?: unknown): Promise<T> 
   return data as T;
 }
 
+/**
+ * Download a file from the server (v0.37.0). Unlike a plain link, a refusal
+ * (no working yet, PDF could not be made ...) comes back as an ApiError with
+ * the server's words, so the screen can show it instead of a bare error page.
+ */
+export async function downloadFile(url: string, fallbackName: string): Promise<void> {
+  let reply: Response;
+  try {
+    reply = await fetch(url, { credentials: "same-origin", headers: { "X-DNS-Request": "1" } });
+  } catch {
+    throw new ApiError(0, "The server could not be reached. Check the connection and try again.");
+  }
+  if (!reply.ok) {
+    const data = await reply.json().catch(() => null);
+    throw new ApiError(reply.status, data && typeof data.detail === "string" ? data.detail
+                                                                           : "Something went wrong.");
+  }
+  const named = /filename="([^"]+)"/.exec(reply.headers.get("Content-Disposition") || "");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(await reply.blob());
+  link.download = named ? named[1] : fallbackName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+}
+
 export const api = {
   config: () => ask<Config>("GET", "/config"),
   me: () => ask<User>("GET", "/me"),
@@ -526,6 +553,45 @@ export interface PayoutInvoice {
   scanned_at: string;
 }
 
+// ---- Show working (v0.37.0) ---------------------------------------------------------
+// The full working of one invoice as the server stored it when the amounts
+// were posted (payout_app/working.py). Amounts in rupees, dates YYYY-MM-DD.
+export interface WorkingItem {
+  printed: string; product: string; matched: string; category: string; qty: number;
+  typed_unit: number; typed: number; discount: number; paid: number;
+  fixed_price: number; fixed_source: string; fixed_source_text: string; fixed_value: number;
+  in_package: boolean; labour_kind: string; labour_rate: number; labour: number; rate_from: string;
+  incentive_group: string; incentive_rate: number; incentive: number; incentive_from: string;
+  internal_rate: number; internal: number;
+}
+export interface InvoiceWorking {
+  format: number; invoice_no: string; invoice_date: string; customer: string; car: string;
+  executive: string; printed_executive: string; branch: string; total: number; discount: number;
+  gst: number; rounding: number; markers: number; marker_value: number;
+  items: WorkingItem[];
+  labour: { total: number; groups: { kind: string; total: number;
+    items: { product: string; rate: number; qty: number; amount: number; rate_from: string }[] }[] };
+  incentive: { payee: string; allowed: boolean; full: number; paid: number; fixed: number;
+    ratio: number; payable: number; steps: string[];
+    items: { product: string; group: string; rate: number; qty: number; amount: number; rate_from: string }[];
+    package: { name: string; incentive: number; coupon_value: number; rate_from: string;
+               items: string[]; items_fixed_value: number } | null };
+  internal: { total: number; items: { product: string; rate: number; qty: number; amount: number }[] };
+  lines: { line_id: string; type: string; payee: string; amount: number }[];
+}
+export interface WorkingCheck { checked_by: string; checked_at: string; note: string; current: boolean }
+export interface WorkingView {
+  invoice: PayoutInvoice;
+  working: InvoiceWorking | null;          // null: posted before v0.37.0, not rebuilt yet
+  working_id: number | null;
+  history: { id: number; made_at: string; made_by: string; why: string; amount: number }[];
+  lines: PayoutLine[];                     // the register's lines now
+  check: WorkingCheck | null;
+  rebuildable: boolean;
+}
+/** On the Payouts list: who checked an invoice's working, and whether it is the current one. */
+export type CheckMark = { by: string; at: string; current: boolean };
+
 // ---- slip, summary, month check (v0.28.0) --------------------------------------
 export interface DailySummary {
   by_payee: { type: string; payee: string; pending: number; paid: number }[];
@@ -568,7 +634,19 @@ export const dailyApi = {
     ask<{ done: string; report: ScanReport | null }>("POST", "/daily/accept-totals", { invoice_no }),
   cancel: (invoice_no: string, reason: string) =>
     ask<{ paid_lines_left: string[] }>("POST", "/daily/cancel", { invoice_no, reason }),
-  lines: () => ask<{ lines: PayoutLine[]; totals: DailyTotals; invoices: PayoutInvoice[] }>("GET", "/daily/lines"),
+  lines: () => ask<{ lines: PayoutLine[]; totals: DailyTotals; invoices: PayoutInvoice[];
+                     checks: Record<string, CheckMark>; with_working: string[] }>("GET", "/daily/lines"),
+  // v0.37.0: Show working
+  working: (invoice_no: string) =>
+    ask<WorkingView>("GET", `/daily/working/${encodeURIComponent(invoice_no)}`),
+  rebuildWorking: (invoice_no: string) =>
+    ask<WorkingView>("POST", `/daily/working/${encodeURIComponent(invoice_no)}/rebuild`),
+  checkWorking: (invoice_no: string, checked: boolean, note = "") =>
+    ask<WorkingView>("POST", `/daily/working/${encodeURIComponent(invoice_no)}/check`, { checked, note }),
+  workingFileUrl: (invoice_no: string, format: "pdf" | "xlsx") =>
+    `/api/daily/working/${encodeURIComponent(invoice_no)}/file?format=${format}`,
+  workingsExportUrl: (from: string, to: string) =>
+    `/api/daily/workings/export?date_from=${from}&date_to=${to}`,
   uploadProof: (file: File) => sendFile<{ token: string }>("/daily/proofs", file),
   pay: (body: { line_ids: string[]; paid_date: string; mode: string; reference: string;
                 remarks: string; proof_token: string }) =>
