@@ -135,8 +135,8 @@ written in this repository** - ask Brinda for access.
 |---|---|
 | Code | GitHub: `mbrinda2189/drivenstyle-reports`, branch `main` |
 | Live tool | `https://drivenstyle.duckdns.org` |
-| Server | `ubuntu@35.154.161.180` (AWS Mumbai, Ubuntu 22.04, fixed "Elastic" IP). Shared with the IT vendor's other sites. |
-| Server key file | on Brinda's PC, **outside** the project: `C:\Official\Coding\Personal Coding Projects\key\Printapp_KEY.pem` |
+| Server | `ubuntu@3.109.226.121` - the LIVE server (v0.37.1; shared with the Dealzta app, no nginx). `35.154.161.180` is an old copy nobody uses - see `docs/deployment.md`. |
+| Server key file | on Brinda's PC, **outside** the project: `C:\Official\Coding\Personal Coding Projects\key\dealzta-prod.pem` |
 | Web address (DNS) | duckdns.org, account `automation.drivenstyle@gmail.com`, name `drivenstyle` |
 | Google sign-in set-up | Google Cloud Console, same account, "Google Auth Platform" |
 | Google client ID | `deploy/server.conf` (public by design) |
@@ -902,7 +902,7 @@ On the server everything of ours is under `/opt/drivenstyle`:
 To log in to the server yourself (rarely needed):
 
 ```powershell
-ssh -i "C:\Official\Coding\Personal Coding Projects\key\Printapp_KEY.pem" ubuntu@35.154.161.180
+ssh -i "C:\Official\Coding\Personal Coding Projects\key\dealzta-prod.pem" ubuntu@3.109.226.121
 ```
 
 Useful commands once there (type `exit` to leave):

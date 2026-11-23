@@ -81,3 +81,21 @@ def test_nginx_is_checked_and_only_reloaded():
                   "apt-get dist-upgrade", "apache2"):
         lines = [line for line in script.splitlines() if not line.lstrip().startswith("#")]
         assert not any(never in line for line in lines), never
+
+
+def test_a_server_without_nginx_is_left_as_it_is():
+    """v0.37.1: the live server has no nginx (another web server in front of
+    the tool's port). Step 8 must not stop there, and must not try to add a
+    site file or get a certificate."""
+    script = text("install.sh")
+    step8 = script[script.index('say "8.'):script.index('say "9.')]
+    assert step8.count("command -v nginx") == 2           # the site AND the certificate
+    first = step8.index("command -v nginx")
+    assert first < step8.index("nginx -t") and first < step8.index("certbot")
+
+
+def test_deploy_goes_to_the_live_server_by_default():
+    """v0.37.1: 3.109.226.121 (the address drivenstyle.duckdns.org points to)."""
+    script = (Path(__file__).resolve().parent.parent / "deploy" / "deploy.ps1").read_text()
+    assert '[string]$Server = "ubuntu@3.109.226.121"' in script
+    assert "dealzta-prod.pem" in script

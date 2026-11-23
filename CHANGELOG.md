@@ -6,6 +6,32 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.37.1] – 2026-11-23 – Deploy goes to the live server
+
+v0.37.0 was deployed and reported "running", but the site still showed the
+old screens. `nslookup drivenstyle.duckdns.org` gave 3.109.226.121, while
+`deploy.ps1` sent updates to its default 35.154.161.180 – an old copy nobody
+uses. The live server (with the real data in `/opt/drivenstyle/data`) is
+3.109.226.121, key `dealzta-prod.pem`, and it has no nginx. Deploying there
+installed v0.37.0 (database upgraded with its backup first) but stopped at
+step 8 on the missing nginx.
+
+### Fixed
+- `deploy.ps1`: default server `ubuntu@3.109.226.121` and key
+  `dealzta-prod.pem`; the help says which server is live and that "Connection
+  timed out" means your PC's internet address is not allowed for SSH in the
+  server's AWS security group.
+- `install.sh` step 8: on a server without nginx it says the address is
+  served by another web server in front of the tool's port and changes
+  nothing (no site file, no certificate) instead of stopping.
+
+### Changed
+- `docs/deployment.md`, `docs/developer_guide.md`, `CLAUDE.md`,
+  `web/README.md`: the live server and key; the old server named as such;
+  new rows under "When something is wrong" (SSH timed out, key file
+  permissions, the yes/no question in the VS Code terminal, site unchanged
+  after a deploy). Tests in `tests/test_deploy.py`.
+
 ## [0.37.0] – 2026-11-23 – Show working on the daily Payouts
 
 Brinda (23-11-2026): the client's staff want to see how the tool calculates

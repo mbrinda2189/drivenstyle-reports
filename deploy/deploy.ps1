@@ -37,14 +37,21 @@ OTHER USES
         backup file first; its users are kept).
 
 SETTINGS
-    -Server  ubuntu@35.154.161.180        the server's sign-in
-    -Key     ...\key\Printapp_KEY.pem     the key file. It stays OUTSIDE
+    -Server  ubuntu@3.109.226.121         the server's sign-in
+    -Key     ...\key\dealzta-prod.pem     the key file. It stays OUTSIDE
              the project folder and is never committed or copied.
+    v0.37.1 (23-11-2026): the LIVE tool (the address drivenstyle.duckdns.org
+    points to, with the real data) is 3.109.226.121 with dealzta-prod.pem.
+    The earlier default 35.154.161.180 (Printapp_KEY.pem) is an old copy
+    nobody uses - v0.37.0 went there by mistake first.
+    Your PC's internet address must be allowed for SSH (port 22) in that
+    server's AWS security group; "Connection timed out" at step 4 means it
+    is not (see docs\deployment.md).
     The web address, Google client ID and admins are in deploy\server.conf.
 #>
 param(
-    [string]$Server = "ubuntu@35.154.161.180",
-    [string]$Key = "C:\Official\Coding\Personal Coding Projects\key\Printapp_KEY.pem",
+    [string]$Server = "ubuntu@3.109.226.121",
+    [string]$Key = "C:\Official\Coding\Personal Coding Projects\key\dealzta-prod.pem",
     [switch]$Status,
     [switch]$Backup,
     [string]$Database = "",

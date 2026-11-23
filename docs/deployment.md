@@ -10,9 +10,11 @@ typed on **her PC**, in PowerShell, from the project folder
 | | |
 |---|---|
 | Web address | `https://drivenstyle.duckdns.org` (free DuckDNS name, account `automation.drivenstyle@gmail.com`) |
-| Server | `ubuntu@35.154.161.180` - Ubuntu 22.04, the client's AWS, **shared with other sites** (theprintapp.com and others) |
-| Key file | `C:\Official\Coding\Personal Coding Projects\key\Printapp_KEY.pem` - outside the project, never committed |
-| Web server | nginx (already there); the tool adds ONE site file |
+| Server | `ubuntu@3.109.226.121` - the LIVE server: drivenstyle.duckdns.org points here and the real data is here (`/opt/drivenstyle/data`). Shared with the Dealzta app. |
+| Key file | `C:\Official\Coding\Personal Coding Projects\key\dealzta-prod.pem` - outside the project, never committed. Windows SSH needs it readable by you only (see "When something is wrong" below). |
+| Web server | **no nginx on this server** - another web server in front sends the address to the tool's port 8010 and handles HTTPS. `install.sh` step 8 says so and leaves it alone (v0.37.1). |
+| Old server | `ubuntu@35.154.161.180` (`Printapp_KEY.pem`, nginx) - an OLD copy nobody uses. Until 23-11-2026 it was `deploy.ps1`'s default by mistake, so updates went there and the live site stayed on the older version. Do not point DuckDNS to it. |
+| SSH access | your PC's internet address (see https://checkip.amazonaws.com) must be allowed for **SSH, port 22** in the live server's AWS **security group**. It can change when the router restarts. |
 | Sign-in | Google, client ID in `deploy/server.conf`; test sign-in is off |
 | Settings | `deploy/server.conf` (address, port, client ID, admins, backup days) |
 
@@ -27,17 +29,18 @@ typed on **her PC**, in PowerShell, from the project folder
 | `/opt/drivenstyle/backups` | nightly copies of the database (14 kept) |
 | `/etc/drivenstyle.env` | the settings, written from `deploy/server.conf` |
 | `/etc/systemd/system/drivenstyle.service` | keeps the tool running, as its own user `drivenstyle` |
-| `/etc/nginx/sites-available/drivenstyle.duckdns.org` | the tool's site in nginx |
+| `/etc/nginx/sites-available/drivenstyle.duckdns.org` | the tool's site in nginx (only on a server that has nginx - not the live one) |
 | `/etc/cron.d/drivenstyle-backup` | the nightly backup, 02:00 Indian time |
 
 The tool listens inside the server only (port 8010). The outside world
-reaches it through nginx, over HTTPS.
+reaches it through the web server in front of it (nginx where there is
+one), over HTTPS.
 
 ## Before the first install
 
 1. **The address points to the server.** On duckdns.org (signed in as
    `automation.drivenstyle@gmail.com`) the `drivenstyle` row shows
-   `35.154.161.180`. Without this the HTTPS certificate cannot be issued.
+   `3.109.226.121`. Without this the HTTPS certificate cannot be issued.
 2. **The server's address is fixed** (an "Elastic IP" in AWS) - ask the
    client's IT. If it is not, it changes when the server restarts.
 3. **Ports 80 and 443 are open** in the AWS firewall (they are: the
@@ -134,18 +137,22 @@ Note that this keeps the server's present list of users.
 
 | What you see | What to do |
 |---|---|
-| The page does not open at all | `-Status`. If "Service : inactive": `ssh -i <key> ubuntu@35.154.161.180 "sudo systemctl restart drivenstyle"` |
+| The page does not open at all | `-Status`. If "Service : inactive": `ssh -i <key> ubuntu@3.109.226.121 "sudo systemctl restart drivenstyle"` |
 | "502 Bad Gateway" | the tool is stopped or starting; as above |
 | Browser warns about the certificate | run `deploy.ps1` again (it retries the certificate); it renews by itself every 60-90 days |
 | Google: "Access blocked" / "not verified" | the person is not a test user, or the address is not among the client ID's "Authorised JavaScript origins" |
 | "Your address is not on the list" | add the person on the Users screen |
 | PDF of the monthly report fails | LibreOffice: `ssh ... "which soffice"`; run `deploy.ps1` again |
-| The tool's messages | `ssh -i <key> ubuntu@35.154.161.180 "sudo journalctl -u drivenstyle -n 50 --no-pager"` |
+| The tool's messages | `ssh -i <key> ubuntu@3.109.226.121 "sudo journalctl -u drivenstyle -n 50 --no-pager"` |
+| Step 4: "Connection timed out" | your PC's internet address is not allowed for SSH: AWS -> EC2 -> the live instance -> Security -> security group -> Edit inbound rules -> SSH, Source "My IP" |
+| "UNPROTECTED PRIVATE KEY FILE" / "bad permissions" | `icacls "<key file>" /inheritance:r` then `icacls "<key file>" /grant:r "$($env:USERNAME):(R)"` |
+| "Please type 'yes', 'no' or the fingerprint" and typing does nothing (VS Code terminal) | Ctrl+C, then once: `ssh -o StrictHostKeyChecking=accept-new -i "<key file>" ubuntu@3.109.226.121 "echo connected"`, then deploy again |
+| Deploy says DONE but the site shows the old screens | check which server the address points to: `nslookup drivenstyle.duckdns.org` must give the server `deploy.ps1` sent to |
 | Go back to the version before | `ssh ... "cd /opt/drivenstyle && sudo systemctl stop drivenstyle && sudo mv app app.bad && sudo mv app.previous app && sudo systemctl start drivenstyle"` |
 
 ## Changing the web address later (e.g. to reports.drivenstyle.in)
 
-1. Point the new name to the server (an "A" record: `35.154.161.180`).
+1. Point the new name to the server (an "A" record: `3.109.226.121`).
 2. Change `DOMAIN=` in `deploy/server.conf`, commit.
 3. In Google Cloud add `https://<new name>` to the client ID's
    "Authorised JavaScript origins" (and to Branding).

@@ -19,7 +19,9 @@
 #   7. swaps the new version in, restarts the tool and CHECKS that it
 #      answers. If it does not, the previous version is put back.
 #   8. first time only: adds the tool's one site to nginx and gets the
-#      HTTPS certificate
+#      HTTPS certificate. v0.37.1: on a server WITHOUT nginx (the live
+#      server 3.109.226.121 - another web server in front sends the address
+#      to the tool's port) this step only says so and changes nothing.
 #   9. sets up the nightly backup
 #
 # WHERE EVERYTHING GOES
@@ -244,7 +246,12 @@ fi
 say "8. The tool's site in nginx"
 SITE="/etc/nginx/sites-available/$DOMAIN"
 LINK="/etc/nginx/sites-enabled/$DOMAIN"
-if [ -e "$SITE" ] || [ -e "$LINK" ]; then
+if ! command -v nginx >/dev/null 2>&1; then
+    # v0.37.1: no nginx here. The site already works through whatever web
+    # server is in front of port $PORT; it and its HTTPS are not ours to change.
+    echo "   nginx is not on this server: the address is served by another web"
+    echo "   server in front of port $PORT - left as it is (no site file, no certificate)."
+elif [ -e "$SITE" ] || [ -e "$LINK" ]; then
     echo "   Already there - left as it is."
 else
     nginx -t >/dev/null 2>&1 || die "nginx reports an error in the server's EXISTING sites (sudo nginx -t). Our site was not added; the tool itself runs."
@@ -258,7 +265,9 @@ else
     echo "   Added and nginx reloaded."
 fi
 
-if [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+if ! command -v nginx >/dev/null 2>&1; then
+    :                                   # v0.37.1: see above - HTTPS is the front server's
+elif [ -d "/etc/letsencrypt/live/$DOMAIN" ]; then
     echo "   HTTPS certificate: already there."
 else
     HERE=$(curl -s --max-time 8 https://checkip.amazonaws.com || true)

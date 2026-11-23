@@ -267,6 +267,9 @@ switched on there.
 
 ## Still open
 
+- (23-11-2026, v0.37.1: the LIVE server is now `3.109.226.121`, key
+  `dealzta-prod.pem`; `35.154.161.180` is an old copy - see
+  `docs/deployment.md`.)
 - (Settled 09-10-2026: server `35.154.161.180`, address
   `drivenstyle.duckdns.org`, Google client ID created. The older points
   below are kept for the record.)

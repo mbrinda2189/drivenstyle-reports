@@ -16,7 +16,7 @@ fixed on a Scan review screen, and writes one Excel workbook with 12
 management reports. The user is Brinda, a Chartered Accountant, preparing
 the reports for her client before the 7th of each month.
 
-Current version: **v0.37.0** (tags v0.1.0 … v0.37.0 on GitHub
+Current version: **v0.37.1** (tags v0.1.0 … v0.37.1 on GitHub
 `mbrinda2189/drivenstyle-reports`, branch `main`).
 
 ## MOVING TO A WEB TOOL (Brinda, 09-10-2026) – read `web/README.md`
@@ -175,11 +175,16 @@ their IT allows the site and Google sign-in. In the Cowork VM never grep the who
 `build/` are huge - the command times out); name the folders.
 
 ### Step 7 – on the client's server (v0.29.0) – read `docs/deployment.md`
-Server: `ubuntu@35.154.161.180` (Ubuntu 22.04, Python 3.10, **nginx**,
-shared with theprintapp.com and other sites; an earlier server
-3.109.74.97 was dropped). Key on Brinda's PC, outside the repo:
-`C:\Official\Coding\Personal Coding Projects\key\Printapp_KEY.pem` -
-never copy or commit it. Address `https://drivenstyle.duckdns.org`
+Server (v0.37.1, 23-11-2026): the LIVE tool is `ubuntu@3.109.226.121`
+(drivenstyle.duckdns.org points there; real data in /opt/drivenstyle/data;
+shared with the Dealzta app; **no nginx** - another web server in front
+of port 8010, install.sh step 8 skips). Key on Brinda's PC, outside the
+repo: `C:\Official\Coding\Personal Coding Projects\key\dealzta-prod.pem`
+- never copy or commit it. `ubuntu@35.154.161.180` (Printapp_KEY.pem,
+nginx) is an OLD copy - it was deploy.ps1's default until v0.37.1, so
+v0.37.0 first went there and the live site stayed on v0.36.1. If a
+deploy "worked" but the site is unchanged: `nslookup drivenstyle.duckdns.org`.
+SSH needs Brinda's IP in the live server's security group (port 22). Address `https://drivenstyle.duckdns.org`
 (DuckDNS, client's account); Google client ID in `deploy/server.conf`
 (public by design); Google sign-in still "Testing" (test users) until the
 Branding page is filled (home page + `/privacy`).
